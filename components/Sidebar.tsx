@@ -77,6 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isIniciativasOpen, setIsIniciativasOpen] = useState(() => isGerenciamentoView(activeAgentId));
   const [isRhOpen, setIsRhOpen] = useState(() => activeAgentId === RH_FEEDBACK_ID);
   const canAccessRh = user?.role === 'admin' || user?.role === 'client' || user?.qualification === 'analista';
+  const isVisitor = user?.qualification === 'visitante';
 
   // Manter submenu Gerenciamento aberto quando um filho estiver ativo
   useEffect(() => {

@@ -8,6 +8,10 @@ import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
 const PAGE_SIZE = 50;
 const HIERARCHY_STORAGE_KEY = 'hierarchySelection.v1';
 
+const VISITOR_ANALYST_ID = '0238f4f4-5967-429e-9dce-3f6cc03f5a80';
+const VISITOR_CLIENT_ID = '00000000-0000-0000-0000-000000000002';
+const VISITOR_FARM_ID = '00000000-0000-0000-0000-000000000003';
+
 interface HierarchyLoadingState {
   analysts: boolean;
   clients: boolean;
@@ -290,23 +294,38 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const effectiveAnalystId = useMemo(() => {
     if (!user) return null;
+    if (user.qualification === 'visitante') return VISITOR_ANALYST_ID;
     if (user.role === 'admin') return state.analystId;
     return user.id;
   }, [user, state.analystId]);
 
   useEffect(() => {
+    if (!user) return;
+    if (user.qualification === 'visitante') {
+      dispatch({
+        type: 'HYDRATE_IDS',
+        payload: {
+          analystId: VISITOR_ANALYST_ID,
+          clientId: VISITOR_CLIENT_ID,
+          farmId: VISITOR_FARM_ID,
+        },
+      });
+      return;
+    }
     const initial = loadInitialPersistedIds();
     dispatch({ type: 'HYDRATE_IDS', payload: initial });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
+    if (user.qualification === 'visitante') return; // IDs são determinísticos, não persistir
     const payload = {
       analystId: state.analystId,
       clientId: state.clientId,
       farmId: state.farmId,
     };
     localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify(payload));
-  }, [state.analystId, state.clientId, state.farmId]);
+  }, [state.analystId, state.clientId, state.farmId, user]);
 
   const nextController = useCallback((level: keyof HierarchyLoadingState) => {
     abortRef.current[level]?.abort();
@@ -527,6 +546,19 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     if (!user) return;
+    if (user.qualification === 'visitante') {
+      dispatch({
+        type: 'SET_SELECTED_ANALYST',
+        payload: {
+          id: VISITOR_ANALYST_ID,
+          name: 'Inttegra (Visitante)',
+          email: 'antonio@inttegra.com',
+          role: 'admin',
+          qualification: 'analista',
+        },
+      });
+      return; // loadClients dispara via effectiveAnalystId
+    }
     if (user.role === 'admin') {
       void loadAnalysts({ append: false, search: '' });
       return;

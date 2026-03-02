@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { ptBR } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -70,7 +71,23 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
 
   const [text, setText] = useState(fmtBR(selected));
   const [showCal, setShowCal] = useState(false);
+  const [calPosition, setCalPosition] = useState<{ top: number; left: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const calRef = useRef<HTMLDivElement>(null);
+
+  // Posiciona o calendário quando abre
+  const CALENDAR_HEIGHT = 280;
+  useLayoutEffect(() => {
+    if (showCal && wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top =
+        spaceBelow < CALENDAR_HEIGHT ? rect.top - CALENDAR_HEIGHT : rect.bottom + 4;
+      setCalPosition({ top, left: rect.left });
+    } else {
+      setCalPosition(null);
+    }
+  }, [showCal]);
 
   // Sincroniza texto quando value externo muda
   useEffect(() => {
@@ -81,7 +98,10 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
   useEffect(() => {
     if (!showCal) return;
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideInput = wrapRef.current?.contains(target);
+      const insideCal = calRef.current?.contains(target);
+      if (!insideInput && !insideCal) {
         setShowCal(false);
       }
     };
@@ -131,6 +151,7 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
         required={required}
         placeholder={placeholder}
         autoComplete="off"
+        aria-label="Data (dd/mm/aaaa)"
         className="w-full pl-3 pr-10 py-2 border border-ai-border rounded-md bg-ai-surface text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent/20 transition-all placeholder:text-ai-subtext/40"
         onChange={e => {
           const m = mask(e.target.value);
@@ -153,31 +174,38 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
         type="button"
         disabled={disabled}
         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-ai-subtext/60 hover:text-ai-accent hover:bg-ai-surface2 transition-colors"
-        title="Abrir calendário"
+        aria-label="Abrir calendário de datas"
         onClick={() => setShowCal(p => !p)}
       >
         <CalendarIcon size={16} />
       </button>
 
-      {/* Popup do calendário */}
-      {showCal && (
-        <div className="absolute z-[9999] mt-1 left-0">
-          <DatePicker
-            selected={selected}
-            onChange={(date: Date | null) => {
-              if (date) {
-                onChange(toIso(date));
-                setText(fmtBR(date));
-              }
-              setShowCal(false);
-            }}
-            inline
-            locale="pt-BR"
-            minDate={minD || undefined}
-            maxDate={maxD || undefined}
-          />
-        </div>
-      )}
+      {/* Popup do calendário (Portal – fora do overflow do modal) */}
+      {showCal &&
+        calPosition &&
+        createPortal(
+          <div
+            ref={calRef}
+            className="fixed z-[9999] bg-ai-bg border border-ai-border rounded-lg shadow-xl"
+            style={{ top: calPosition.top, left: calPosition.left }}
+          >
+            <DatePicker
+              selected={selected}
+              onChange={(date: Date | null) => {
+                if (date) {
+                  onChange(toIso(date));
+                  setText(fmtBR(date));
+                }
+                setShowCal(false);
+              }}
+              inline
+              locale="pt-BR"
+              minDate={minD || undefined}
+              maxDate={maxD || undefined}
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };
