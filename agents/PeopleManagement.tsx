@@ -177,6 +177,28 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     e.target.value = '';
   };
 
+  const handleAdjustPhoto = async () => {
+    if (!photoPreview) return;
+    try {
+      let url: string;
+      if (photoFile) {
+        url = URL.createObjectURL(photoFile);
+      } else {
+        const res = await fetch(photoPreview);
+        if (!res.ok) throw new Error('Não foi possível carregar a foto');
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+      }
+      setCropSourceUrl(url);
+      setCropZoom(1);
+      setCropPosition({ x: 0, y: 0 });
+      setCropImageSize(null);
+      setShowCropModal(true);
+    } catch (e) {
+      onToast?.(e instanceof Error ? e.message : 'Erro ao carregar foto para ajuste', 'error');
+    }
+  };
+
   const closeCropModal = useCallback(() => {
     if (cropSourceUrl) URL.revokeObjectURL(cropSourceUrl);
     setShowCropModal(false);
@@ -278,11 +300,12 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
         job_role: formData.person_type === 'Colaborador Fazenda' ? formData.job_role || undefined : undefined,
         phone_whatsapp: formData.phone_whatsapp.trim() || undefined,
         email: formData.email.trim() || undefined,
-        location_farm: selectedFarm?.name || formData.location_farm.trim() || undefined,
+        location_farm: editing ? (formData.location_farm.trim() || undefined) : (selectedFarm?.name || formData.location_farm.trim() || undefined),
         location_city_uf: formData.location_city_uf?.trim() || undefined,
         base: formData.base.trim() || undefined,
         main_activities: formData.main_activities.trim() || undefined,
-        farm_id: selectedFarm?.id || formData.farm_id || null,
+        // Ao editar, manter farm_id da pessoa; ao criar, usar fazenda selecionada
+        farm_id: editing ? (formData.farm_id || null) : (selectedFarm?.id || formData.farm_id || null),
       };
 
       if (editing) {
@@ -466,10 +489,13 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                   </label>
                   {photoPreview && (
                     <>
-                      <label className="cursor-pointer">
-                        <span className="text-sm text-ai-accent hover:underline">Ajustar (centralizar/cortar)</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAdjustPhoto}
+                        className="text-sm text-ai-accent hover:underline text-left"
+                      >
+                        Ajustar (centralizar/cortar)
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
