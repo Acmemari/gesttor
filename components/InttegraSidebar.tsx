@@ -160,7 +160,6 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
   onSettingsClick,
   onSwitchToPecuaria,
 }) => {
-  const [isMovimentacoesOpen, setIsMovimentacoesOpen] = useState(true);
   const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     pecuaria: false,
@@ -267,43 +266,6 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
 
         {/* Scrollable Navigation Area */}
         <div className="flex-1 min-h-0 overflow-y-auto py-2 px-2">
-          {/* Movimentações - primeiro item */}
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => !isCollapsed && setIsMovimentacoesOpen(!isMovimentacoesOpen)}
-              className={`w-full flex items-center rounded-md transition-colors hover:opacity-90 ${isCollapsed ? 'justify-center p-2' : 'justify-between px-3 py-2'}`}
-              style={{ color: INTEGRA_TEXT, backgroundColor: 'transparent' }}
-              title="Movimentações"
-            >
-              <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
-                <div
-                  className="w-8 h-8 rounded flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: INTEGRA_SURFACE }}
-                >
-                  <DollarSign size={16} />
-                </div>
-                {!isCollapsed && <span className="text-sm font-medium">Movimentações</span>}
-              </div>
-              {!isCollapsed && (isMovimentacoesOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
-            </button>
-            {!isCollapsed && isMovimentacoesOpen && (
-              <div className="ml-4 pl-4 mt-1 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
-                {movimentacoesSubItems.map(({ label }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:opacity-90 transition-colors"
-                    style={{ color: INTEGRA_TEXT, backgroundColor: 'transparent' }}
-                  >
-                    <span className="text-sm">{label}</span>
-                    <Star size={14} className="flex-shrink-0" style={{ color: INTEGRA_PLACEHOLDER }} aria-hidden />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Search */}
           <div
             className={`flex items-center rounded-lg mb-2 ${isCollapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2'}`}
@@ -367,6 +329,17 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
             </button>
             {!isCollapsed && isFinanceiroOpen && (
               <div className="ml-4 pl-4 mt-1 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
+                {movimentacoesSubItems.map(({ label }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:opacity-90 transition-colors"
+                    style={{ color: INTEGRA_TEXT, backgroundColor: 'transparent' }}
+                  >
+                    <span className="text-sm">{label}</span>
+                    <Star size={14} className="flex-shrink-0" style={{ color: INTEGRA_PLACEHOLDER }} aria-hidden />
+                  </button>
+                ))}
                 {['Cadastros', 'Movimentações', 'Relatórios'].map(label => (
                   <div
                     key={label}
