@@ -81,7 +81,7 @@ O pipeline de agentes (`/api/agents-run`) usa as tabelas: `plan_limits`, `rate_l
 
 ### Storage API (upload de arquivos B2)
 
-- `STORAGE_ALLOWED_ORIGINS` - Origens permitidas para CORS na API `/api/storage`. **Obrigatório em produção.** O padrão inclui apenas `localhost` e `127.0.0.1` nas portas 3000 e 5173. Se o frontend rodar em outra URL (ex.: Vercel, domínio customizado, IP da LAN), configure com as origens separadas por vírgula:
+- `STORAGE_ALLOWED_ORIGINS` - Origens permitidas para CORS na API `/api/storage`. **Obrigatório em produção.** O padrão inclui `localhost`/`127.0.0.1` (portas 3000 e 5173) e também `https://pecuaria.ai` + `https://www.pecuaria.ai`. Se o frontend rodar em outra URL (ex.: Vercel, domínio customizado adicional, IP da LAN), configure com as origens separadas por vírgula:
   - Produção: `https://seu-app.vercel.app,https://seu-dominio.com`
   - Local (porta diferente ou IP): `http://192.168.1.100:3000`
   - Erro "Origin not allowed"? Verifique o header Origin na requisição falha (DevTools > Network) e adicione essa URL à variável.

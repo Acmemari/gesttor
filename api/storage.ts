@@ -43,10 +43,21 @@ function getBucket(): string {
   return bucket;
 }
 
-/** Allowed origins for CORS. Comma-separated env var or defaults for local dev. */
-const ALLOWED_ORIGINS: readonly string[] = (
-  process.env.STORAGE_ALLOWED_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ??
-  ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173']
+/** Allowed origins for CORS. Env var extends project defaults. */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'https://pecuaria.ai',
+  'https://www.pecuaria.ai',
+] as const;
+
+const CONFIGURED_ALLOWED_ORIGINS =
+  process.env.STORAGE_ALLOWED_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
+
+const ALLOWED_ORIGINS: readonly string[] = Array.from(
+  new Set([...DEFAULT_ALLOWED_ORIGINS, ...CONFIGURED_ALLOWED_ORIGINS]),
 );
 
 function setCorsIfAllowed(req: VercelRequest, res: VercelResponse): boolean {
