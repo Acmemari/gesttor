@@ -20,8 +20,10 @@ const PERSON_TYPES = [
   'Colaborador Fazenda',
   'Consultor',
   'Conselheiro',
+  'Analista',
   'Fornecedor',
-  'Cliente Familiar',
+  'Cliente',
+  'Familiar',
   'outro',
 ] as const;
 
