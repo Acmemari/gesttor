@@ -25,6 +25,8 @@ export interface ActivityFormState {
   end_date: string;
   status: string;
   leader_id: string;
+  internal_leader_id: string;
+  participant_ids: string[];
 }
 
 export type KanbanStatus = 'A Fazer' | 'Andamento' | 'Pausado' | 'Concluído';
@@ -64,6 +66,8 @@ export const INITIAL_ACTIVITY_FORM: ActivityFormState = {
   end_date: '',
   status: 'Não Iniciado',
   leader_id: '',
+  internal_leader_id: '',
+  participant_ids: [],
 };
 
 function currentIsoDate(): string {

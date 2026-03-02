@@ -400,22 +400,42 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   );
 
   const openEditActivity = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const t = selectedDeliveryActivities.find(a => a.id === id);
       if (!t) return;
       setModalEntity('activity');
       setModalMode('edit');
       setEditingId(id);
+      const leaderPerson = people.find(p => {
+        const n = (p.preferred_name || p.full_name || '').trim();
+        return n === (t.leader || '').trim();
+      });
+      const internalLeaderPerson = people.find(p => {
+        const n = (p.preferred_name || p.full_name || '').trim();
+        return n === (t.internal_leader || '').trim();
+      });
+      let participantIds: string[] = [];
+      try {
+        const { data: rows } = await supabase
+          .from('initiative_participants')
+          .select('person_id')
+          .eq('initiative_id', id);
+        participantIds = (rows || []).map(r => r.person_id);
+      } catch {
+        participantIds = [];
+      }
       setActivityForm({
         name: t.name || '',
         description: t.description || '',
         start_date: t.start_date || '',
         end_date: t.end_date || '',
         status: t.status || 'Não Iniciado',
-        leader_id: t.leader || '',
+        leader_id: leaderPerson?.id ?? '',
+        internal_leader_id: internalLeaderPerson?.id ?? '',
+        participant_ids: participantIds,
       });
     },
-    [selectedDeliveryActivities],
+    [selectedDeliveryActivities, people],
   );
 
   const openEditTask = useCallback(
@@ -613,6 +633,10 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       const leaderName = leaderPerson
         ? leaderPerson.preferred_name?.trim() || leaderPerson.full_name
         : activityForm.leader_id || null;
+      const internalLeaderPerson = people.find(p => p.id === activityForm.internal_leader_id);
+      const internalLeaderName = internalLeaderPerson
+        ? internalLeaderPerson.preferred_name?.trim() || internalLeaderPerson.full_name
+        : null;
 
       if (editingId) {
         const { error } = await supabase
@@ -624,26 +648,56 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
             end_date: activityForm.end_date || null,
             status: activityForm.status || 'Não Iniciado',
             leader: leaderName,
+            internal_leader: internalLeaderName,
           })
           .eq('id', editingId);
         if (error) throw new Error(error.message);
+        const { error: delErr } = await supabase
+          .from('initiative_participants')
+          .delete()
+          .eq('initiative_id', editingId);
+        if (delErr) throw new Error(delErr.message);
+        const participantRows = activityForm.participant_ids
+          .filter(pid => pid)
+          .map(personId => ({ initiative_id: editingId, person_id: personId }));
+        if (participantRows.length > 0) {
+          const { error: partErr } = await supabase
+            .from('initiative_participants')
+            .insert(participantRows);
+          if (partErr) throw new Error(partErr.message);
+        }
       } else {
-        const { error } = await supabase.from('initiatives').insert({
-          created_by: effectiveUserId,
-          name: sanitizeText(name),
-          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-          start_date: activityForm.start_date || null,
-          end_date: activityForm.end_date || null,
-          status: activityForm.status || 'Não Iniciado',
-          leader: leaderName,
-          delivery_id: selectedDeliveryId,
-          client_id: selectedClientId || null,
-          farm_id: selectedFarmId || null,
-          sort_order: selectedDeliveryActivities.length,
-        });
+        const { data: inserted, error } = await supabase
+          .from('initiatives')
+          .insert({
+            created_by: effectiveUserId,
+            name: sanitizeText(name),
+            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+            start_date: activityForm.start_date || null,
+            end_date: activityForm.end_date || null,
+            status: activityForm.status || 'Não Iniciado',
+            leader: leaderName,
+            internal_leader: internalLeaderName,
+            delivery_id: selectedDeliveryId,
+            client_id: selectedClientId || null,
+            farm_id: selectedFarmId || null,
+            sort_order: selectedDeliveryActivities.length,
+          })
+          .select('id')
+          .single();
         if (error) throw new Error(error.message);
+        const newId = inserted?.id;
+        if (newId && activityForm.participant_ids.length > 0) {
+          const participantRows = activityForm.participant_ids
+            .filter(pid => pid)
+            .map(personId => ({ initiative_id: newId, person_id: personId }));
+          const { error: partErr } = await supabase
+            .from('initiative_participants')
+            .insert(participantRows);
+          if (partErr) throw new Error(partErr.message);
+        }
       }
-      await loadActivitiesForDelivery(selectedDeliveryId);
+      await loadActivitiesForDelivery(selectedDeliveryId!);
       toast(editingId ? 'Macro atividade atualizada.' : 'Macro atividade criada.', 'success');
       closeModal();
     } catch (err) {

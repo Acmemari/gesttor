@@ -14,6 +14,7 @@ export interface InitiativeRow {
   end_date: string | null;
   status: string;
   leader: string | null;
+  internal_leader: string | null;
   delivery_id: string | null;
   client_id: string | null;
   farm_id: string | null;

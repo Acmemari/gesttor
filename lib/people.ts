@@ -44,6 +44,19 @@ export interface FetchPeopleFilters {
   farmId?: string;
 }
 
+/** Tipos de pessoa para Responsável (consultoria): Co-Gestor, Consultor, Analista */
+export const CONSULTING_ROLES = ['Co-Gestor', 'Consultor', 'Analista'] as const;
+
+/** Filtra pessoas para o campo Responsável (apenas Co-Gestor, Consultor, Analista) */
+export function peopleFilteredForResponsavel(people: Person[]): Person[] {
+  return people.filter(p => CONSULTING_ROLES.includes(p.person_type as (typeof CONSULTING_ROLES)[number]));
+}
+
+/** Filtra pessoas para o campo Lider Interno (exclui Co-Gestor, Consultor, Analista) */
+export function peopleFilteredForLiderInterno(people: Person[]): Person[] {
+  return people.filter(p => !CONSULTING_ROLES.includes(p.person_type as (typeof CONSULTING_ROLES)[number]));
+}
+
 // ─── Validação ──────────────────────────────────────────────────────────────
 
 const MAX_NAME_LENGTH = 300;

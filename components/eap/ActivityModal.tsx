@@ -4,6 +4,7 @@ import { ModalShell } from './ModalShell';
 import DateInputBR from '../DateInputBR';
 import type { ActivityFormState } from './types';
 import type { Person } from '../../lib/people';
+import { peopleFilteredForResponsavel, peopleFilteredForLiderInterno } from '../../lib/people';
 
 interface ActivityModalProps {
   form: ActivityFormState;
@@ -62,20 +63,75 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
     </div>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Responsável</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Responsável *</label>
         <select
           value={form.leader_id}
           onChange={e => onChange({ ...form, leader_id: e.target.value })}
           className="w-full rounded-md border border-ai-border bg-ai-surface px-3 py-2 text-sm text-ai-text"
         >
-          <option value="">Selecione</option>
-          {people.map(person => (
+          <option value="">Selecione (Co-Gestor, Consultor ou Analista)</option>
+          {peopleFilteredForResponsavel(people).map(person => (
             <option key={person.id} value={person.id}>
               {person.preferred_name?.trim() || person.full_name}
             </option>
           ))}
         </select>
       </div>
+      <div>
+        <label className="block text-sm font-medium text-ai-text mb-1">Lider Interno</label>
+        <select
+          value={form.internal_leader_id}
+          onChange={e => onChange({ ...form, internal_leader_id: e.target.value })}
+          className="w-full rounded-md border border-ai-border bg-ai-surface px-3 py-2 text-sm text-ai-text"
+        >
+          <option value="">Selecione</option>
+          {peopleFilteredForLiderInterno(people).map(person => (
+            <option key={person.id} value={person.id}>
+              {person.preferred_name?.trim() || person.full_name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-ai-text mb-1">Incluir Participantes</label>
+      <div className="max-h-40 overflow-y-auto rounded-md border border-ai-border bg-ai-surface p-2 space-y-1">
+        {people.length === 0 ? (
+          <p className="text-sm text-ai-subtext px-2 py-1">Nenhuma pessoa cadastrada.</p>
+        ) : (
+          people.map(person => {
+            const isChecked = form.participant_ids.includes(person.id);
+            return (
+              <label
+                key={person.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ai-surface2/50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => {
+                    const next = isChecked
+                      ? form.participant_ids.filter(id => id !== person.id)
+                      : [...form.participant_ids, person.id];
+                    onChange({ ...form, participant_ids: next });
+                  }}
+                  className="accent-ai-accent rounded"
+                />
+                <span className="text-sm text-ai-text">
+                  {person.preferred_name?.trim() || person.full_name}
+                </span>
+              </label>
+            );
+          })
+        )}
+      </div>
+      {form.participant_ids.length > 0 && (
+        <p className="text-xs text-ai-subtext mt-1">
+          {form.participant_ids.length} selecionado{form.participant_ids.length !== 1 ? 's' : ''}
+        </p>
+      )}
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div>
         <label className="block text-sm font-medium text-ai-text mb-1">Status</label>
         <select

@@ -263,7 +263,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
   );
 
   const openEdit = useCallback(
-    (nodeId: string, level: WBSLevel) => {
+    async (nodeId: string, level: WBSLevel) => {
       const node = findNodeInTree(nodeId);
       if (!node) return;
 
@@ -295,7 +295,21 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
         });
       } else if (level === 'activity' && node.data.initiative) {
         const i = node.data.initiative;
-        const leaderId = people.find(p => (p.preferred_name || p.full_name) === i.leader)?.id || '';
+        const leaderId =
+          people.find(p => (p.preferred_name || p.full_name || '').trim() === (i.leader || '').trim())?.id || '';
+        const internalLeaderId =
+          people.find(p => (p.preferred_name || p.full_name || '').trim() === (i.internal_leader || '').trim())?.id ||
+          '';
+        let participantIds: string[] = [];
+        try {
+          const { data: rows } = await supabase
+            .from('initiative_participants')
+            .select('person_id')
+            .eq('initiative_id', i.id);
+          participantIds = (rows || []).map(r => r.person_id);
+        } catch {
+          participantIds = [];
+        }
         setModalEntity('activity');
         setModalMode('edit');
         setActivityForm({
@@ -305,6 +319,8 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           end_date: i.end_date || '',
           status: i.status || 'Não Iniciado',
           leader_id: leaderId,
+          internal_leader_id: internalLeaderId,
+          participant_ids: participantIds,
         });
       } else if (level === 'task' && node.data.task) {
         const t = node.data.task;
@@ -503,6 +519,10 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     const leaderName = leaderPerson
       ? leaderPerson.preferred_name?.trim() || leaderPerson.full_name
       : activityForm.leader_id || null;
+    const internalLeaderPerson = people.find(p => p.id === activityForm.internal_leader_id);
+    const internalLeaderName = internalLeaderPerson
+      ? internalLeaderPerson.preferred_name?.trim() || internalLeaderPerson.full_name
+      : null;
 
     setSaving(true);
     try {
@@ -517,25 +537,55 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
             end_date: activityForm.end_date || null,
             status: activityForm.status || 'Não Iniciado',
             leader: leaderName,
+            internal_leader: internalLeaderName,
           })
           .eq('id', rawId);
         if (error) throw new Error(error.message);
+        const { error: delErr } = await supabase
+          .from('initiative_participants')
+          .delete()
+          .eq('initiative_id', rawId);
+        if (delErr) throw new Error(delErr.message);
+        const participantRows = activityForm.participant_ids
+          .filter(pid => pid)
+          .map(personId => ({ initiative_id: rawId, person_id: personId }));
+        if (participantRows.length > 0) {
+          const { error: partErr } = await supabase
+            .from('initiative_participants')
+            .insert(participantRows);
+          if (partErr) throw new Error(partErr.message);
+        }
         toast('Atividade atualizada.', 'success');
       } else {
-        const { error } = await supabase.from('initiatives').insert({
-          created_by: effectiveUserId,
-          name: sanitizeText(name),
-          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-          start_date: activityForm.start_date || null,
-          end_date: activityForm.end_date || null,
-          status: activityForm.status || 'Não Iniciado',
-          leader: leaderName,
-          delivery_id: deliveryId,
-          client_id: selectedClientId || null,
-          farm_id: selectedFarmId || null,
-          sort_order: 0,
-        });
+        const { data: inserted, error } = await supabase
+          .from('initiatives')
+          .insert({
+            created_by: effectiveUserId,
+            name: sanitizeText(name),
+            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+            start_date: activityForm.start_date || null,
+            end_date: activityForm.end_date || null,
+            status: activityForm.status || 'Não Iniciado',
+            leader: leaderName,
+            internal_leader: internalLeaderName,
+            delivery_id: deliveryId,
+            client_id: selectedClientId || null,
+            farm_id: selectedFarmId || null,
+            sort_order: 0,
+          })
+          .select('id')
+          .single();
         if (error) throw new Error(error.message);
+        const newId = inserted?.id;
+        if (newId && activityForm.participant_ids.length > 0) {
+          const participantRows = activityForm.participant_ids
+            .filter(pid => pid)
+            .map(personId => ({ initiative_id: newId, person_id: personId }));
+          const { error: partErr } = await supabase
+            .from('initiative_participants')
+            .insert(participantRows);
+          if (partErr) throw new Error(partErr.message);
+        }
         toast('Atividade criada.', 'success');
       }
       await loadTree();
