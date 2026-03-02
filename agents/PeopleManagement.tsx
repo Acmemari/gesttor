@@ -715,7 +715,14 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                       src={signedUrls[p.id]}
                       alt=""
                       className="w-full h-full object-cover"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      onError={() => {
+                        console.warn('[PeopleManagement] Foto não carregou para pessoa', p.id, signedUrls[p.id]);
+                        setSignedUrls(prev => {
+                          const next = { ...prev };
+                          delete next[p.id];
+                          return next;
+                        });
+                      }}
                     />
                   ) : (
                     <User size={24} className="text-ai-subtext" />
