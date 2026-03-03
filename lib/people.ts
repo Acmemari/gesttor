@@ -21,6 +21,7 @@ export interface Person {
   photo_url: string | null;
   main_activities: string | null;
   farm_id: string | null;
+  assume_tarefas_fazenda: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +39,7 @@ export type PersonFormData = Omit<Person, 'id' | 'created_by' | 'created_at' | '
   photo_url?: string | null;
   main_activities?: string;
   farm_id?: string | null;
+  assume_tarefas_fazenda?: boolean;
 };
 
 export interface FetchPeopleFilters {
@@ -154,6 +156,7 @@ export async function updatePerson(id: string, payload: Partial<PersonFormData>)
         main_activities: payload.main_activities?.trim()?.slice(0, MAX_TEXT_LENGTH) || null,
       }),
       ...(payload.farm_id !== undefined && { farm_id: payload.farm_id || null }),
+      ...(payload.assume_tarefas_fazenda !== undefined && { assume_tarefas_fazenda: payload.assume_tarefas_fazenda }),
     })
     .eq('id', id)
     .select()

@@ -72,6 +72,7 @@ const initialForm = {
   photo_url: '',
   main_activities: '',
   farm_id: '' as string,
+  assume_tarefas_fazenda: false,
 };
 
 const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
@@ -177,6 +178,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       photo_url: p.photo_url ?? '',
       main_activities: p.main_activities ?? '',
       farm_id: p.farm_id ?? selectedFarm?.id ?? '',
+      assume_tarefas_fazenda: p.assume_tarefas_fazenda ?? false,
     });
     setPhotoPreview(signedUrls[p.id] ?? p.photo_url);
     setPhotoFile(null);
@@ -329,6 +331,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
         main_activities: formData.main_activities.trim() || undefined,
         // Ao editar, manter farm_id da pessoa; ao criar, usar fazenda selecionada
         farm_id: editing ? (formData.farm_id || null) : (selectedFarm?.id || formData.farm_id || null),
+        assume_tarefas_fazenda: formData.assume_tarefas_fazenda,
       };
 
       if (editing) {
@@ -544,6 +547,24 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                 className="w-full px-3 py-2 border border-ai-border rounded-md bg-ai-surface text-ai-text text-sm resize-none"
                 placeholder="Descreva as principais atividades desta pessoa..."
               />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-ai-border bg-ai-surface px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-ai-text">Assume tarefas na fazenda</p>
+                <p className="text-xs text-ai-subtext mt-0.5">Aparece como responsável na Gestão Semanal</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData(f => ({ ...f, assume_tarefas_fazenda: !f.assume_tarefas_fazenda }))}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.assume_tarefas_fazenda ? 'bg-ai-accent' : 'bg-ai-surface2'}`}
+                role="switch"
+                aria-checked={formData.assume_tarefas_fazenda}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${formData.assume_tarefas_fazenda ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
             </div>
 
             <div className="flex gap-3 pt-2">
