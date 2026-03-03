@@ -40,7 +40,12 @@ const AdminDashboard: React.FC = () => {
     qualification: 'visitante' | 'cliente' | 'analista';
     status: 'active' | 'inactive';
     organizationId?: string | null;
+    clientId?: string | null;
   } | null>(null);
+  const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
+  const [isLoadingClientsList, setIsLoadingClientsList] = useState(false);
+  const [clientsListError, setClientsListError] = useState<string | null>(null);
+  const clientsListLoadedRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
@@ -51,6 +56,7 @@ const AdminDashboard: React.FC = () => {
     if (currentUser?.role === 'admin') {
       loadClients();
       loadOrganizations();
+      // clientsList é carregado sob demanda ao abrir edição de um usuário 'cliente'
     } else if (currentUser && (currentUser.role as string) !== 'admin') {
       setError('Acesso negado. Apenas administradores podem visualizar esta página.');
       setIsLoading(false);
@@ -89,6 +95,31 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const loadClientsList = async () => {
+    // Só carrega uma vez por sessão — a lista de clientes raramente muda durante uso
+    if (clientsListLoadedRef.current) return;
+    if (currentUser?.role !== 'admin') return;
+
+    setIsLoadingClientsList(true);
+    setClientsListError(null);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name')
+        .order('name', { ascending: true })
+        .limit(500);
+
+      if (error) throw error;
+      setClientsList(data || []);
+      clientsListLoadedRef.current = true;
+    } catch (error: any) {
+      console.error('[AdminDashboard] Error loading clients list:', error);
+      setClientsListError('Erro ao carregar organizações disponíveis.');
+    } finally {
+      setIsLoadingClientsList(false);
+    }
+  };
+
   const loadClients = async (retries = 3, delay = 1000) => {
     // Verify admin permission
     if (currentUser?.role !== 'admin') {
@@ -104,13 +135,11 @@ const AdminDashboard: React.FC = () => {
 
         console.log(`[AdminDashboard] Loading clients (attempt ${attempt + 1}/${retries})...`);
 
-        const { data, error: queryError } = await supabase
-          .from('user_profiles')
-          .select(
-            'id, name, email, role, avatar, plan, status, last_login, organization_id, phone, qualification, created_at, updated_at',
-          )
-          .eq('role', 'client')
-          .order('created_at', { ascending: false });
+        const { data, error: queryError } = await supabase.rpc('get_users_for_admin', {
+          p_offset: 0,
+          p_limit: 500,
+          p_search: null,
+        });
 
         if (queryError) {
           console.error('[AdminDashboard] Error loading clients:', {
@@ -266,15 +295,17 @@ const AdminDashboard: React.FC = () => {
         updated_at: new Date().toISOString(),
       };
 
-      // Se for visitante, remover vínculo com empresa
+      // Se for visitante, remover vínculo com empresa e organização
       if (editingClientData.qualification === 'visitante') {
         updatePayload.organization_id = null;
+        updatePayload.client_id = null;
       } else if (editingClientData.qualification === 'analista') {
-        // Se for analista, incluir organization_id se fornecido
+        // Se for analista, incluir organization_id se fornecido e limpar client_id
         updatePayload.organization_id = editingClientData.organizationId || null;
-      } else {
-        // Para cliente, manter organization_id se já existir, mas não obrigar
-        // Não alteramos organization_id para clientes aqui
+        updatePayload.client_id = null;
+      } else if (editingClientData.qualification === 'cliente') {
+        // Para cliente, salvar o client_id selecionado
+        updatePayload.client_id = editingClientData.clientId || null;
       }
 
       const { data: updateData, error } = await supabase
@@ -462,17 +493,14 @@ const AdminDashboard: React.FC = () => {
                         ? {
                             ...prev,
                             qualification: newQualification,
-                            // Limpar organizationId se mudar para visitante
-                            // Para cliente e analista, manter o valor atual (será definido na tela de cadastro)
-                            organizationId:
-                              newQualification === 'visitante'
-                                ? null
-                                : newQualification === 'analista'
-                                  ? prev.organizationId
-                                  : prev.organizationId,
+                            organizationId: newQualification === 'visitante' ? null : prev.organizationId,
+                            clientId: newQualification === 'cliente' ? prev.clientId : null,
                           }
                         : null,
                     );
+                    if (newQualification === 'cliente') {
+                      void loadClientsList();
+                    }
                   }}
                   className="w-full px-3 py-2 border border-ai-border rounded-lg bg-white text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
                   disabled={isSaving}
@@ -552,12 +580,42 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
 
-              {/* Mensagem informativa para clientes */}
+              {/* Seletor de organização (apenas para clientes) */}
               {editingClientData.qualification === 'cliente' && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-xs text-amber-800">
-                    <strong>Clientes</strong> devem ser vinculados a um analista na tela de
-                    <strong> Cadastro de Clientes</strong>. O vínculo com empresa é opcional.
+                <div>
+                  <label className="block text-sm font-medium text-ai-text mb-1">
+                    Organização Vinculada <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={editingClientData.clientId || ''}
+                    onChange={e =>
+                      setEditingClientData(prev =>
+                        prev ? { ...prev, clientId: e.target.value || null } : null,
+                      )
+                    }
+                    className="w-full px-3 py-2 border border-ai-border rounded-lg bg-white text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    disabled={isSaving || isLoadingClientsList}
+                  >
+                    <option value="">Nenhuma organização (sem vínculo)</option>
+                    {clientsList.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  {isLoadingClientsList && (
+                    <p className="text-xs text-ai-subtext mt-1">Carregando organizações...</p>
+                  )}
+                  {clientsListError && (
+                    <p className="text-xs text-red-600 mt-1">{clientsListError}</p>
+                  )}
+                  {!isLoadingClientsList && !clientsListError && clientsList.length === 0 && (
+                    <p className="text-xs text-ai-subtext mt-1">
+                      Nenhuma organização cadastrada. Cadastre em Cadastros → Organizações.
+                    </p>
+                  )}
+                  <p className="text-xs text-amber-700 mt-1">
+                    Após salvar, o usuário verá automaticamente as fazendas desta organização ao logar.
                   </p>
                 </div>
               )}
@@ -780,7 +838,12 @@ const AdminDashboard: React.FC = () => {
                                     qualification: client.qualification || 'visitante',
                                     status: client.status || 'active',
                                     organizationId: client.organizationId || null,
+                                    clientId: client.clientId || null,
                                   });
+                                  // Carrega a lista de organizações sob demanda
+                                  if (client.qualification === 'cliente') {
+                                    void loadClientsList();
+                                  }
                                   setOpenMenuId(null);
                                 }}
                                 className="w-full px-4 py-2 text-left text-sm text-ai-text hover:bg-ai-surface2 flex items-center gap-2 transition-colors"

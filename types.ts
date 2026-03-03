@@ -58,6 +58,7 @@ export interface User {
   status?: 'active' | 'inactive';
   lastLogin?: string;
   organizationId?: string;
+  clientId?: string;
   phone?: string;
   qualification?: 'visitante' | 'cliente' | 'analista';
   full_name?: string;

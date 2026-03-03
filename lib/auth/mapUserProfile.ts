@@ -13,6 +13,7 @@ interface SupabaseProfile {
   avatar?: string;
   last_login?: string;
   organization_id?: string;
+  client_id?: string;
   phone?: string;
   qualification?: string | null;
 }
@@ -88,6 +89,11 @@ export const mapUserProfile = (input: unknown): User | null => {
     organizationId = String(profile.organization_id);
   }
 
+  let clientId: string | undefined = undefined;
+  if (profile.client_id) {
+    clientId = String(profile.client_id);
+  }
+
   const phone = profile.phone && typeof profile.phone === 'string' ? profile.phone : undefined;
 
   const validQualifications = ['visitante', 'cliente', 'analista'] as const;
@@ -115,6 +121,7 @@ export const mapUserProfile = (input: unknown): User | null => {
     status,
     lastLogin,
     organizationId,
+    clientId,
     phone,
     qualification,
   };

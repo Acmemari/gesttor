@@ -57,15 +57,19 @@ const AnalystHeader: React.FC<AnalystHeaderProps> = () => {
     void refreshUnread();
   }, [refreshUnread]);
 
-  // Não mostrar se não for analista, admin ou visitante
+  // Não mostrar se não for analista, admin, visitante ou cliente
   if (
     !user ||
-    (user.qualification !== 'analista' && user.role !== 'admin' && user.qualification !== 'visitante')
+    (user.qualification !== 'analista' &&
+      user.role !== 'admin' &&
+      user.qualification !== 'visitante' &&
+      user.qualification !== 'cliente')
   ) {
     return null;
   }
 
   const isVisitor = user.qualification === 'visitante';
+  const isCliente = user.qualification === 'cliente';
 
   // Visitantes: header com hierarquia fixa (seletores desabilitados/ocultos)
   if (isVisitor) {
@@ -78,7 +82,7 @@ const AnalystHeader: React.FC<AnalystHeaderProps> = () => {
           </div>
           <div className="h-6 w-px bg-ai-border" />
           <div className="flex items-center gap-2">
-            <span className="text-xs text-ai-subtext font-medium">Cliente:</span>
+            <span className="text-xs text-ai-subtext font-medium">Organização:</span>
             <span className="text-sm font-semibold text-ai-text">Visitante Demo</span>
           </div>
           {selectedFarm && (
@@ -104,6 +108,56 @@ const AnalystHeader: React.FC<AnalystHeaderProps> = () => {
           </button>
         </div>
       </header>
+    );
+  }
+
+  // Clientes: header com organização fixa e seletor de fazenda
+  if (isCliente) {
+    return (
+      <>
+        <header className="h-12 bg-ai-surface border-b border-ai-border flex items-center justify-between px-4 shrink-0 sticky top-0 z-50">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-ai-accent/15 flex items-center justify-center">
+                <User className="w-3.5 h-3.5 text-ai-accent" />
+              </div>
+              <div>
+                <p className="text-[10px] text-ai-subtext font-medium leading-none">Organização</p>
+                <p className="text-sm font-semibold text-ai-text leading-tight">
+                  {selectedClient ? selectedClient.name : 'Carregando...'}
+                </p>
+              </div>
+            </div>
+
+            {selectedClient && (
+              <>
+                <div className="h-6 w-px bg-ai-border" />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-ai-subtext font-medium">Fazenda:</span>
+                  <SelectorErrorBoundary fallbackLabel="Fazenda">
+                    <FarmSelector />
+                  </SelectorErrorBoundary>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsSupportOpen(true)}
+              className="relative inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-ai-border text-ai-text hover:bg-ai-surface2"
+              title="Suporte interno"
+              aria-label="Suporte"
+            >
+              <HelpCircle className="w-4 h-4" />
+              Suporte
+            </button>
+          </div>
+        </header>
+
+        <SupportTicketModal isOpen={isSupportOpen} onClose={handleCloseSupport} />
+      </>
     );
   }
 
@@ -134,12 +188,12 @@ const AnalystHeader: React.FC<AnalystHeaderProps> = () => {
           {/* Separador */}
           <div className="h-6 w-px bg-ai-border" />
 
-          {/* Seletor de Cliente (apenas se houver analista selecionado para admin, ou se for analista) */}
+          {/* Seletor de Organização (apenas se houver analista selecionado para admin, ou se for analista) */}
           {(user.role === 'admin' ? selectedAnalyst : true) && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-ai-subtext font-medium">Cliente:</span>
-                <SelectorErrorBoundary fallbackLabel="Cliente">
+                <span className="text-xs text-ai-subtext font-medium">Organização:</span>
+                <SelectorErrorBoundary fallbackLabel="Organização">
                   <ClientSelector />
                 </SelectorErrorBoundary>
               </div>

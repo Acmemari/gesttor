@@ -295,6 +295,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const effectiveAnalystId = useMemo(() => {
     if (!user) return null;
     if (user.qualification === 'visitante') return VISITOR_ANALYST_ID;
+    // Clientes têm contexto fixo pelo clientId — não usam analista próprio como filtro
+    if (user.qualification === 'cliente') return null;
     if (user.role === 'admin') return state.analystId;
     return user.id;
   }, [user, state.analystId]);
@@ -312,6 +314,25 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       return;
     }
+    if (user.qualification === 'cliente') {
+      // Cliente sem organização vinculada: hidrata com estado vazio
+      if (!user.clientId) {
+        dispatch({ type: 'HYDRATE_IDS', payload: { analystId: null, clientId: null, farmId: null } });
+        return;
+      }
+      // Carrega o cliente fixo vinculado ao perfil do usuário.
+      // A fazenda é restaurada do localStorage para manter a última seleção.
+      const persisted = loadInitialPersistedIds();
+      dispatch({
+        type: 'HYDRATE_IDS',
+        payload: {
+          analystId: null,
+          clientId: user.clientId,
+          farmId: persisted.farmId ?? null,
+        },
+      });
+      return;
+    }
     const initial = loadInitialPersistedIds();
     dispatch({ type: 'HYDRATE_IDS', payload: initial });
   }, [user?.id]);
@@ -319,6 +340,18 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (!user) return;
     if (user.qualification === 'visitante') return; // IDs são determinísticos, não persistir
+    if (user.qualification === 'cliente') {
+      // Para clientes, persiste apenas a fazenda (o clientId vem sempre do perfil)
+      try {
+        const stored = localStorage.getItem(HIERARCHY_STORAGE_KEY);
+        const parsed = stored ? JSON.parse(stored) : {};
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify({ ...parsed, farmId: state.farmId }));
+      } catch {
+        // Dados corrompidos: sobrescreve com estado limpo
+        localStorage.setItem(HIERARCHY_STORAGE_KEY, JSON.stringify({ farmId: state.farmId }));
+      }
+      return;
+    }
     const payload = {
       analystId: state.analystId,
       clientId: state.clientId,
@@ -397,7 +430,17 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const loadClients = useCallback(
     async (options?: { append?: boolean; search?: string }) => {
-      if (!user || !effectiveAnalystId) {
+      // Usuário com qualification='cliente' busca diretamente pelo seu client_id fixo
+      const isClientUser = user?.qualification === 'cliente';
+
+      if (!user || (!effectiveAnalystId && !isClientUser)) {
+        dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
+        dispatch({ type: 'SELECT_CLIENT_ID', payload: null });
+        return;
+      }
+
+      // Se for cliente mas não tiver clientId vinculado, limpa e retorna
+      if (isClientUser && !user.clientId) {
         dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
         dispatch({ type: 'SELECT_CLIENT_ID', payload: null });
         return;
@@ -417,10 +460,20 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         let query = supabase
           .from('clients')
           .select('*')
-          .eq('analyst_id', effectiveAnalystId)
           .order('name', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1)
           .abortSignal(controller.signal);
+
+        if (isClientUser && user.clientId) {
+          // Filtra diretamente pelo id do cliente vinculado ao perfil
+          query = query.eq('id', user.clientId);
+        } else if (effectiveAnalystId) {
+          query = query.eq('analyst_id', effectiveAnalystId);
+        } else {
+          // Estado inválido — sem analista e sem clientId; aborta silenciosamente
+          dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
+          return;
+        }
 
         if (search) {
           query = query.ilike('name', `%${search}%`);
@@ -457,7 +510,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        const message = error instanceof Error ? error.message : 'Falha ao carregar clientes.';
+        const message = error instanceof Error ? error.message : 'Falha ao carregar organizações.';
         dispatch({
           type: 'SET_ERROR',
           payload: { level: 'clients', value: message },
@@ -558,6 +611,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         },
       });
       return; // loadClients dispara via effectiveAnalystId
+    }
+    // Clientes não têm analista próprio — context de analista não se aplica
+    if (user.qualification === 'cliente') {
+      dispatch({ type: 'SET_SELECTED_ANALYST', payload: null });
+      return;
     }
     if (user.role === 'admin') {
       void loadAnalysts({ append: false, search: '' });
