@@ -49,6 +49,9 @@ import DateInputBR from '../components/DateInputBR';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 const InitiativesGantt = lazy(() => import('../components/InitiativesGantt'));
+import type { ZoomLevel } from '../components/InitiativesGantt';
+
+type PeriodPreset = 'next-month' | 'next-quarter' | 'next-year' | 'custom' | null;
 
 const STATUS_OPTIONS = ['Não Iniciado', 'Em Andamento', 'Suspenso', 'Concluído', 'Atrasado'];
 
@@ -170,6 +173,68 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
   const [filterTag, setFilterTag] = useState('');
   const [openFilterDropdown, setOpenFilterDropdown] = useState<'status' | 'leader' | null>(null);
   const [viewMode, setViewMode] = useState<'lista' | 'gantt'>('lista');
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(null);
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [ganttZoom, setGanttZoom] = useState<ZoomLevel>('day');
+
+  const calcPresetRange = useCallback((preset: PeriodPreset): { start: string; end: string } => {
+    if (!preset || preset === 'custom') return { start: '', end: '' };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(today.getTime());
+
+    if (preset === 'next-month') {
+      const end = new Date(today.getTime());
+      end.setMonth(end.getMonth() + 1);
+      return { start: toLocalIso(start), end: toLocalIso(end) };
+    }
+    if (preset === 'next-quarter') {
+      const end = new Date(today.getTime());
+      end.setMonth(end.getMonth() + 3);
+      return { start: toLocalIso(start), end: toLocalIso(end) };
+    }
+    if (preset === 'next-year') {
+      const end = new Date(today.getTime());
+      end.setFullYear(end.getFullYear() + 1);
+      return { start: toLocalIso(start), end: toLocalIso(end) };
+    }
+    return { start: '', end: '' };
+  }, []);
+
+  const applyPreset = useCallback(
+    (preset: 'next-month' | 'next-quarter' | 'next-year') => {
+      setPeriodPreset(preset);
+      const { start, end } = calcPresetRange(preset);
+      setPeriodStart(start);
+      setPeriodEnd(end);
+      if (preset === 'next-month') setGanttZoom('day');
+      else if (preset === 'next-quarter') setGanttZoom('week');
+      else setGanttZoom('month');
+    },
+    [calcPresetRange],
+  );
+
+  const applyCustomRange = useCallback((start: string, end: string) => {
+    setPeriodPreset('custom');
+    setPeriodStart(start);
+    setPeriodEnd(end);
+    if (start && end) {
+      const s = new Date(start + 'T00:00:00');
+      const e = new Date(end + 'T00:00:00');
+      const days = Math.ceil((e.getTime() - s.getTime()) / 86400000);
+      if (days <= 31) setGanttZoom('day');
+      else if (days <= 92) setGanttZoom('week');
+      else setGanttZoom('month');
+    }
+  }, []);
+
+  const clearPeriod = useCallback(() => {
+    setPeriodPreset(null);
+    setPeriodStart('');
+    setPeriodEnd('');
+  }, []);
+
   const [formData, setFormData] = useState({
     name: '',
     tags: '',
@@ -648,11 +713,31 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
       if (filterStatus.length > 0 && !filterStatus.includes(init.status ?? 'Não Iniciado')) return false;
       if (filterLeader.length > 0 && !filterLeader.includes(init.leader ?? '')) return false;
       if (filterTag && !(init.tags || '').toLowerCase().includes(filterTag.toLowerCase())) return false;
+
+      if (periodStart || periodEnd) {
+        const start = init.start_date ?? '';
+        const end = init.end_date ?? '';
+        if (!start && !end) return false;
+        if (periodEnd && start && start > periodEnd) return false;
+        if (periodStart && end && end < periodStart) return false;
+      }
       return true;
     });
-  }, [initiatives, filterStatus, filterLeader, filterTag]);
+  }, [initiatives, filterStatus, filterLeader, filterTag, periodStart, periodEnd]);
 
-  const hasActiveFilters = filterStatus.length > 0 || filterLeader.length > 0 || !!filterTag;
+  const hasPeriodActive = !!(periodPreset || periodStart || periodEnd);
+
+  const allowedZooms = useMemo((): ZoomLevel[] => {
+    if (!periodStart || !periodEnd) return ['day', 'week', 'month', 'quarter'];
+    const s = new Date(periodStart + 'T00:00:00');
+    const e = new Date(periodEnd + 'T00:00:00');
+    const days = Math.ceil((e.getTime() - s.getTime()) / 86400000);
+    if (days <= 31) return ['day', 'week', 'month'];
+    if (days <= 92) return ['day', 'week', 'month'];
+    return ['day', 'week', 'month', 'quarter'];
+  }, [periodStart, periodEnd]);
+
+  const hasActiveFilters = filterStatus.length > 0 || filterLeader.length > 0 || !!filterTag || hasPeriodActive;
 
   const toggleFilterValue = useCallback(
     (current: string[], setter: React.Dispatch<React.SetStateAction<string[]>>, value: string) => {
@@ -675,6 +760,13 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
     closeModal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveUserId, selectedClient?.id, selectedFarm?.id]);
+
+  // Coerência zoom ↔ período: limitar zoom ao permitido quando allowedZooms restringe
+  useEffect(() => {
+    if (!allowedZooms.includes(ganttZoom)) {
+      setGanttZoom(allowedZooms[0] ?? 'day');
+    }
+  }, [allowedZooms, ganttZoom]);
 
   // Fechar modal com ESC / fechar dropdown de filtro ao clicar fora
   useEffect(() => {
@@ -1399,11 +1491,70 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
         {/* Header + Filtros na mesma linha */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0 shrink-0">
-              <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">
-                INICIATIVAS &gt; ATIVIDADES
-              </nav>
-              <h1 className="text-xl font-bold text-ai-text tracking-tight whitespace-nowrap">Atividades em Foco</h1>
+            <div className="min-w-0 shrink-0 flex items-center gap-3 flex-wrap">
+              <div>
+                <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">
+                  INICIATIVAS &gt; ATIVIDADES
+                </nav>
+                <h1 className="text-xl font-bold text-ai-text tracking-tight whitespace-nowrap">
+                  Atividades em Foco
+                </h1>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(['M', 'T', 'A'] as const).map((letter, i) => {
+                  const presets = ['next-month', 'next-quarter', 'next-year'] as const;
+                  const labels = ['Dia atual + 1 mês', 'Dia atual + 1 trimestre', 'Dia atual + 1 ano'];
+                  const active = periodPreset === presets[i];
+                  return (
+                    <button
+                      key={letter}
+                      type="button"
+                      title={labels[i]}
+                      onClick={() => applyPreset(presets[i])}
+                      className={`min-w-[28px] h-7 px-1.5 rounded-md text-xs font-bold transition-colors ${
+                        active
+                          ? 'bg-ai-accent/20 text-ai-accent border border-ai-accent/40'
+                          : 'bg-ai-surface border border-ai-border text-ai-subtext hover:text-ai-text hover:border-ai-subtext'
+                      }`}
+                    >
+                      {letter}
+                    </button>
+                  );
+                })}
+                <div className="h-5 w-px bg-ai-border" aria-hidden />
+                <label className="sr-only" htmlFor="period-start">
+                  Data inicial do período
+                </label>
+                <input
+                  id="period-start"
+                  type="date"
+                  value={periodStart}
+                  onChange={e => applyCustomRange(e.target.value, periodEnd)}
+                  className="h-7 px-2 text-xs border border-ai-border rounded-md bg-ai-surface text-ai-text focus:outline-none focus:ring-1 focus:ring-ai-accent"
+                />
+                <span className="text-xs text-ai-subtext">–</span>
+                <label className="sr-only" htmlFor="period-end">
+                  Data final do período
+                </label>
+                <input
+                  id="period-end"
+                  type="date"
+                  value={periodEnd}
+                  onChange={e => applyCustomRange(periodStart, e.target.value)}
+                  className="h-7 px-2 text-xs border border-ai-border rounded-md bg-ai-surface text-ai-text focus:outline-none focus:ring-1 focus:ring-ai-accent"
+                />
+                {hasPeriodActive && (
+                  <button
+                    type="button"
+                    onClick={clearPeriod}
+                    title="Limpar período"
+                    aria-label="Limpar período"
+                    className="h-7 w-7 flex items-center justify-center rounded-md border border-ai-border bg-ai-surface text-ai-subtext hover:text-red-600 hover:border-red-200"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             {initiatives.length > 0 && (
               <div className="flex items-center gap-1.5 ml-auto">
@@ -1549,6 +1700,7 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
                       setFilterLeader([]);
                       setFilterTag('');
                       setOpenFilterDropdown(null);
+                      clearPeriod();
                     }}
                     className="px-1.5 py-1 text-[10px] text-red-500 hover:text-red-700"
                     title="Limpar todos os filtros"
@@ -1657,7 +1809,16 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
                 </div>
               }
             >
-              <InitiativesGantt projects={projects} deliveries={deliveries} initiatives={filteredInitiatives} />
+              <InitiativesGantt
+                projects={projects}
+                deliveries={deliveries}
+                initiatives={filteredInitiatives}
+                ganttStart={periodStart || undefined}
+                ganttEnd={periodEnd || undefined}
+                zoomLevel={ganttZoom}
+                onZoomChange={setGanttZoom}
+                allowedZooms={allowedZooms}
+              />
             </ErrorBoundary>
           </Suspense>
         ) : (

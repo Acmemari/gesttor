@@ -7,11 +7,18 @@ import type { InitiativeWithProgress } from '../lib/initiatives';
 import type { DeliveryRow } from '../lib/deliveries';
 import type { ProjectRow } from '../lib/projects';
 
+export type ZoomLevel = 'day' | 'week' | 'month' | 'quarter';
+
 interface InitiativesGanttProps {
   projects: ProjectRow[];
   initiatives: InitiativeWithProgress[];
   deliveries: DeliveryRow[];
   onTaskDateChange?: (change: GanttDateChange) => void;
+  ganttStart?: string;
+  ganttEnd?: string;
+  zoomLevel?: ZoomLevel;
+  onZoomChange?: (z: ZoomLevel) => void;
+  allowedZooms?: ZoomLevel[];
 }
 
 interface GanttTask {
@@ -63,7 +70,6 @@ const PT_BR_GANTT_DATE_LOCALE = {
   day_short: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'],
 };
 
-type ZoomLevel = 'day' | 'week' | 'month' | 'quarter';
 type DepthLevel = 1 | 2 | 3 | 4;
 
 const DEPTH_BY_TYPE: Record<string, DepthLevel> = {
@@ -164,22 +170,28 @@ const applyZoomConfig = (level: ZoomLevel) => {
 
 /* ── Shared sub-components (stable refs, no re-render cost) ────────── */
 
-const ZoomButtons: React.FC<{ active: ZoomLevel; onChange: (z: ZoomLevel) => void }> = React.memo(
-  ({ active, onChange }) => (
-    <div className={SEG_WRAPPER}>
-      {ZOOM_OPTIONS.map(z => (
+const ZoomButtons: React.FC<{
+  active: ZoomLevel;
+  onChange: (z: ZoomLevel) => void;
+  allowedZooms?: ZoomLevel[];
+}> = React.memo(({ active, onChange, allowedZooms = ['day', 'week', 'month', 'quarter'] }) => (
+  <div className={SEG_WRAPPER}>
+    {ZOOM_OPTIONS.map(z => {
+      const allowed = allowedZooms.includes(z.key);
+      return (
         <button
           key={z.key}
           type="button"
-          onClick={() => onChange(z.key)}
-          className={active === z.key ? SEG_ACTIVE : SEG_INACTIVE}
+          onClick={() => allowed && onChange(z.key)}
+          disabled={!allowed}
+          className={`${active === z.key ? SEG_ACTIVE : SEG_INACTIVE} ${!allowed ? 'opacity-40 cursor-not-allowed' : ''}`}
         >
           {z.label}
         </button>
-      ))}
-    </div>
-  ),
-);
+      );
+    })}
+  </div>
+));
 ZoomButtons.displayName = 'ZoomButtons';
 
 const LevelButtons: React.FC<{ active: DepthLevel; onChange: (d: DepthLevel) => void }> = React.memo(
@@ -202,7 +214,17 @@ LevelButtons.displayName = 'LevelButtons';
 
 /* ── Main component ────────────────────────────────────────────────── */
 
-const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiatives, deliveries, onTaskDateChange }) => {
+const InitiativesGantt: React.FC<InitiativesGanttProps> = ({
+  projects,
+  initiatives,
+  deliveries,
+  onTaskDateChange,
+  ganttStart,
+  ganttEnd,
+  zoomLevel: zoomLevelProp,
+  onZoomChange,
+  allowedZooms = ['day', 'week', 'month', 'quarter'],
+}) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fullscreenRafRef = useRef<number | null>(null);
@@ -211,7 +233,15 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
   const onTaskDateChangeRef = useRef(onTaskDateChange);
   onTaskDateChangeRef.current = onTaskDateChange;
 
-  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('day');
+  const [zoomLevelInternal, setZoomLevelInternal] = useState<ZoomLevel>('day');
+  const zoomLevel = zoomLevelProp ?? zoomLevelInternal;
+  const setZoomLevel = useCallback(
+    (z: ZoomLevel) => {
+      if (onZoomChange) onZoomChange(z);
+      else setZoomLevelInternal(z);
+    },
+    [onZoomChange],
+  );
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [maxDepthLevel, setMaxDepthLevel] = useState<DepthLevel>(4);
   const [isExporting, setIsExporting] = useState(false);
@@ -565,6 +595,22 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
   }, [zoomLevel]);
 
   useEffect(() => {
+    if (!initializedRef.current) return;
+    if (ganttStart && ganttEnd) {
+      const startDate = new Date(ganttStart + 'T00:00:00');
+      const endDate = new Date(ganttEnd + 'T00:00:00');
+      if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+        gantt.config.start_date = startDate;
+        gantt.config.end_date = endDate;
+      }
+    } else {
+      (gantt.config as { start_date?: Date; end_date?: Date }).start_date = undefined;
+      (gantt.config as { start_date?: Date; end_date?: Date }).end_date = undefined;
+    }
+    gantt.render();
+  }, [ganttStart, ganttEnd]);
+
+  useEffect(() => {
     maxDepthRef.current = maxDepthLevel;
     if (initializedRef.current) gantt.render();
   }, [maxDepthLevel]);
@@ -635,7 +681,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
   return (
     <div
       ref={wrapperRef}
-      className={`bg-white border border-slate-200 overflow-hidden shadow-sm ${isFullscreen ? 'rounded-none' : 'rounded-xl'}`}
+      className={`bg-white border border-slate-200 overflow-hidden shadow-sm ${isFullscreen ? 'rounded-none px-3 pb-3' : 'rounded-xl'}`}
     >
       {isFullscreen ? (
         <>
@@ -655,7 +701,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
 
           {/* Row 2: zoom + levels + download */}
           <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3">
-            <ZoomButtons active={zoomLevel} onChange={setZoomLevel} />
+            <ZoomButtons active={zoomLevel} onChange={setZoomLevel} allowedZooms={allowedZooms} />
             <div className="flex items-center gap-2">
               <LevelButtons active={maxDepthLevel} onChange={setMaxDepthLevel} />
               <button
@@ -696,7 +742,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
           </div>
 
           <div className="flex items-center gap-2">
-            <ZoomButtons active={zoomLevel} onChange={setZoomLevel} />
+            <ZoomButtons active={zoomLevel} onChange={setZoomLevel} allowedZooms={allowedZooms} />
             <LevelButtons active={maxDepthLevel} onChange={setMaxDepthLevel} />
             <button
               type="button"
@@ -721,7 +767,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({ projects, initiativ
         </div>
       )}
 
-      <div ref={containerRef} className="w-full" style={{ height: isFullscreen ? 'calc(100vh - 104px)' : '520px' }} />
+      <div ref={containerRef} className="w-full pr-2" style={{ height: isFullscreen ? 'calc(100vh - 104px)' : '520px' }} />
     </div>
   );
 };

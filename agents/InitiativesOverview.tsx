@@ -404,14 +404,14 @@ const InitiativesOverview: React.FC = () => {
       <div className="flex flex-col h-full min-h-0 overflow-auto">
         <div className="p-4 md:p-6">
           <div>
-            <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">INICIATIVAS &gt; VISÃO GERAL</nav>
-            <h1 className="text-xl font-bold text-ai-text tracking-tight">Relatório de Iniciativas</h1>
+            <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">ATIVIDADES &gt; VISÃO GERAL</nav>
+            <h1 className="text-xl font-bold text-ai-text tracking-tight">Relatório de Atividades</h1>
           </div>
           <div className="bg-ai-surface/50 border border-ai-border rounded-xl p-12 flex flex-col items-center justify-center text-center min-h-[280px] mt-6">
             <FolderOpen size={56} className="text-ai-subtext/40 mb-4" />
-            <h2 className="text-lg font-semibold text-ai-text mb-2">Nenhuma iniciativa cadastrada</h2>
+            <h2 className="text-lg font-semibold text-ai-text mb-2">Nenhuma atividade cadastrada</h2>
             <p className="text-ai-subtext max-w-sm">
-              Cadastre iniciativas na aba <strong>Atividades</strong> para visualizar o relatório.
+              Cadastre atividades na aba <strong>Atividades</strong> para visualizar o relatório.
             </p>
           </div>
         </div>
@@ -431,8 +431,8 @@ const InitiativesOverview: React.FC = () => {
         {/* Header + Filtro de datas */}
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">INICIATIVAS &gt; VISÃO GERAL</nav>
-            <h1 className="text-xl font-bold text-ai-text tracking-tight">Relatório de Iniciativas</h1>
+            <nav className="text-xs text-ai-subtext uppercase tracking-widest mb-0.5">ATIVIDADES &gt; VISÃO GERAL</nav>
+            <h1 className="text-xl font-bold text-ai-text tracking-tight">Relatório de Atividades</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -536,7 +536,7 @@ const InitiativesOverview: React.FC = () => {
         {hasDateFilter && filteredInitiatives.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 text-center">
             <Calendar size={36} className="text-ai-subtext/40 mb-3" />
-            <p className="text-sm text-ai-subtext">Nenhuma iniciativa encontrada no período selecionado.</p>
+            <p className="text-sm text-ai-subtext">Nenhuma atividade encontrada no período selecionado.</p>
           </div>
         )}
 
@@ -546,7 +546,7 @@ const InitiativesOverview: React.FC = () => {
             <div className="flex items-center gap-2 mb-1">
               <Target size={14} className="text-indigo-500" />
               <span className="text-[10px] uppercase tracking-wider text-ai-subtext font-medium">
-                Total Iniciativas
+                Total Atividades
               </span>
             </div>
             <p className="text-2xl font-bold text-ai-text">{total}</p>
@@ -580,7 +580,7 @@ const InitiativesOverview: React.FC = () => {
               <span className="text-[10px] uppercase tracking-wider text-ai-subtext font-medium">Atrasadas</span>
             </div>
             <p className="text-2xl font-bold text-red-600">{atrasadas}</p>
-            <p className="text-[10px] text-ai-subtext mt-0.5">de {total} iniciativas</p>
+            <p className="text-[10px] text-ai-subtext mt-0.5">de {total} atividades</p>
           </div>
         </div>
 
@@ -631,7 +631,7 @@ const InitiativesOverview: React.FC = () => {
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-xs text-ai-text">{leader}</span>
                       <span className="text-xs text-ai-subtext">
-                        {data.count} inic. · <span className="font-semibold text-ai-text">{data.avgProgress}%</span>
+                        {data.count} ativ. · <span className="font-semibold text-ai-text">{data.avgProgress}%</span>
                       </span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-2.5">
@@ -698,7 +698,7 @@ const InitiativesOverview: React.FC = () => {
                         )}
                       </div>
                       <div className="mt-2 flex items-center gap-3 text-[10px] text-ai-subtext">
-                        <span>{initiativesCount} iniciativa(s)</span>
+                        <span>{initiativesCount} atividade(s)</span>
                         <span>
                           {deliveryMilestones.completed}/{deliveryMilestones.total} marcos
                         </span>
@@ -722,7 +722,7 @@ const InitiativesOverview: React.FC = () => {
                       <thead>
                         <tr className="border-b border-ai-border bg-ai-surface/30">
                           <th className="text-left px-3 py-2 font-semibold text-ai-subtext uppercase tracking-wider">
-                            Iniciativa
+                            Atividade
                           </th>
                           <th className="text-left px-3 py-2 font-semibold text-ai-subtext uppercase tracking-wider">
                             Líder

@@ -51,6 +51,7 @@ const SupportTicketsDashboard = lazy(() => import('./agents/SupportTicketsDashbo
 const FeedbackList = lazy(() => import('./agents/FeedbackList'));
 const AreaCertificadosDesktop = lazy(() => import('./agents/AreaCertificadosDesktop'));
 const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'));
+const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
 
 const LoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full">
@@ -469,6 +470,7 @@ const AppContent: React.FC = () => {
   const isProjectStructure = activeAgentId === 'project-structure';
   const isCalendar = activeAgentId === 'calendar';
   const isRotinasFazenda = activeAgentId === 'rotinas-fazenda';
+  const isGestaoSemanal = activeAgentId === 'gestao-semanal';
   const isAreaCertificados = activeAgentId === 'area-certificados';
   const isProjetoSubView =
     isIniciativasOverview || isIniciativasAtividades || isIniciativasKanban || isProjectStructure;
@@ -491,7 +493,9 @@ const AppContent: React.FC = () => {
                 ? 'Calendário'
                 : isRotinasFazenda
                   ? 'Rotinas Fazenda'
-                  : isAreaCertificados
+                  : isGestaoSemanal
+                    ? 'Rotina Semanal'
+                    : isAreaCertificados
                     ? 'Área Certificados'
                     : isRhFeedbackList
                       ? 'RH - Feedback'
@@ -835,7 +839,13 @@ const AppContent: React.FC = () => {
       case 'rotinas-fazenda':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <RotinasFazendaDesktop />
+            <RotinasFazendaDesktop onSelectRotinaSemanal={() => setActiveAgentId('gestao-semanal')} />
+          </Suspense>
+        );
+      case 'gestao-semanal':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <GestaoSemanal />
           </Suspense>
         );
       case 'area-certificados':
@@ -1026,6 +1036,15 @@ const AppContent: React.FC = () => {
             {isProjetoSubView && (
               <button
                 onClick={() => setActiveAgentId('projeto')}
+                className="flex items-center gap-1.5 text-ai-subtext hover:text-ai-text transition-colors cursor-pointer text-sm px-2 py-1"
+              >
+                <ArrowLeft size={16} />
+                Voltar
+              </button>
+            )}
+            {isGestaoSemanal && (
+              <button
+                onClick={() => setActiveAgentId('rotinas-fazenda')}
                 className="flex items-center gap-1.5 text-ai-subtext hover:text-ai-text transition-colors cursor-pointer text-sm px-2 py-1"
               >
                 <ArrowLeft size={16} />

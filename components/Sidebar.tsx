@@ -60,7 +60,8 @@ const isGerenciamentoView = (id: string) =>
   id === INICIATIVAS_KANBAN_ID ||
   id === PROJECT_STRUCTURE_ID ||
   id === ROTINAS_FAZENDA_ID ||
-  id === CALENDAR_ID;
+  id === CALENDAR_ID ||
+  id === 'gestao-semanal';
 
 const Sidebar: React.FC<SidebarProps> = ({
   agents,

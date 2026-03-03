@@ -197,6 +197,9 @@ type WeightInfoCategory =
   | 'bezerros'
   | 'novilhas8a12'
   | 'novilhas13a24'
+  | 'machos8a12'
+  | 'machos13a24'
+  | 'machos25a36'
   | 'touros'
   | 'cowSlaughter'
   | 'tempoMatrizes';
@@ -207,21 +210,33 @@ interface AverageHerdData {
   bezerrosMamando: number;
   novilhas8a12: number;
   novilhas13a24: number;
+  machos8a12: number;
+  machos13a24: number;
+  machos25a36: number;
   touros: number;
   tempoVacas: number;
   tempoBezerros: number;
   tempoNovilhas8a12: number;
   tempoNovilhas13a24: number;
+  tempoMachos8a12: number;
+  tempoMachos13a24: number;
+  tempoMachos25a36: number;
   tempoTouros: number;
   pesoVivoVacas: number;
   pesoVivoBezerros: number;
   pesoVivoNovilhas8a12: number;
   pesoVivoNovilhas13a24: number;
+  pesoVivoMachos8a12: number;
+  pesoVivoMachos13a24: number;
+  pesoVivoMachos25a36: number;
   pesoVivoTouros: number;
   pesoIndividualVaca: number;
   pesoIndividualBezerro: number;
   pesoIndividualNovilha8a12: number;
   pesoIndividualNovilha13a24: number;
+  pesoIndividualMachos8a12: number;
+  pesoIndividualMachos13a24: number;
+  pesoIndividualMachos25a36: number;
   pesoIndividualTouro: number;
 }
 
@@ -306,6 +321,13 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const [pesoPrimeiraMonta, setPesoPrimeiraMonta] = useState(300); // 270 a 360 kg, default 300
   const [matingPeriodDays, setMatingPeriodDays] = useState(90); // 40 a 120 dias, default 90
   const [cowSlaughterDays, setCowSlaughterDays] = useState(30); // 0 a 90 dias, default 30
+  const [vendaBezerrasAoDesmame, setVendaBezerrasAoDesmame] = useState(0); // 0% a 70%, passo 5%
+
+  // Estados de Recria-Terminação — Ciclo Completo
+  const [cicloGmdPosDesmame, setCicloGmdPosDesmame] = useState(0.65); // 0.4 a 1.1 kg/dia
+  const [cicloPesoAbate, setCicloPesoAbate] = useState(550); // 480 a 600 kg
+  const [cicloRendimentoCarcaca, setCicloRendimentoCarcaca] = useState(54); // 48% a 60%
+  const [cicloVendaAoDesmame, setCicloVendaAoDesmame] = useState(10); // 0% a 90%, default 10%
 
   // Estado de categorias
   const [animalCategories, setAnimalCategories] = useState<AnimalCategory[]>(getDefaultCategories);
@@ -834,27 +856,40 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       BEZERRO_WEIGHT_ADJUSTMENT,
     } = HERD_CONSTANTS;
 
+    const DIAS_POR_MES = 30.4;
     // Valores padrão quando não há dados
     const emptyResult: AverageHerdData = {
       vacas: 0,
       bezerrosMamando: 0,
       novilhas8a12: 0,
       novilhas13a24: 0,
+      machos8a12: 0,
+      machos13a24: 0,
+      machos25a36: 0,
       touros: 0,
-      tempoVacas: (282 + matingPeriodDays + cowSlaughterDays) / 30.4,
+      tempoVacas: (282 + matingPeriodDays + cowSlaughterDays) / DIAS_POR_MES,
       tempoBezerros: weaningAgeMonths,
       tempoNovilhas8a12: TEMPO_NOVILHAS_8_12,
       tempoNovilhas13a24: Math.max(0, firstMatingAge - 12),
+      tempoMachos8a12: 5,
+      tempoMachos13a24: 0,
+      tempoMachos25a36: 0,
       tempoTouros: TEMPO_TOUROS,
       pesoVivoVacas: 0,
       pesoVivoBezerros: 0,
       pesoVivoNovilhas8a12: 0,
       pesoVivoNovilhas13a24: 0,
+      pesoVivoMachos8a12: 0,
+      pesoVivoMachos13a24: 0,
+      pesoVivoMachos25a36: 0,
       pesoVivoTouros: 0,
       pesoIndividualVaca: 0,
       pesoIndividualBezerro: 0,
       pesoIndividualNovilha8a12: 0,
       pesoIndividualNovilha13a24: 0,
+      pesoIndividualMachos8a12: 0,
+      pesoIndividualMachos13a24: 0,
+      pesoIndividualMachos25a36: 0,
       pesoIndividualTouro: 0,
     };
 
@@ -888,7 +923,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     const pesoInicialDesmame = femaleWeaningWeight;
 
     // === NOVILHAS 8-12 MESES ===
-    const novilhas8a12 = Math.round(bezerrosMamando / 2);
+    const novilhas8a12 = Math.round((bezerrosMamando / 2) * (1 - vendaBezerrasAoDesmame / 100));
     const tempoNovilhas8a12 = TEMPO_NOVILHAS_8_12;
     const mesesAte12Meses = 12 - weaningAgeMonths;
     const pesoAos12Meses = pesoInicialDesmame + ganhoMensal * mesesAte12Meses;
@@ -903,6 +938,57 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     const pesoMedioNovilha13a24 = (pesoAos13Meses + pesoPrimeiraMonta) / 2;
     const pesoVivoNovilhas13a24 = novilhas13a24 * pesoMedioNovilha13a24;
 
+    // === MACHOS (somente Ciclo Completo) ===
+    const isCicloCompleto = productionSystem === 'Ciclo Completo';
+    let machos8a12 = 0;
+    let machos13a24 = 0;
+    let machos25a36 = 0;
+    let tempoMachos8a12 = 5;
+    let tempoMachos13a24 = 0;
+    let tempoMachos25a36 = 0;
+    let pesoIndividualMachos8a12 = 0;
+    let pesoIndividualMachos13a24 = 0;
+    let pesoIndividualMachos25a36 = 0;
+
+    if (isCicloCompleto && cicloGmdPosDesmame > 0) {
+      const totalDias =
+        (cicloPesoAbate - maleWeaningWeight) / cicloGmdPosDesmame;
+      const totalMeses = totalDias / DIAS_POR_MES;
+      const qtdMachos = Math.round(
+        vacas * weaningRate * 0.5 * (1 - cicloVendaAoDesmame / 100),
+      );
+
+      // Peso em mês M: maleWeaningWeight + GMD * (M - weaningAgeMonths) * 30.4
+      const pesoEmMeses = (meses: number) =>
+        maleWeaningWeight +
+        cicloGmdPosDesmame * (meses - weaningAgeMonths) * DIAS_POR_MES;
+
+      machos8a12 = qtdMachos;
+      tempoMachos8a12 = 5;
+      const peso8 = pesoEmMeses(8);
+      const peso12 = pesoEmMeses(12);
+      pesoIndividualMachos8a12 = (peso8 + peso12) / 2;
+
+      if (totalMeses > 12) {
+        machos13a24 = qtdMachos;
+        tempoMachos13a24 = totalMeses - 12;
+        const peso13 = pesoEmMeses(13);
+        const peso24 = Math.min(pesoEmMeses(24), cicloPesoAbate);
+        pesoIndividualMachos13a24 = (peso13 + peso24) / 2;
+      }
+
+      if (totalMeses > 24) {
+        machos25a36 = qtdMachos;
+        tempoMachos25a36 = totalMeses - 24;
+        const peso25 = pesoEmMeses(25);
+        pesoIndividualMachos25a36 = (peso25 + cicloPesoAbate) / 2;
+      }
+    }
+
+    const pesoVivoMachos8a12 = machos8a12 * pesoIndividualMachos8a12;
+    const pesoVivoMachos13a24 = machos13a24 * pesoIndividualMachos13a24;
+    const pesoVivoMachos25a36 = machos25a36 * pesoIndividualMachos25a36;
+
     // === TOUROS ===
     const touros = bullCowRatioPercent > 0 ? Math.ceil(vacas * (bullCowRatioPercent / 100)) : 0;
     const tempoTouros = TEMPO_TOUROS;
@@ -913,26 +999,39 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       bezerrosMamando,
       novilhas8a12,
       novilhas13a24,
+      machos8a12,
+      machos13a24,
+      machos25a36,
       touros,
       tempoVacas,
       tempoBezerros,
       tempoNovilhas8a12,
       tempoNovilhas13a24,
+      tempoMachos8a12,
+      tempoMachos13a24,
+      tempoMachos25a36,
       tempoTouros,
       pesoVivoVacas,
       pesoVivoBezerros,
       pesoVivoNovilhas8a12,
       pesoVivoNovilhas13a24,
+      pesoVivoMachos8a12,
+      pesoVivoMachos13a24,
+      pesoVivoMachos25a36,
       pesoVivoTouros,
       // Pesos individuais (para exibição na tabela)
       pesoIndividualVaca: pesoMedioVaca,
       pesoIndividualBezerro: pesoMedioBezerroMamando,
       pesoIndividualNovilha8a12: pesoMedioNovilha8a12,
       pesoIndividualNovilha13a24: pesoMedioNovilha13a24,
+      pesoIndividualMachos8a12,
+      pesoIndividualMachos13a24,
+      pesoIndividualMachos25a36,
       pesoIndividualTouro: pesoMedioTouro,
     };
   }, [
     showReproductiveIndices,
+    productionSystem,
     requiredMatrixes,
     weaningRate,
     bullCowRatioPercent,
@@ -945,6 +1044,10 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     pesoMedioTouro,
     matingPeriodDays,
     cowSlaughterDays,
+    cicloGmdPosDesmame,
+    cicloPesoAbate,
+    cicloVendaAoDesmame,
+    vendaBezerrasAoDesmame,
   ]);
 
   /** Rebanho Médio calculado: Σ(quantidade × tempo) / 12 */
@@ -955,6 +1058,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       { quantidade: averageHerdTable.bezerrosMamando, tempo: averageHerdTable.tempoBezerros },
       { quantidade: averageHerdTable.novilhas8a12, tempo: averageHerdTable.tempoNovilhas8a12 },
       { quantidade: averageHerdTable.novilhas13a24, tempo: averageHerdTable.tempoNovilhas13a24 },
+      { quantidade: averageHerdTable.machos8a12, tempo: averageHerdTable.tempoMachos8a12 },
+      { quantidade: averageHerdTable.machos13a24, tempo: averageHerdTable.tempoMachos13a24 },
+      { quantidade: averageHerdTable.machos25a36, tempo: averageHerdTable.tempoMachos25a36 },
       { quantidade: averageHerdTable.touros, tempo: averageHerdTable.tempoTouros },
     ];
     const somaQtdTempo = categorias.reduce((sum, c) => sum + c.quantidade * c.tempo, 0);
@@ -1012,6 +1118,21 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
         quantidade: averageHerdTable.novilhas13a24,
         tempo: averageHerdTable.tempoNovilhas13a24,
         peso: averageHerdTable.pesoIndividualNovilha13a24,
+      },
+      {
+        quantidade: averageHerdTable.machos8a12,
+        tempo: averageHerdTable.tempoMachos8a12,
+        peso: averageHerdTable.pesoIndividualMachos8a12,
+      },
+      {
+        quantidade: averageHerdTable.machos13a24,
+        tempo: averageHerdTable.tempoMachos13a24,
+        peso: averageHerdTable.pesoIndividualMachos13a24,
+      },
+      {
+        quantidade: averageHerdTable.machos25a36,
+        tempo: averageHerdTable.tempoMachos25a36,
+        peso: averageHerdTable.pesoIndividualMachos25a36,
       },
       {
         quantidade: averageHerdTable.touros,
@@ -2011,8 +2132,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
               {showReproductiveIndices && (
                 <div className="flex gap-3 flex-1 items-stretch">
-                  <div className="grid grid-cols-2 gap-3 flex-1 min-w-0">
-                    <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0">
+                  <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0 flex-1">
                       <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
                         Índices Reprodutivos
                       </h3>
@@ -2129,14 +2249,36 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       </div>
                     </div>
 
-                    <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0">
-                      <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
-                        Índices Reprodutivos
-                      </h3>
-                      <div className="flex flex-col justify-between flex-1 gap-2">
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Idade a primeira monta</label>
+                  <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0 flex-1">
+                    <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
+                      Índices Reprodutivos
+                    </h3>
+                    <div className="flex flex-col justify-between flex-1 gap-2">
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Venda bezerras ao desmame</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {vendaBezerrasAoDesmame}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">0%</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={70}
+                            step={5}
+                            value={vendaBezerrasAoDesmame}
+                            onChange={e => setVendaBezerrasAoDesmame(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">70%</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Idade a primeira monta</label>
                             <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
                               {firstMatingAge} meses
                             </span>
@@ -2254,14 +2396,110 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                             <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">90 dias</span>
                           </div>
                         </div>
-                      </div>
                     </div>
                   </div>
 
+                  {productionSystem === 'Ciclo Completo' && (
+                    <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0 flex-1">
+                      <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
+                        INDICES RECRIA TERMINAÇÃO
+                      </h3>
+                      <div className="flex flex-col justify-between flex-1 gap-2">
+                        <div>
+                          <div className="flex items-center justify-between text-[9px] mb-0.5">
+                            <label className="text-ai-subtext">Venda bezerros ao desmame</label>
+                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                              {cicloVendaAoDesmame}%
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">0%</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={90}
+                              step={10}
+                              value={cicloVendaAoDesmame}
+                              onChange={e => setCicloVendaAoDesmame(parseInt(e.target.value, 10))}
+                              className="flex-1 accent-ai-accent h-1.5"
+                            />
+                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">90%</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between text-[9px] mb-0.5">
+                            <label className="text-ai-subtext">GMD Pós desmame</label>
+                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                              {cicloGmdPosDesmame.toFixed(2)} kg/dia
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[7px] text-ai-subtext w-8 flex-shrink-0">0,4</span>
+                            <input
+                              type="range"
+                              min={0.4}
+                              max={1.1}
+                              step={0.05}
+                              value={cicloGmdPosDesmame}
+                              onChange={e => setCicloGmdPosDesmame(parseFloat(e.target.value))}
+                              className="flex-1 accent-ai-accent h-1.5"
+                            />
+                            <span className="text-[7px] text-ai-subtext w-8 flex-shrink-0 text-right">1,1</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between text-[9px] mb-0.5">
+                            <label className="text-ai-subtext">Peso ao Abate M</label>
+                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                              {cicloPesoAbate} kg
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">480</span>
+                            <input
+                              type="range"
+                              min={480}
+                              max={600}
+                              step={5}
+                              value={cicloPesoAbate}
+                              onChange={e => setCicloPesoAbate(parseInt(e.target.value, 10))}
+                              className="flex-1 accent-ai-accent h-1.5"
+                            />
+                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">600</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between text-[9px] mb-0.5">
+                            <label className="text-ai-subtext">Rendimento de Carcaça</label>
+                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                              {cicloRendimentoCarcaca.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[7px] text-ai-subtext w-8 flex-shrink-0">48%</span>
+                            <input
+                              type="range"
+                              min={48}
+                              max={60}
+                              step={0.5}
+                              value={cicloRendimentoCarcaca}
+                              onChange={e => setCicloRendimentoCarcaca(parseFloat(e.target.value))}
+                              className="flex-1 accent-ai-accent h-1.5"
+                            />
+                            <span className="text-[7px] text-ai-subtext w-8 flex-shrink-0 text-right">60%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Card de Outputs Calculados */}
-                  <div className="bg-white border border-ai-border/70 rounded-lg p-2 min-w-[150px] flex flex-col">
+                  <div className="bg-white border border-ai-border/70 rounded-lg p-2 min-w-[120px] flex flex-col">
                     <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-ai-border/60">
-                      <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text">
+                      <h3 className="text-[9px] font-bold uppercase tracking-wide text-ai-text">
                         Resultados de Performance
                       </h3>
                       <button
@@ -2279,14 +2517,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           key={indicator.id}
                           className={`flex items-center justify-between ${index < list.length - 1 ? 'pb-2 border-b border-ai-border/60' : ''}`}
                         >
-                          <span className="text-[9px] text-ai-subtext">{indicator.label}</span>
-                          <span className="text-sm font-bold text-ai-text">
+                          <span className="text-[8px] text-ai-subtext">{indicator.label}</span>
+                          <span className="text-xs font-bold text-ai-text">
                             {indicator.value > 0 ? indicator.format(indicator.value) : '-'}
                           </span>
                         </div>
                       ))}
                       {visiblePerformanceIndicators.length === 0 && (
-                        <div className="text-[9px] text-ai-subtext">Selecione indicadores</div>
+                        <div className="text-[8px] text-ai-subtext">Selecione indicadores</div>
                       )}
                     </div>
                   </div>
@@ -2984,6 +3222,206 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                         </div>
                       </td>
                     </tr>
+                    {productionSystem === 'Ciclo Completo' && (
+                      <>
+                        <tr className="hover:bg-ai-surface2/50">
+                          <td className="px-4 py-3 text-sm text-ai-text font-medium">Machos 8 a 12 meses</td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos8a12 > 0 ? averageHerdTable.machos8a12 : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm text-ai-text">
+                            <div
+                              className="flex items-center justify-center gap-1 relative"
+                              ref={el => {
+                                weightInfoRefs.current['machos8a12'] = el;
+                              }}
+                            >
+                              <span>
+                                {averageHerdTable.machos8a12 > 0 ? averageHerdTable.tempoMachos8a12.toFixed(1) : '-'}
+                              </span>
+                              {averageHerdTable.machos8a12 > 0 && (
+                                <>
+                                  <button
+                                    ref={el => {
+                                      weightButtonRefs.current['machos8a12'] = el;
+                                    }}
+                                    type="button"
+                                    onClick={() => handleWeightInfoToggle('machos8a12')}
+                                    className="text-gray-300 hover:text-blue-500 transition-colors focus:outline-none"
+                                    title="Explicação do cálculo"
+                                    aria-label="Explicação do cálculo"
+                                  >
+                                    <Info size={10} />
+                                  </button>
+                                  {weightCalculationInfoOpen === 'machos8a12' && popoverPositions.machos8a12 && (
+                                    <div
+                                      className="fixed z-[100] w-64 p-2.5 bg-white rounded-lg shadow-2xl border border-gray-200 text-xs text-gray-600 leading-relaxed animate-in fade-in zoom-in-95 duration-200"
+                                      style={{
+                                        top: popoverPositions.machos8a12.top,
+                                        left: popoverPositions.machos8a12.left,
+                                      }}
+                                    >
+                                      <p className="font-medium text-gray-800 mb-1 text-left">
+                                        Machos 8 a 12 meses (Ciclo Completo)
+                                      </p>
+                                      <p className="text-[10px] space-y-1 text-left">
+                                        <div>
+                                          <strong>Quantidade:</strong> (Matrizes × Taxa desmame) / 2 × (1 - Venda ao
+                                          desmame %)
+                                        </div>
+                                        <div>
+                                          <strong>Tempo:</strong> 5 meses
+                                        </div>
+                                        <div>
+                                          <strong>Peso:</strong> Média entre peso aos 8 e 12 meses (curva GMD pós
+                                          desmame)
+                                        </div>
+                                        <div className="mt-2 pt-2 border-t border-gray-200">
+                                          {averageHerdTable.vacas} × {(weaningRate * 100).toFixed(1)}% / 2 × (1 -{' '}
+                                          {cicloVendaAoDesmame}%) = <strong>{averageHerdTable.machos8a12}</strong>{' '}
+                                          cabeças
+                                        </div>
+                                      </p>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos8a12 > 0
+                              ? Math.round(averageHerdTable.pesoIndividualMachos8a12).toLocaleString('pt-BR')
+                              : '-'}
+                          </td>
+                        </tr>
+                        <tr className="hover:bg-ai-surface2/50">
+                          <td className="px-4 py-3 text-sm text-ai-text font-medium">Machos 13 a 24 meses</td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos13a24 > 0 ? averageHerdTable.machos13a24 : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm text-ai-text">
+                            <div
+                              className="flex items-center justify-center gap-1 relative"
+                              ref={el => {
+                                weightInfoRefs.current['machos13a24'] = el;
+                              }}
+                            >
+                              <span>
+                                {averageHerdTable.machos13a24 > 0 ? averageHerdTable.tempoMachos13a24.toFixed(1) : '-'}
+                              </span>
+                              {averageHerdTable.machos13a24 > 0 && (
+                                <>
+                                  <button
+                                    ref={el => {
+                                      weightButtonRefs.current['machos13a24'] = el;
+                                    }}
+                                    type="button"
+                                    onClick={() => handleWeightInfoToggle('machos13a24')}
+                                    className="text-gray-300 hover:text-blue-500 transition-colors focus:outline-none"
+                                    title="Explicação do cálculo"
+                                    aria-label="Explicação do cálculo"
+                                  >
+                                    <Info size={10} />
+                                  </button>
+                                  {weightCalculationInfoOpen === 'machos13a24' && popoverPositions.machos13a24 && (
+                                    <div
+                                      className="fixed z-[100] w-64 p-2.5 bg-white rounded-lg shadow-2xl border border-gray-200 text-xs text-gray-600 leading-relaxed animate-in fade-in zoom-in-95 duration-200"
+                                      style={{
+                                        top: popoverPositions.machos13a24.top,
+                                        left: popoverPositions.machos13a24.left,
+                                      }}
+                                    >
+                                      <p className="font-medium text-gray-800 mb-1 text-left">
+                                        Machos 13 a 24 meses (Ciclo Completo)
+                                      </p>
+                                      <p className="text-[10px] space-y-1 text-left">
+                                        <div>
+                                          <strong>Quantidade:</strong> mesma de Machos 8-12
+                                        </div>
+                                        <div>
+                                          <strong>Tempo:</strong> (Total dias pós-desmame / 30,4) - 12 meses
+                                        </div>
+                                        <div>
+                                          Total dias = ({cicloPesoAbate} - {maleWeaningWeight}) /{' '}
+                                          {cicloGmdPosDesmame.toFixed(2)} ={' '}
+                                          {(
+                                            (cicloPesoAbate - maleWeaningWeight) /
+                                            cicloGmdPosDesmame
+                                          ).toFixed(0)}{' '}
+                                          dias
+                                        </div>
+                                      </p>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos13a24 > 0
+                              ? Math.round(averageHerdTable.pesoIndividualMachos13a24).toLocaleString('pt-BR')
+                              : '-'}
+                          </td>
+                        </tr>
+                        {averageHerdTable.tempoMachos25a36 > 0 && (
+                          <tr className="hover:bg-ai-surface2/50">
+                            <td className="px-4 py-3 text-sm text-ai-text font-medium">Machos 25 a 36 meses</td>
+                            <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                              {averageHerdTable.machos25a36}
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm text-ai-text">
+                              <div
+                                className="flex items-center justify-center gap-1 relative"
+                                ref={el => {
+                                  weightInfoRefs.current['machos25a36'] = el;
+                                }}
+                              >
+                                <span>{averageHerdTable.tempoMachos25a36.toFixed(1)}</span>
+                                <button
+                                  ref={el => {
+                                    weightButtonRefs.current['machos25a36'] = el;
+                                  }}
+                                  type="button"
+                                  onClick={() => handleWeightInfoToggle('machos25a36')}
+                                  className="text-gray-300 hover:text-blue-500 transition-colors focus:outline-none"
+                                  title="Explicação do cálculo"
+                                  aria-label="Explicação do cálculo"
+                                >
+                                  <Info size={10} />
+                                </button>
+                                {weightCalculationInfoOpen === 'machos25a36' && popoverPositions.machos25a36 && (
+                                  <div
+                                    className="fixed z-[100] w-64 p-2.5 bg-white rounded-lg shadow-2xl border border-gray-200 text-xs text-gray-600 leading-relaxed animate-in fade-in zoom-in-95 duration-200"
+                                    style={{
+                                      top: popoverPositions.machos25a36.top,
+                                      left: popoverPositions.machos25a36.left,
+                                    }}
+                                  >
+                                    <p className="font-medium text-gray-800 mb-1 text-left">
+                                      Machos 25 a 36 meses (Ciclo Completo)
+                                    </p>
+                                    <p className="text-[10px] space-y-1 text-left">
+                                      <div>
+                                        Aparece quando tempo total pós-desmame &gt; 24 meses
+                                      </div>
+                                      <div>
+                                        <strong>Quantidade:</strong> mesma de Machos 13-24
+                                      </div>
+                                      <div>
+                                        <strong>Tempo:</strong> (Total dias / 30,4) - 24 meses
+                                      </div>
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                              {Math.round(averageHerdTable.pesoIndividualMachos25a36).toLocaleString('pt-BR')}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
                     <tr className="hover:bg-ai-surface2/50">
                       <td className="px-4 py-3 text-sm text-ai-text font-medium">
                         <div className="flex items-center gap-2">
@@ -3134,12 +3572,18 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           averageHerdTable.bezerrosMamando +
                           averageHerdTable.novilhas8a12 +
                           averageHerdTable.novilhas13a24 +
+                          averageHerdTable.machos8a12 +
+                          averageHerdTable.machos13a24 +
+                          averageHerdTable.machos25a36 +
                           averageHerdTable.touros >
                         0
                           ? averageHerdTable.vacas +
                             averageHerdTable.bezerrosMamando +
                             averageHerdTable.novilhas8a12 +
                             averageHerdTable.novilhas13a24 +
+                            averageHerdTable.machos8a12 +
+                            averageHerdTable.machos13a24 +
+                            averageHerdTable.machos25a36 +
                             averageHerdTable.touros
                           : '-'}
                       </td>
@@ -3152,6 +3596,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                             averageHerdTable.pesoVivoBezerros +
                             averageHerdTable.pesoVivoNovilhas8a12 +
                             averageHerdTable.pesoVivoNovilhas13a24 +
+                            averageHerdTable.pesoVivoMachos8a12 +
+                            averageHerdTable.pesoVivoMachos13a24 +
+                            averageHerdTable.pesoVivoMachos25a36 +
                             averageHerdTable.pesoVivoTouros;
 
                           const somaQuantidades =
@@ -3159,6 +3606,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                             averageHerdTable.bezerrosMamando +
                             averageHerdTable.novilhas8a12 +
                             averageHerdTable.novilhas13a24 +
+                            averageHerdTable.machos8a12 +
+                            averageHerdTable.machos13a24 +
+                            averageHerdTable.machos25a36 +
                             averageHerdTable.touros;
 
                           const pesoMedioPonderado =
@@ -3197,6 +3647,21 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     quantidade: averageHerdTable.novilhas13a24,
                     tempo: averageHerdTable.tempoNovilhas13a24,
                     peso: averageHerdTable.pesoIndividualNovilha13a24,
+                  },
+                  {
+                    quantidade: averageHerdTable.machos8a12,
+                    tempo: averageHerdTable.tempoMachos8a12,
+                    peso: averageHerdTable.pesoIndividualMachos8a12,
+                  },
+                  {
+                    quantidade: averageHerdTable.machos13a24,
+                    tempo: averageHerdTable.tempoMachos13a24,
+                    peso: averageHerdTable.pesoIndividualMachos13a24,
+                  },
+                  {
+                    quantidade: averageHerdTable.machos25a36,
+                    tempo: averageHerdTable.tempoMachos25a36,
+                    peso: averageHerdTable.pesoIndividualMachos25a36,
                   },
                   {
                     quantidade: averageHerdTable.touros,
