@@ -145,7 +145,11 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     setLoading(true);
     setError(null);
     try {
-      const t = await loadFullEAPTree(effectiveUserId, selectedClientId ?? undefined);
+      const t = await loadFullEAPTree(effectiveUserId, {
+        clientId: selectedClientId ?? undefined,
+        farmId: selectedFarmId ?? undefined,
+        clientMode: readonly,
+      });
       if (!mountedRef.current) return;
       setTree(t);
       const { nodes: flowNodes, edges: flowEdges } = wbsTreeToFlowData(t);
@@ -191,7 +195,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedClientId, fitView, setNodes, setEdges, toast]);
+  }, [effectiveUserId, selectedClientId, selectedFarmId, readonly, fitView, setNodes, setEdges, toast]);
 
   useEffect(() => {
     loadTree();

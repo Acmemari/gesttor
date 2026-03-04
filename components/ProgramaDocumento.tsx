@@ -88,7 +88,11 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const t = await loadFullEAPTree(effectiveUserId, selectedClientId ?? undefined);
+      const t = await loadFullEAPTree(effectiveUserId, {
+        clientId: selectedClientId ?? undefined,
+        farmId: selectedFarmId ?? undefined,
+        clientMode: readonly,
+      });
       if (!mountedRef.current) return;
       setTree(t);
       if (t.length > 0 && !selectedProgramId) {
@@ -105,7 +109,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedClientId, selectedProgramId, toast]);
+  }, [effectiveUserId, selectedClientId, selectedFarmId, readonly, selectedProgramId, toast]);
 
   useEffect(() => {
     loadTree();
@@ -150,6 +154,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
 
   const handleProgramChange = useCallback(
     (field: keyof ProjectPayload, value: string | string[] | { name: string; activity: string }[] | null) => {
+      if (readonly) return;
       if (!selectedProgram?.data.project) return;
       const p = selectedProgram.data.project;
       const payload: ProjectPayload = {
@@ -185,11 +190,12 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         }),
       );
     },
-    [selectedProgram, selectedClientId, scheduleSave],
+    [readonly, selectedProgram, selectedClientId, scheduleSave],
   );
 
   const handleDeliveryChange = useCallback(
     (deliveryId: string, field: string, value: string | null) => {
+      if (readonly) return;
       scheduleSave(`delivery-${deliveryId}`, async () => {
         const payload: Record<string, unknown> = { [field]: value };
         if (field === 'end_date') payload.due_date = value;
@@ -209,11 +215,12 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         })),
       );
     },
-    [scheduleSave],
+    [readonly, scheduleSave],
   );
 
   const handleActivityChange = useCallback(
     (initiativeId: string, field: string, value: string | null) => {
+      if (readonly) return;
       scheduleSave(`activity-${initiativeId}`, async () => {
         let leaderVal: string | null = value;
         if (field === 'leader_id' && value) {
@@ -245,7 +252,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         })),
       );
     },
-    [scheduleSave, people],
+    [readonly, scheduleSave, people],
   );
 
   const findTaskInTree = useCallback((taskId: string): InitiativeTaskRow | null => {
@@ -263,6 +270,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
 
   const handleTaskChange = useCallback(
     (taskId: string, field: string, value: string | number | boolean | null) => {
+      if (readonly) return;
       scheduleSave(`task-${taskId}`, async () => {
         const payload: Record<string, unknown> = { [field]: value };
         const task = findTaskInTree(taskId);
@@ -307,7 +315,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         })),
       );
     },
-    [scheduleSave, findTaskInTree],
+    [readonly, scheduleSave, findTaskInTree],
   );
 
   const addDelivery = useCallback(async () => {
@@ -532,7 +540,9 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
       </div>
 
       <p className="text-sm text-ai-subtext">
-        Edite os campos diretamente no documento. As alterações são salvas automaticamente.
+        {readonly
+          ? 'Visualização em modo somente leitura. Download e salvar PDF continuam disponíveis.'
+          : 'Edite os campos diretamente no documento. As alterações são salvas automaticamente.'}
       </p>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -551,6 +561,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     value={currentProgram.name || ''}
                     onChange={v => handleProgramChange('name', v)}
                     placeholder="Nome do programa"
+                    disabled={readonly}
                     className="flex-1 min-w-[200px]"
                   />
                 </div>
@@ -560,12 +571,14 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     value={currentProgram.start_date || ''}
                     onChange={v => handleProgramChange('start_date', v)}
                     max={currentProgram.end_date || undefined}
+                    disabled={readonly}
                   />
                   <span className="text-sm text-ai-subtext shrink-0 ml-4">Fim:</span>
                   <InlineDate
                     value={currentProgram.end_date || ''}
                     onChange={v => handleProgramChange('end_date', v)}
                     min={currentProgram.start_date || undefined}
+                    disabled={readonly}
                   />
                 </div>
                 <div>
@@ -575,6 +588,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     onChange={v => handleProgramChange('description', v)}
                     placeholder="Descreva o programa aqui..."
                     rows={3}
+                    disabled={readonly}
                   />
                 </div>
                 <div>
@@ -584,6 +598,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     onChange={v => handleProgramChange('transformations_achievements', v)}
                     placeholder="O que será transformado?"
                     rows={2}
+                    disabled={readonly}
                   />
                 </div>
                 <div>
@@ -600,9 +615,10 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                               handleProgramChange('success_evidence', arr);
                             }}
                             placeholder={`Evidência ${idx + 1}`}
+                            disabled={readonly}
                             className="flex-1"
                           />
-                          <button
+                          {!readonly && <button
                             type="button"
                             onClick={() => {
                               const arr = (currentProgram.success_evidence || ['']).filter((_, i) => i !== idx);
@@ -611,11 +627,11 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                             className="p-1 text-ai-subtext hover:text-red-500"
                           >
                             <Trash2 size={14} />
-                          </button>
+                          </button>}
                         </div>
                       ),
                     )}
-                    <button
+                    {!readonly && <button
                       type="button"
                       onClick={() =>
                         handleProgramChange('success_evidence', [...(currentProgram.success_evidence || []), ''])
@@ -624,7 +640,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     >
                       <Plus size={12} />
                       Adicionar evidência
-                    </button>
+                    </button>}
                   </div>
                 </div>
                 <div>
@@ -643,6 +659,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                             handleProgramChange('stakeholder_matrix', arr);
                           }}
                           placeholder="Nome / Cargo"
+                          disabled={readonly}
                           className="w-40"
                         />
                         <InlineText
@@ -653,9 +670,10 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                             handleProgramChange('stakeholder_matrix', arr);
                           }}
                           placeholder="Atividade / Responsabilidade"
+                          disabled={readonly}
                           className="flex-1 min-w-[180px]"
                         />
-                        <button
+                        {!readonly && <button
                           type="button"
                           onClick={() => {
                             const arr = (currentProgram.stakeholder_matrix || []).filter((_, i) => i !== idx);
@@ -664,10 +682,10 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                           className="p-1 text-ai-subtext hover:text-red-500"
                         >
                           <Trash2 size={14} />
-                        </button>
+                        </button>}
                       </div>
                     ))}
-                    <button
+                    {!readonly && <button
                       type="button"
                       onClick={() =>
                         handleProgramChange('stakeholder_matrix', [
@@ -679,7 +697,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                     >
                       <Plus size={12} />
                       Adicionar stakeholder
-                    </button>
+                    </button>}
                   </div>
                 </div>
               </div>
@@ -712,14 +730,16 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                 <div key={del.id} className="pl-6 border-l-2 border-blue-200 space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="font-semibold text-ai-text">Entrega</h3>
-                    <button
-                      type="button"
-                      onClick={() => deleteDeliveryById(del.id)}
-                      className="p-1 text-ai-subtext hover:text-red-500"
-                      title="Excluir"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {!readonly && (
+                      <button
+                        type="button"
+                        onClick={() => deleteDeliveryById(del.id)}
+                        className="p-1 text-ai-subtext hover:text-red-500"
+                        title="Excluir"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -728,6 +748,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                         value={del.name || ''}
                         onChange={v => handleDeliveryChange(del.id, 'name', v)}
                         placeholder="Nome da entrega"
+                        disabled={readonly}
                         className="flex-1 min-w-[200px]"
                       />
                     </div>
@@ -738,6 +759,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                         onChange={v => handleDeliveryChange(del.id, 'description', v)}
                         placeholder="Descrição da entrega..."
                         rows={2}
+                        disabled={readonly}
                       />
                     </div>
                     <div className="flex flex-wrap items-center gap-2 gap-y-1">
@@ -746,12 +768,14 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                         value={del.start_date || ''}
                         onChange={v => handleDeliveryChange(del.id, 'start_date', v)}
                         max={del.end_date || del.due_date || undefined}
+                        disabled={readonly}
                       />
                       <span className="text-sm text-ai-subtext shrink-0 ml-4">Fim:</span>
                       <InlineDate
                         value={del.end_date || del.due_date || ''}
                         onChange={v => handleDeliveryChange(del.id, 'end_date', v)}
                         min={del.start_date || undefined}
+                        disabled={readonly}
                       />
                     </div>
 
@@ -781,13 +805,15 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                             <div key={act.id} className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-ai-subtext">Atividade</span>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteActivityById(act.id)}
-                                  className="p-1 text-ai-subtext hover:text-red-500"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                {!readonly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteActivityById(act.id)}
+                                    className="p-1 text-ai-subtext hover:text-red-500"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
                               </div>
                               <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -796,6 +822,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                     value={act.name || ''}
                                     onChange={v => handleActivityChange(act.id, 'name', v)}
                                     placeholder="Nome da atividade"
+                                    disabled={readonly}
                                     className="flex-1 min-w-[180px]"
                                   />
                                   <span className="text-sm text-ai-subtext shrink-0 ml-2">Líder:</span>
@@ -804,6 +831,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                     onChange={v => handleActivityChange(act.id, 'leader_id', v)}
                                     options={peopleOptions}
                                     placeholder="Selecione"
+                                    disabled={readonly}
                                     className="min-w-[140px]"
                                   />
                                 </div>
@@ -813,18 +841,21 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                     value={act.start_date || ''}
                                     onChange={v => handleActivityChange(act.id, 'start_date', v)}
                                     max={act.end_date || undefined}
+                                    disabled={readonly}
                                   />
                                   <span className="text-sm text-ai-subtext shrink-0 ml-2">Fim:</span>
                                   <InlineDate
                                     value={act.end_date || ''}
                                     onChange={v => handleActivityChange(act.id, 'end_date', v)}
                                     min={act.start_date || undefined}
+                                    disabled={readonly}
                                   />
                                   <span className="text-sm text-ai-subtext shrink-0 ml-2">Status:</span>
                                   <InlineSelect
                                     value={act.status || 'Não Iniciado'}
                                     onChange={v => handleActivityChange(act.id, 'status', v)}
                                     options={STATUS_OPTIONS}
+                                    disabled={readonly}
                                   />
                                 </div>
 
@@ -854,13 +885,15 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                         <div key={task.id} className="space-y-2">
                                           <div className="flex items-center justify-between gap-2">
                                             <span className="text-xs text-ai-subtext">Tarefa</span>
-                                            <button
-                                              type="button"
-                                              onClick={() => deleteTaskById(task.id)}
-                                              className="p-1 text-ai-subtext hover:text-red-500"
-                                            >
-                                              <Trash2 size={12} />
-                                            </button>
+                                            {!readonly && (
+                                              <button
+                                                type="button"
+                                                onClick={() => deleteTaskById(task.id)}
+                                                className="p-1 text-ai-subtext hover:text-red-500"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            )}
                                           </div>
                                           <div className="flex flex-wrap items-center gap-2 gap-y-1">
                                             <span className="text-sm text-ai-subtext shrink-0">Título:</span>
@@ -868,6 +901,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                               value={task.title || ''}
                                               onChange={v => handleTaskChange(task.id, 'title', v)}
                                               placeholder="Título da tarefa"
+                                              disabled={readonly}
                                               className="flex-1 min-w-[160px]"
                                             />
                                             <span className="text-sm text-ai-subtext shrink-0 ml-2">Responsável:</span>
@@ -876,6 +910,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                               onChange={v => handleTaskChange(task.id, 'responsible_person_id', v)}
                                               options={peopleOptions}
                                               placeholder="Selecione"
+                                              disabled={readonly}
                                               className="min-w-[120px]"
                                             />
                                           </div>
@@ -884,6 +919,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                             <InlineDate
                                               value={task.activity_date || ''}
                                               onChange={v => handleTaskChange(task.id, 'activity_date', v)}
+                                              disabled={readonly}
                                             />
                                             <span className="text-sm text-ai-subtext shrink-0 ml-2">
                                               Duração (dias):
@@ -892,6 +928,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                               value={String(task.duration_days ?? 1)}
                                               onChange={v => handleTaskChange(task.id, 'duration_days', Number(v) || 1)}
                                               min={1}
+                                              disabled={readonly}
                                             />
                                             <span className="text-sm text-ai-subtext shrink-0 ml-2">Status:</span>
                                             <InlineSelect
@@ -900,6 +937,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                                 handleTaskChange(task.id, 'kanban_status', v as KanbanStatus)
                                               }
                                               options={KANBAN_OPTIONS}
+                                              disabled={readonly}
                                             />
                                           </div>
                                         </div>

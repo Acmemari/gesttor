@@ -166,9 +166,9 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   const filters = useMemo(
     () =>
       selectedClientId
-        ? { clientId: selectedClientId, clientMode: readonly }
+        ? { clientId: selectedClientId, farmId: selectedFarmId ?? undefined, clientMode: readonly }
         : undefined,
-    [selectedClientId, readonly],
+    [selectedClientId, selectedFarmId, readonly],
   );
 
   // ── Cascade data loading ───────────────────────────────────────────────

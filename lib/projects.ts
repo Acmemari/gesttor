@@ -35,6 +35,7 @@ export interface ProjectPayload {
 
 export interface FetchProjectsFilters {
   clientId?: string;
+  farmId?: string;
   /** Quando presente, busca projetos vinculados ao client_id sem filtrar por created_by (modo cliente). */
   clientMode?: boolean;
 }
@@ -128,15 +129,13 @@ function validatePayload(payload: ProjectPayload): void {
 }
 
 export async function fetchProjects(createdBy: string, filters?: FetchProjectsFilters): Promise<ProjectRow[]> {
-  // No clientMode, cliente lê projetos da própria organização sem filtro por created_by.
-  // A policy RLS "Clientes podem ver programas da sua organizacao" restringe o escopo no banco.
+  // No clientMode, cliente lê projetos da própria organização/fazenda sem filtro por created_by.
+  // Usa RPC readonly para incluir fallback de dados legados (projects.client_id nulo).
   if (filters?.clientMode && filters.clientId?.trim()) {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('client_id', filters.clientId)
-      .order('sort_order', { ascending: true })
-      .order('name', { ascending: true });
+    const { data, error } = await supabase.rpc('client_list_projects_by_farm', {
+      p_client_id: filters.clientId,
+      p_farm_id: filters.farmId?.trim() ? filters.farmId : null,
+    });
     if (error) throw new Error(error.message || 'Erro ao carregar projetos.');
     return (data || []).map(mapProjectRow);
   }

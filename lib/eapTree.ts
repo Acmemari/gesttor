@@ -55,8 +55,19 @@ function formatDateBR(raw: string | null): string {
 /**
  * Carrega a árvore completa EAP para um analista.
  */
-export async function loadFullEAPTree(effectiveUserId: string, clientId?: string | null): Promise<WBSNode[]> {
-  const filters = clientId ? { clientId } : undefined;
+export interface LoadFullEAPTreeOptions {
+  clientId?: string | null;
+  farmId?: string | null;
+  clientMode?: boolean;
+}
+
+export async function loadFullEAPTree(
+  effectiveUserId: string,
+  options?: LoadFullEAPTreeOptions,
+): Promise<WBSNode[]> {
+  const filters = options?.clientId
+    ? { clientId: options.clientId, farmId: options.farmId ?? undefined, clientMode: options.clientMode }
+    : undefined;
   const projects = await fetchProjects(effectiveUserId, filters);
   const rootNodes: WBSNode[] = [];
 

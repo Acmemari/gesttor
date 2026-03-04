@@ -39,7 +39,11 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
     if (!effectiveUserId || isExporting) return;
     setIsExporting(mode);
     try {
-      const tree = await loadFullEAPTree(effectiveUserId, selectedClient?.id ?? undefined);
+      const tree = await loadFullEAPTree(effectiveUserId, {
+        clientId: selectedClient?.id ?? undefined,
+        farmId: selectedFarm?.id ?? undefined,
+        clientMode: isCliente,
+      });
       const programNodes = tree.filter(n => n.level === 'program');
 
       if (programNodes.length === 0) {
@@ -101,7 +105,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
     );
   }
 
-  if (isCliente && !selectedClient) {
+  if (isCliente && !selectedFarm) {
     return (
       <div className="h-full flex items-center justify-center p-8">
         <div className="max-w-xl w-full rounded-xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-3">
