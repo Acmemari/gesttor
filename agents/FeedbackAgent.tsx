@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import DateInputBR from '../components/DateInputBR';
 import { Copy, RefreshCcw, Wand2, MessageSquareText, Sparkles } from 'lucide-react';
 import type { FeedbackInput, FeedbackOutput } from '../api/_lib/agents/feedback/manifest';
 import { useAuth } from '../contexts/AuthContext';
@@ -454,11 +455,10 @@ const FeedbackAgent: React.FC<FeedbackAgentProps> = ({ onToast }) => {
 
           <div className="space-y-3">
             <label className="block text-sm text-ai-text">Data do ocorrido</label>
-            <input
-              type="date"
-              className={fieldClass}
+            <DateInputBR
               value={form.eventDate || ''}
-              onChange={e => setForm(p => ({ ...p, eventDate: e.target.value }))}
+              onChange={v => setForm(p => ({ ...p, eventDate: v }))}
+              className={fieldClass}
             />
           </div>
 

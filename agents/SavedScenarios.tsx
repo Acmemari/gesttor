@@ -533,11 +533,11 @@ const SavedScenarios: React.FC<SavedScenariosProps> = ({
           <div className="flex items-center gap-2 mb-2">
             {selectedClient ? (
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                Cliente: {selectedClient.name}
+                Organização: {selectedClient.name}
               </span>
             ) : (
               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">
-                Selecione um cliente no cabeçalho
+                Selecione uma organização no cabeçalho
               </span>
             )}
             {selectedFarm && filterMode === 'farm' && (
@@ -586,7 +586,7 @@ const SavedScenarios: React.FC<SavedScenariosProps> = ({
         <p className="text-sm text-ai-subtext mt-3">
           {savedItems.length === 0
             ? isAnalystOrAdmin && !selectedClient
-              ? 'Selecione um cliente para ver os itens salvos.'
+              ? 'Selecione uma organização para ver os itens salvos.'
               : 'Nenhum item salvo encontrado.'
             : `${filteredSavedItems.length} de ${savedItems.length} item${savedItems.length !== 1 ? 'ns' : ''} (${scenarios.length} cenário${scenarios.length !== 1 ? 's' : ''}, ${questionnaires.length} questionário${questionnaires.length !== 1 ? 's' : ''})`}
         </p>
@@ -599,18 +599,18 @@ const SavedScenarios: React.FC<SavedScenariosProps> = ({
             <Save size={48} className="mx-auto mb-4 text-ai-subtext opacity-30" />
             <h3 className="text-lg font-medium text-ai-text mb-2">
               {isAnalystOrAdmin && !selectedClient
-                ? 'Selecione um cliente'
+                ? 'Selecione uma organização'
                 : savedItems.length > 0
                   ? 'Nenhum item nos filtros'
                   : 'Nenhum item salvo'}
             </h3>
             <p className="text-sm text-ai-subtext mb-4">
               {isAnalystOrAdmin && !selectedClient
-                ? 'Use o seletor no cabeçalho para escolher um cliente e visualizar seus itens salvos.'
+                ? 'Use o seletor no cabeçalho para escolher uma organização e visualizar seus itens salvos.'
                 : savedItems.length > 0
                   ? 'Marque ao menos um tipo (Questionários, Calculadora ou Comparador) acima para exibir itens.'
                   : isAnalystOrAdmin && selectedFarm && filterMode === 'farm'
-                    ? `Nenhum item encontrado para a fazenda "${selectedFarm.name}". Tente ver todos os itens do cliente.`
+                    ? `Nenhum item encontrado para a fazenda "${selectedFarm.name}". Tente ver todos os itens da organização.`
                     : 'Salve cenários da calculadora ou questionários preenchidos para acessá-los aqui.'}
             </p>
             {isAnalystOrAdmin && selectedFarm && filterMode === 'farm' && savedItems.length === 0 ? (
@@ -618,7 +618,7 @@ const SavedScenarios: React.FC<SavedScenariosProps> = ({
                 onClick={() => setFilterMode('all')}
                 className="px-4 py-2 bg-ai-accent text-white rounded-lg hover:bg-ai-accent/90 transition-colors text-sm font-medium"
               >
-                Ver todos do cliente
+                Ver todos da organização
               </button>
             ) : !isAnalystOrAdmin || selectedClient ? (
               <button

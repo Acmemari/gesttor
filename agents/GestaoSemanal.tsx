@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import DateInputBR from '../components/DateInputBR';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +142,10 @@ const GestaoSemanal: React.FC = () => {
   const [newForm, setNewForm] = useState({
     titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento',
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deletingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   // Inject fonts and animation keyframes once
   useEffect(() => {
@@ -239,7 +244,7 @@ const GestaoSemanal: React.FC = () => {
     if (filters.descricao)   result = result.filter(a => (a.descricao || '').toLowerCase().includes(filters.descricao.toLowerCase()));
     if (filters.pessoaId)    result = result.filter(a => a.pessoa_id === filters.pessoaId);
     if (filters.dataTermino) result = result.filter(a => a.data_termino === filters.dataTermino);
-    if (filters.tag)         result = result.filter(a => a.tag === filters.tag);
+    if (filters.tag)         result = result.filter(a => a.tag.toLowerCase().includes(filters.tag.toLowerCase()));
     if (filters.status)      result = result.filter(a => a.status === filters.status);
 
     if (sortConfig) {
@@ -278,33 +283,81 @@ const GestaoSemanal: React.FC = () => {
 
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
-  const handleAddAtividade = useCallback(async () => {
+  const resetForm = useCallback(() => {
+    setNewForm({ titulo: '', descricao: '', pessoaId: pessoas[0]?.id || '', dataTermino: '', tag: '#planejamento' });
+    setEditingId(null);
+  }, [pessoas]);
+
+  const handleEditStart = useCallback((at: Atividade) => {
+    setNewForm({
+      titulo: at.titulo,
+      descricao: at.descricao,
+      pessoaId: at.pessoa_id,
+      dataTermino: at.data_termino ?? '',
+      tag: at.tag,
+    });
+    setEditingId(at.id);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, []);
+
+  const handleEditCancel = useCallback(() => {
+    resetForm();
+  }, [resetForm]);
+
+  const handleSave = useCallback(async () => {
     if (!newForm.titulo.trim() || !semana) return;
     const pessoaId = newForm.pessoaId || pessoas[0]?.id;
     if (!pessoaId) return;
-    const { data, error } = await supabase.from('atividades').insert({
-      semana_id: semana.id,
-      titulo: newForm.titulo.trim(),
-      descricao: newForm.descricao.trim(),
-      pessoa_id: pessoaId,
-      data_termino: newForm.dataTermino || null,
-      tag: newForm.tag,
-      status: 'a fazer',
-    }).select().single();
-    if (error) {
-      console.error('Erro ao adicionar atividade:', error);
-      return;
+
+    if (editingId) {
+      const { error } = await supabase.from('atividades').update({
+        titulo: newForm.titulo.trim(),
+        descricao: newForm.descricao.trim(),
+        pessoa_id: pessoaId,
+        data_termino: newForm.dataTermino || null,
+        tag: newForm.tag,
+      }).eq('id', editingId);
+      if (error) { console.error('Erro ao editar atividade:', error); return; }
+      setAtividades(prev => prev.map(a => a.id === editingId ? {
+        ...a,
+        titulo: newForm.titulo.trim(),
+        descricao: newForm.descricao.trim(),
+        pessoa_id: pessoaId,
+        data_termino: newForm.dataTermino || null,
+        tag: newForm.tag,
+      } : a));
+      resetForm();
+    } else {
+      const { data, error } = await supabase.from('atividades').insert({
+        semana_id: semana.id,
+        titulo: newForm.titulo.trim(),
+        descricao: newForm.descricao.trim(),
+        pessoa_id: pessoaId,
+        data_termino: newForm.dataTermino || null,
+        tag: newForm.tag,
+        status: 'a fazer',
+      }).select().single();
+      if (error) { console.error('Erro ao adicionar atividade:', error); return; }
+      if (data) {
+        setAtividades(prev => [...prev, data as Atividade]);
+        setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
+      }
     }
-    if (data) {
-      setAtividades(prev => [...prev, data as Atividade]);
-      setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
-    }
-  }, [newForm, semana, pessoas]);
+  }, [newForm, semana, pessoas, editingId, resetForm]);
 
   const handleRemoveAtividade = useCallback(async (id: string) => {
+    if (deletingId !== id) {
+      setDeletingId(id);
+      if (deletingTimerRef.current) clearTimeout(deletingTimerRef.current);
+      deletingTimerRef.current = setTimeout(() => setDeletingId(null), 3000);
+      return;
+    }
+    if (deletingTimerRef.current) clearTimeout(deletingTimerRef.current);
+    setDeletingId(null);
     await supabase.from('atividades').delete().eq('id', id);
     setAtividades(prev => prev.filter(a => a.id !== id));
-  }, []);
+    if (editingId === id) resetForm();
+  }, [deletingId, editingId, resetForm]);
 
   const handleStatusChange = useCallback(async (id: string, status: string) => {
     await supabase.from('atividades').update({ status }).eq('id', id);
@@ -602,15 +655,20 @@ const GestaoSemanal: React.FC = () => {
         </div>
 
         {/* ── 5. FORM ───────────────────────────────────────────────────────── */}
-        <div style={{
-          background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
-          padding: 16, marginBottom: 16,
-          opacity: isAberta ? 1 : 0.55,
-          pointerEvents: isAberta ? 'auto' : 'none',
-        }}>
+        <div
+          ref={formRef}
+          style={{
+            background: '#FFF', borderRadius: 12,
+            border: editingId ? '1.5px solid #6366F1' : '1px solid #E2E8F0',
+            padding: 16, marginBottom: 16,
+            opacity: isAberta ? 1 : 0.55,
+            pointerEvents: isAberta ? 'auto' : 'none',
+            transition: 'border-color 0.2s',
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#475569', letterSpacing: '0.3px', margin: 0 }}>
-              Nova atividade
+            <p style={{ fontSize: 12, fontWeight: 600, color: editingId ? '#6366F1' : '#475569', letterSpacing: '0.3px', margin: 0, transition: 'color 0.2s' }}>
+              {editingId ? 'Editando atividade' : 'Nova atividade'}
             </p>
             {!isAberta && (
               <span style={{ fontSize: 11, color: '#94A3B8' }}>
@@ -625,7 +683,7 @@ const GestaoSemanal: React.FC = () => {
               <input
                 type="text" placeholder="Título" value={newForm.titulo}
                 onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && handleAddAtividade()}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
                 style={inputSt}
               />
             </div>
@@ -648,10 +706,10 @@ const GestaoSemanal: React.FC = () => {
 
             <div style={{ flex: '0 1 140px', minWidth: 130 }}>
               <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Data término</label>
-              <input
-                type="date" lang="pt-BR" value={newForm.dataTermino}
-                onChange={e => setNewForm(p => ({ ...p, dataTermino: e.target.value }))}
-                style={inputSt}
+              <DateInputBR
+                value={newForm.dataTermino}
+                onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
+                className="w-full"
               />
             </div>
 
@@ -664,8 +722,22 @@ const GestaoSemanal: React.FC = () => {
               />
             </div>
 
+            {editingId && (
+              <button
+                onClick={handleEditCancel}
+                style={{
+                  flex: '0 0 auto', padding: '7px 16px', borderRadius: 8,
+                  border: '1px solid #E2E8F0', background: '#F8FAFC',
+                  color: '#64748B', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 500, fontFamily: font,
+                }}
+              >
+                Cancelar
+              </button>
+            )}
+
             <button
-              onClick={handleAddAtividade}
+              onClick={handleSave}
               disabled={!isAberta || !newForm.titulo.trim()}
               style={{
                 flex: '0 0 auto', padding: '7px 20px', borderRadius: 8, border: 'none',
@@ -674,7 +746,7 @@ const GestaoSemanal: React.FC = () => {
                 fontSize: 13, fontWeight: 600, fontFamily: font,
               }}
             >
-              Adicionar
+              {editingId ? 'Salvar' : 'Adicionar'}
             </button>
           </div>
         </div>
@@ -715,8 +787,12 @@ const GestaoSemanal: React.FC = () => {
               <option value="">Todos</option>
               {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
             </select>
-            <input type="date" lang="pt-BR" value={filters.dataTermino}
-              onChange={e => setFilters(p => ({ ...p, dataTermino: e.target.value }))} style={filterSt} />
+            <DateInputBR
+              value={filters.dataTermino}
+              onChange={v => setFilters(p => ({ ...p, dataTermino: v }))}
+              placeholder="dd/mm/aaaa"
+              className="w-full"
+            />
             <input type="text" placeholder="Filtrar..." value={filters.tag}
               onChange={e => setFilters(p => ({ ...p, tag: e.target.value }))} style={filterSt} />
             <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={filterSt}>
@@ -741,9 +817,23 @@ const GestaoSemanal: React.FC = () => {
           ) : filteredAndSorted.map(at => {
             const isConcluida = at.status === 'concluída';
             const isHovered   = hoveredRow === at.id;
+            const isEditing   = editingId === at.id;
+            const isDeleting  = deletingId === at.id;
             const isDisabled  = !semana?.aberta;
             const tagSt       = getTagStyle(at.tag);
             const stSt        = getStatusSt(at.status);
+
+            const rowBg = isEditing
+              ? '#F5F3FF'
+              : isHovered
+                ? '#F8FAFC'
+                : isConcluida
+                  ? '#FAFFF9'
+                  : '#FFF';
+
+            const clickableCell: React.CSSProperties = {
+              cursor: isDisabled ? 'default' : 'pointer',
+            };
 
             return (
               <div
@@ -754,9 +844,10 @@ const GestaoSemanal: React.FC = () => {
                   display: 'grid', gridTemplateColumns: GRID_COLS,
                   padding: '9px 14px', borderBottom: '1px solid #F8FAFC',
                   alignItems: 'center', columnGap: 8,
-                  background: isHovered ? '#F8FAFC' : isConcluida ? '#FAFFF9' : '#FFF',
+                  background: rowBg,
                   transition: 'background 0.15s',
                   opacity: isDisabled && !isConcluida ? 0.5 : 1,
+                  borderLeft: isEditing ? '3px solid #6366F1' : '3px solid transparent',
                 }}
               >
                 {/* Checkbox */}
@@ -767,35 +858,54 @@ const GestaoSemanal: React.FC = () => {
                 />
 
                 {/* Título */}
-                <div title={at.titulo} style={{
-                  fontSize: 13, fontWeight: 600, color: '#1E293B',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.5 } : {}),
-                }}>
+                <div
+                  title={at.titulo}
+                  onClick={() => !isDisabled && handleEditStart(at)}
+                  style={{
+                    fontSize: 13, fontWeight: 600, color: '#1E293B',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.5 } : {}),
+                    ...clickableCell,
+                  }}
+                >
                   {at.titulo}
                 </div>
 
                 {/* Descrição */}
-                <div title={at.descricao} style={{
-                  fontSize: 12, color: '#64748B',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.4 } : {}),
-                }}>
+                <div
+                  title={at.descricao}
+                  onClick={() => !isDisabled && handleEditStart(at)}
+                  style={{
+                    fontSize: 12, color: '#64748B',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.4 } : {}),
+                    ...clickableCell,
+                  }}
+                >
                   {at.descricao || '—'}
                 </div>
 
                 {/* Responsável */}
-                <div style={{ fontSize: 12, color: '#475569', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div
+                  onClick={() => !isDisabled && handleEditStart(at)}
+                  style={{ fontSize: 12, color: '#475569', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...clickableCell }}
+                >
                   {getPessoaNome(at.pessoa_id)}
                 </div>
 
                 {/* Término */}
-                <div style={{ fontSize: 11, color: '#94A3B8', fontFamily: mono }}>
+                <div
+                  onClick={() => !isDisabled && handleEditStart(at)}
+                  style={{ fontSize: 11, color: '#94A3B8', fontFamily: mono, ...clickableCell }}
+                >
                   {formatDatePtBr(at.data_termino)}
                 </div>
 
                 {/* Tag */}
-                <div>
+                <div
+                  onClick={() => !isDisabled && handleEditStart(at)}
+                  style={clickableCell}
+                >
                   <span style={{
                     fontSize: 11, fontWeight: 500, padding: '1px 6px', borderRadius: 4,
                     background: tagSt.bg, color: tagSt.text, border: `1px solid ${tagSt.border}`,
@@ -818,17 +928,24 @@ const GestaoSemanal: React.FC = () => {
                   {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
 
-                {/* Remove */}
+                {/* Delete */}
                 {isAberta ? (
                   <button
                     onClick={() => handleRemoveAtividade(at.id)}
+                    title={isDeleting ? 'Clique novamente para confirmar exclusão' : 'Excluir'}
                     style={{
-                      width: 22, height: 22, borderRadius: 6, border: 'none', background: 'transparent',
-                      color: '#CBD5E1', cursor: 'pointer', fontSize: 12,
-                      opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s',
+                      width: 22, height: 22, borderRadius: 6, border: 'none',
+                      background: isDeleting ? '#FEE2E2' : 'transparent',
+                      color: isDeleting ? '#DC2626' : '#CBD5E1',
+                      cursor: 'pointer', fontSize: 12,
+                      opacity: isHovered || isDeleting ? 1 : 0,
+                      transition: 'opacity 0.15s, background 0.15s, color 0.15s',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: isDeleting ? 700 : 400,
                     }}
-                  >✕</button>
+                  >
+                    {isDeleting ? '?' : '✕'}
+                  </button>
                 ) : <div />}
               </div>
             );

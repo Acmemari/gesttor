@@ -11,13 +11,13 @@ const cards = [
   {
     id: 'elaboracao-bpo',
     title: 'Elaboração proposta BPO',
-    description: 'Elabore propostas de BPO para seus clientes.',
+    description: 'Elabore propostas de BPO para suas organizações.',
     icon: <FileText size={24} />,
   },
   {
     id: 'meus-clientes',
-    title: 'Meus Clientes',
-    description: 'Acesse a lista de seus clientes.',
+    title: 'Minhas Organizações',
+    description: 'Acesse a lista de suas organizações.',
     icon: <Users size={24} />,
   },
 ];

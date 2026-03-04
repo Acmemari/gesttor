@@ -56,8 +56,8 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       ? [
           {
             id: 'clientes',
-            title: <CadastroTitle entity="Clientes" />,
-            description: 'Cadastre e gerencie clientes, vinculando fazendas e acompanhando o relacionamento.',
+            title: <CadastroTitle entity="Organizações" />,
+            description: 'Cadastre e gerencie organizações, vinculando fazendas e acompanhando o relacionamento.',
             icon: <Users size={24} />,
             onClick: onSelectClientes,
           },
@@ -66,7 +66,7 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
     {
       id: 'fazendas',
       title: <CadastroTitle entity="Fazendas" />,
-      description: 'Gerencie propriedades rurais, dados da fazenda e configurações por cliente.',
+      description: 'Gerencie propriedades rurais, dados da fazenda e configurações por organização.',
       icon: <Building2 size={24} />,
       onClick: onSelectFazendas,
     },

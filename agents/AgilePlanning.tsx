@@ -1284,7 +1284,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
         if (error) {
           console.error('[AgilePlanning] Error loading client farms:', error);
-          onToast?.('Erro ao carregar fazendas do cliente.', 'error');
+          onToast?.('Erro ao carregar fazendas da organização.', 'error');
           setFarms([]);
           return;
         }
@@ -1352,7 +1352,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
             if (error) {
               console.error('[AgilePlanning] Error loading clients:', error);
-              onToast?.('Erro ao carregar clientes. Tente novamente.', 'error');
+              onToast?.('Erro ao carregar organizações. Tente novamente.', 'error');
               return;
             }
 
@@ -1378,7 +1378,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
             console.error('[AgilePlanning] Unexpected error:', errorMessage, err);
-            onToast?.('Erro inesperado ao carregar clientes.', 'error');
+            onToast?.('Erro inesperado ao carregar organizações.', 'error');
           }
         };
         fetchClients();
@@ -1445,9 +1445,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       setSelectedClient(tempSelectedClient);
       setSelectedFarm(tempSelectedFarm);
       setShowSelectionModal(false);
-      onToast?.('Cliente e fazenda selecionados com sucesso!', 'success');
+      onToast?.('Organização e fazenda selecionadas com sucesso!', 'success');
     } else {
-      onToast?.('Por favor, selecione um cliente e uma fazenda', 'warning');
+      onToast?.('Por favor, selecione uma organização e uma fazenda', 'warning');
     }
   }, [tempSelectedClient, tempSelectedFarm, setSelectedClient, setSelectedFarm, onToast]);
 
@@ -1488,16 +1488,16 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
             <div>
               <h2 className="text-xl font-bold text-ai-text">Seleção Necessária</h2>
               <p className="text-sm text-ai-subtext">
-                Para acessar o Planejamento Ágil, é necessário selecionar um cliente e uma fazenda.
+                Para acessar o Planejamento Ágil, é necessário selecionar uma organização e uma fazenda.
               </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            {/* Seletor de Cliente */}
+            {/* Seletor de Organização */}
             <div>
               <label className="block text-sm font-medium text-ai-text mb-2">
-                Cliente <span className="text-red-500">*</span>
+                Organização <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <select
@@ -1509,7 +1509,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                   }}
                   className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
                 >
-                  <option value="">Selecione um cliente</option>
+                  <option value="">Selecione uma organização</option>
                   {clients.map(client => (
                     <option key={client.id} value={client.id}>
                       {client.name} - {client.email}
@@ -1528,7 +1528,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 <div className="relative">
                   {farms.length === 0 ? (
                     <div className="px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-subtext">
-                      Nenhuma fazenda vinculada a este cliente
+                      Nenhuma fazenda vinculada a esta organização
                     </div>
                   ) : (
                     <select

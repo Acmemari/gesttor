@@ -212,7 +212,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-ai-text mb-1">Gerenciamento de Analistas</h1>
-            <p className="text-sm text-ai-subtext">Visualize analistas, seus clientes e fazendas</p>
+            <p className="text-sm text-ai-subtext">Visualize analistas, suas organizações e fazendas</p>
           </div>
         </div>
 
@@ -223,7 +223,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
             type="text"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Buscar por analista, cliente ou fazenda..."
+            placeholder="Buscar por analista, organização ou fazenda..."
             className="w-full pl-10 pr-4 py-2 border border-ai-border rounded-lg bg-white text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
           />
         </div>
@@ -276,7 +276,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
                           <div className="flex items-center gap-1 text-xs text-ai-subtext">
                             <Users size={12} />
                             <span>
-                              {clientsCount} {clientsCount === 1 ? 'cliente' : 'clientes'}
+                              {clientsCount} {clientsCount === 1 ? 'organização' : 'organizações'}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 text-xs text-ai-subtext">
@@ -294,7 +294,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
                   {isAnalystExpanded && (
                     <div className="border-t border-ai-border bg-gray-50">
                       {analyst.clients.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-ai-subtext">Nenhum cliente vinculado</div>
+                        <div className="p-4 text-center text-sm text-ai-subtext">Nenhuma organização vinculada</div>
                       ) : (
                         <div className="divide-y divide-ai-border">
                           {analyst.clients.map(client => {
@@ -322,7 +322,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
                                       <div className="flex items-center gap-2">
                                         <h4 className="text-sm font-medium text-ai-text truncate">{client.name}</h4>
                                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                                          Cliente
+                                          Organização
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-3 mt-1">
@@ -347,7 +347,7 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
                                   </div>
                                 </button>
 
-                                {/* Fazendas do Cliente */}
+                                {/* Fazendas da Organização */}
                                 {isClientExpanded && (
                                   <div className="border-t border-ai-border bg-gray-50">
                                     {client.farms.length === 0 ? (

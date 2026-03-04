@@ -320,19 +320,19 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-ai-text mb-2">Documentos da Mentoria</h1>
-        <p className="text-sm text-ai-subtext">Gerencie os documentos do cliente. PDF, Word e Excel são aceitos.</p>
+        <p className="text-sm text-ai-subtext">Gerencie os documentos da organização. PDF, Word e Excel são aceitos.</p>
       </div>
 
       {/* Filtros e Ações */}
       <div className="flex flex-col md:flex-row gap-3 mb-6">
-        {/* Seletor de Cliente */}
+        {/* Seletor de Organização */}
         <div className="flex-1 md:max-w-xs">
           <select
             value={filterClient}
             onChange={e => setFilterClient(e.target.value)}
             className="w-full px-3 py-2 bg-white border border-ai-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
           >
-            <option value="">Todos os clientes</option>
+            <option value="">Todas as organizações</option>
             {clients.map(client => (
               <option key={client.id} value={client.id}>
                 {client.name}
@@ -387,8 +387,8 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
       {/* Cliente atual */}
       {currentClientName && (
-        <div className="mb-4 px-3 py-2 bg-ai-surface rounded-lg border border-ai-border">
-          <span className="text-sm text-ai-subtext">Cliente: </span>
+          <div className="mb-4 px-3 py-2 bg-ai-surface rounded-lg border border-ai-border">
+          <span className="text-sm text-ai-subtext">Organização: </span>
           <span className="text-sm font-medium text-ai-text">{currentClientName}</span>
         </div>
       )}
@@ -411,7 +411,7 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
             <p className="text-sm">
               {currentClientId
                 ? 'Envie o primeiro documento clicando no botão acima.'
-                : 'Selecione um cliente para ver seus documentos.'}
+                : 'Selecione uma organização para ver seus documentos.'}
             </p>
           </div>
         ) : (
@@ -498,9 +498,9 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
             {/* Body */}
             <div className="p-4 space-y-4">
-              {/* Cliente */}
+              {/* Organização */}
               <div className="px-3 py-2 bg-ai-surface rounded-lg">
-                <span className="text-sm text-ai-subtext">Cliente: </span>
+                <span className="text-sm text-ai-subtext">Organização: </span>
                 <span className="text-sm font-medium text-ai-text">{currentClientName}</span>
               </div>
 

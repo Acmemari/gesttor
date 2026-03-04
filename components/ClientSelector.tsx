@@ -27,7 +27,7 @@ const ClientSelector: React.FC = () => {
 
   return (
     <HierarchyCombobox
-      label="Cliente"
+      label="Organização"
       icon={<User className="w-4 h-4 text-ai-accent flex-shrink-0" />}
       items={clients}
       selectedItem={selectedClient}
@@ -41,7 +41,7 @@ const ClientSelector: React.FC = () => {
       isLoading={loading.clients}
       error={errors.clients}
       disabled={disabled}
-      emptyLabel={disabled ? 'Selecione um analista primeiro' : 'Nenhum cliente cadastrado'}
+      emptyLabel={disabled ? 'Selecione um analista primeiro' : 'Nenhuma organização cadastrada'}
       className="min-w-[180px]"
     />
   );

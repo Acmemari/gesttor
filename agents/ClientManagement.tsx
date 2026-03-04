@@ -342,10 +342,10 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
           await syncOwnersAsPeople(formData.analystId, editingClient.id);
         } catch (syncErr: any) {
           console.error('[ClientManagement] Error syncing owners as people:', syncErr);
-          onToast?.('Cliente atualizado, mas houve um problema ao sincronizar gestores na tela de Pessoas.', 'warning');
+          onToast?.('Organização atualizada, mas houve um problema ao sincronizar gestores na tela de Pessoas.', 'warning');
         }
 
-        onToast?.('Cliente atualizado com sucesso!', 'success');
+        onToast?.('Organização atualizada com sucesso!', 'success');
       } else {
         // Create new client
         const { data, error: insertError } = await supabase
@@ -370,13 +370,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
           } catch (syncErr: any) {
             console.error('[ClientManagement] Error syncing owners as people:', syncErr);
             onToast?.(
-              'Cliente cadastrado, mas houve um problema ao sincronizar gestores na tela de Pessoas.',
+              'Organização cadastrada, mas houve um problema ao sincronizar gestores na tela de Pessoas.',
               'warning',
             );
           }
         }
 
-        onToast?.('Cliente cadastrado com sucesso!', 'success');
+        onToast?.('Organização cadastrada com sucesso!', 'success');
       }
 
       // Reset form
@@ -392,7 +392,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       }, 500);
     } catch (err: any) {
       console.error('[ClientManagement] Error saving client:', err);
-      onToast?.(`Erro ao salvar cliente: ${err.message || 'Erro desconhecido'}`, 'error');
+      onToast?.(`Erro ao salvar organização: ${err.message || 'Erro desconhecido'}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -574,7 +574,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         const farmCount = clientFarms.length;
         const farmNames = clientFarms.map(f => f.name).join(', ');
 
-        let confirmMessage = `Tem certeza que deseja excluir este cliente?\n\n`;
+        let confirmMessage = `Tem certeza que deseja excluir esta organização?\n\n`;
 
         if (farmCount > 0) {
           confirmMessage += `⚠️ ATENÇÃO: Esta ação irá excluir:\n`;
@@ -582,7 +582,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
           confirmMessage += `• Todos os vínculos e registros associados\n\n`;
           confirmMessage += `Esta ação NÃO pode ser desfeita!`;
         } else {
-          confirmMessage += `O cliente será removido do sistema.`;
+          confirmMessage += `A organização será removida do sistema.`;
         }
 
         if (!window.confirm(confirmMessage)) {
@@ -606,9 +606,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
 
         // 5. Mensagem de sucesso
         if (farmCount > 0) {
-          onToast?.(`Cliente e ${farmCount} fazenda${farmCount !== 1 ? 's' : ''} excluídos com sucesso!`, 'success');
+          onToast?.(`Organização e ${farmCount} fazenda${farmCount !== 1 ? 's' : ''} excluídas com sucesso!`, 'success');
         } else {
-          onToast?.('Cliente excluído com sucesso!', 'success');
+          onToast?.('Organização excluída com sucesso!', 'success');
         }
 
         await loadClients();
@@ -620,7 +620,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         }, 300);
       } catch (err: any) {
         console.error('[ClientManagement] Error deleting client:', err);
-        onToast?.(`Erro ao excluir cliente: ${err.message || 'Erro desconhecido'}`, 'error');
+        onToast?.(`Erro ao excluir organização: ${err.message || 'Erro desconhecido'}`, 'error');
       } finally {
         setDeletingClientId(null);
       }
@@ -728,10 +728,10 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <fieldset disabled={clientFormReadOnly} className={clientFormReadOnly ? 'opacity-75' : ''}>
-                {/* Nome do Cliente / Grupo Econômico */}
+                {/* Nome da Organização / Grupo Econômico */}
                 <div data-error={formErrors.name ? 'true' : undefined}>
                   <label className="block text-sm font-medium text-ai-text mb-2">
-                    Nome do Cliente / Grupo Econômico <span className="text-ai-error">*</span>
+                    Nome da Organização / Grupo Econômico <span className="text-ai-error">*</span>
                   </label>
                   <input
                     type="text"
@@ -740,9 +740,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                     className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent ${
                       formErrors.name ? 'border-ai-error' : 'border-ai-border'
                     }`}
-                    placeholder="Digite o nome do cliente"
+                    placeholder="Digite o nome da organização"
                   />
-                  <p className="mt-1 text-xs text-ai-subtext">Nome do Cliente, Agropecuária ou Grupo Econômico</p>
+                  <p className="mt-1 text-xs text-ai-subtext">Nome da Organização, Agropecuária ou Grupo Econômico</p>
                   {formErrors.name && <p className="mt-1 text-sm text-ai-error">{formErrors.name}</p>}
                 </div>
 
@@ -798,7 +798,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                     className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent ${
                       formErrors.email ? 'border-ai-error' : 'border-ai-border'
                     }`}
-                    placeholder="cliente@exemplo.com"
+                    placeholder="organizacao@exemplo.com"
                   />
                   {formErrors.email && <p className="mt-1 text-sm text-ai-error">{formErrors.email}</p>}
                 </div>
@@ -944,7 +944,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                     <div className="flex items-center gap-2 mb-2">
                       <Building2 className="w-4 h-4 text-ai-subtext" />
                       <label className="block text-sm font-medium text-ai-text">
-                        Fazendas cadastradas para este cliente
+                        Fazendas cadastradas para esta organização
                       </label>
                     </div>
                     {loadingEditingClientFarms ? (
@@ -954,7 +954,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                       </div>
                     ) : editingClientFarms.length === 0 ? (
                       <div className="border border-dashed border-ai-border rounded-md p-4 text-center">
-                        <p className="text-xs text-ai-subtext">Nenhuma fazenda cadastrada para este cliente.</p>
+                        <p className="text-xs text-ai-subtext">Nenhuma fazenda cadastrada para esta organização.</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1078,7 +1078,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
               <div className="p-12 text-center">
                 <Users className="w-16 h-16 text-ai-subtext mx-auto mb-4" />
                 <p className="text-ai-subtext text-lg">
-                  {searchTerm ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+                  {searchTerm ? 'Nenhuma organização encontrada' : 'Nenhuma organização cadastrada'}
                 </p>
                 {!searchTerm && (
                   <button
@@ -1088,7 +1088,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                     }}
                     className="mt-4 px-4 py-2 bg-ai-accent text-white rounded-md hover:bg-ai-accent/90 transition-colors"
                   >
-                    Cadastrar Primeiro Cliente
+                    Cadastrar Primeira Organização
                   </button>
                 )}
               </div>
@@ -1098,7 +1098,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   <thead className="bg-ai-surface2">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Cliente
+                        Organização
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
                         Contato
@@ -1293,7 +1293,7 @@ const ClientRow: React.FC<ClientRowProps> = ({ client, onEdit, onDelete, deletin
               onClick={() => onDelete(client.id)}
               disabled={deletingClientId === client.id}
               className="p-2 text-ai-error hover:bg-ai-error/10 rounded-md transition-colors disabled:opacity-50"
-              title="Excluir cliente"
+              title="Excluir organização"
             >
               {deletingClientId === client.id ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1342,7 +1342,7 @@ const ClientRow: React.FC<ClientRowProps> = ({ client, onEdit, onDelete, deletin
                   ) : clientFarmsList.length === 0 ? (
                     <div className="text-center py-12">
                       <Building2 className="w-12 h-12 text-ai-subtext mx-auto mb-4" />
-                      <p className="text-ai-subtext">Nenhuma fazenda vinculada a este cliente</p>
+                      <p className="text-ai-subtext">Nenhuma fazenda vinculada a esta organização</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

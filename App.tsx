@@ -171,7 +171,7 @@ const AppContent: React.FC = () => {
       const cadastrosAgent: Agent = {
         id: 'cadastros',
         name: 'Cadastros',
-        description: 'Fazendas, clientes e pessoas.',
+        description: 'Fazendas, organizações e pessoas.',
         icon: 'folder-plus',
         category: 'zootecnico',
         status: 'active',
@@ -197,8 +197,8 @@ const AppContent: React.FC = () => {
 
       const clientManagement: Agent = {
         id: 'client-management',
-        name: 'Cadastro de Clientes',
-        description: 'Cadastrar e gerenciar clientes',
+        name: 'Cadastro de Organizações',
+        description: 'Cadastrar e gerenciar organizações',
         icon: 'users',
         category: 'admin',
         status: user?.role === 'admin' || user?.qualification === 'analista' ? 'active' : 'locked',
@@ -243,7 +243,7 @@ const AppContent: React.FC = () => {
       const analystManagement: Agent = {
         id: 'analyst-management',
         name: 'Gerenciamento de Analistas',
-        description: 'Visualize analistas, clientes e fazendas de forma hierárquica',
+        description: 'Visualize analistas, organizações e fazendas de forma hierárquica',
         icon: 'users',
         category: 'admin',
         status: 'active',
@@ -321,7 +321,7 @@ const AppContent: React.FC = () => {
         {
           id: 'cadastros',
           name: 'Cadastros',
-          description: 'Fazendas, clientes e pessoas.',
+          description: 'Fazendas, organizações e pessoas.',
           icon: 'folder-plus',
           category: 'zootecnico' as const,
           status: 'active' as const,
@@ -659,7 +659,7 @@ const AppContent: React.FC = () => {
               <VisitorContentGuard
                 isVisitor
                 isAllowed={false}
-                featureName="Cadastro de Clientes"
+                featureName="Cadastro de Organizações"
               >
                 <div className="p-8 bg-ai-surface min-h-[200px]" />
               </VisitorContentGuard>
@@ -1012,7 +1012,7 @@ const AppContent: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-ai-accent text-white rounded-md hover:bg-ai-accent/90 transition-colors text-sm"
                 >
                   <Plus size={16} />
-                  Novo Cliente
+                  Nova Organização
                 </button>
               )}
             {activeAgentId === 'cattle-profit' && viewMode !== 'desktop' && (

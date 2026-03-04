@@ -38,23 +38,23 @@ test.describe('Cadastro de Fazendas', () => {
   async function ensureClientSelected(page: Page) {
     await page.waitForTimeout(2000);
 
-    const noClients = page.getByText(/sem clientes/i);
+    const noClients = page.getByText(/sem organizações/i);
     if (await noClients.isVisible({ timeout: 2000 }).catch(() => false)) {
       await page.getByRole('button', { name: /cadastros/i }).click();
       await page.waitForTimeout(500);
       await page
         .locator('button')
-        .filter({ hasText: /clientes/i })
+        .filter({ hasText: /organizações/i })
         .first()
         .click();
       await page.waitForTimeout(500);
 
-      await page.getByRole('button', { name: /novo cliente|cadastrar primeiro cliente/i }).click({ timeout: 8000 });
-      await page.getByPlaceholder(/digite o nome do cliente/i).fill(`Cliente Base Fazenda ${Date.now()}`);
-      await page.getByPlaceholder(/cliente@exemplo\.com/i).fill(`fazenda-e2e-${Date.now()}@teste.com`);
+      await page.getByRole('button', { name: /nova organização|cadastrar primeira organização/i }).click({ timeout: 8000 });
+      await page.getByPlaceholder(/digite o nome da organização/i).fill(`Organização Base Fazenda ${Date.now()}`);
+      await page.getByPlaceholder(/organizacao@exemplo\.com/i).fill(`fazenda-e2e-${Date.now()}@teste.com`);
       await page.locator('input[type="tel"]').first().fill('44999641122');
       await page.getByRole('button', { name: /cadastrar/i }).click();
-      await expect(page.getByText(/cliente cadastrado com sucesso/i)).toBeVisible({ timeout: 8000 });
+      await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
       await page.waitForTimeout(2000);
     }
   }

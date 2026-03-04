@@ -109,7 +109,8 @@ GRANT EXECUTE ON FUNCTION public.is_admin() TO anon;
 -- Policies de admin para user_profiles (usa is_admin() com SECURITY DEFINER para evitar recursão)
 -- NOTA: A policy SELECT para admin NÃO usa is_admin() pois causa recursão infinita.
 -- Admins veem seus próprios perfis via "Users can view their own profile".
--- Para ver todos os perfis, o app usa service_role key no servidor.
+-- Para listar todos os perfis, o app chama a RPC get_users_for_admin() (SECURITY DEFINER),
+-- que bypassa RLS sem causar recursão (padrão idêntico a get_analysts_for_admin).
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_profiles' AND policyname = 'Admins can update user profiles') THEN
     CREATE POLICY "Admins can update user profiles" ON public.user_profiles FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());

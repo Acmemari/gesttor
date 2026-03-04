@@ -172,7 +172,7 @@ export async function listDocuments(
     const documents = (data || []).map(doc => ({
       ...mapDocumentFromDatabase(doc as unknown as DatabaseDocument),
       uploaderName: '—',
-      clientName: (doc as unknown as { clients?: { name?: string } }).clients?.name || 'Cliente',
+      clientName: (doc as unknown as { clients?: { name?: string } }).clients?.name || 'Organização',
     }));
 
     return { documents };

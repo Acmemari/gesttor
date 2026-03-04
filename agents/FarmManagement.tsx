@@ -627,8 +627,8 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     if (!editingFarm && !selectedClient) {
       const isAwaitingClients = !loadingClientsAvailability && (availableClientsCount ?? 0) === 0;
       newErrors.client = isAwaitingClients
-        ? 'Aguardando cadastro de clientes para liberar o cadastro de fazendas.'
-        : 'É necessário selecionar um cliente antes de cadastrar uma fazenda';
+        ? 'Aguardando cadastro de organizações para liberar o cadastro de fazendas.'
+        : 'É necessário selecionar uma organização antes de cadastrar uma fazenda';
     }
 
     // Validar se o cliente está vinculado ao analista
@@ -637,7 +637,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
       if (user && (user.qualification === 'analista' || user.role === 'admin')) {
         // Verificar se o cliente pertence ao analista logado
         if (user.role !== 'admin' && selectedClient.analystId !== user.id) {
-          newErrors.client = 'O cliente selecionado não está vinculado ao seu perfil de analista';
+          newErrors.client = 'A organização selecionada não está vinculada ao seu perfil de analista';
         }
       }
     }
@@ -769,15 +769,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     // Validação adicional: não permitir criar fazenda sem cliente
     if (!editingFarm && !selectedClient) {
       const isAwaitingClients = !loadingClientsAvailability && (availableClientsCount ?? 0) === 0;
-      const waitingMessage = 'Aguardando cadastro de clientes para liberar o cadastro de fazendas';
+      const waitingMessage = 'Aguardando cadastro de organizações para liberar o cadastro de fazendas';
       onToast?.(
-        isAwaitingClients ? waitingMessage : 'Por favor, selecione um cliente antes de cadastrar uma fazenda',
+        isAwaitingClients ? waitingMessage : 'Por favor, selecione uma organização antes de cadastrar uma fazenda',
         'error',
       );
       setErrors({
         client: isAwaitingClients
           ? `${waitingMessage}.`
-          : 'É necessário selecionar um cliente antes de cadastrar uma fazenda',
+          : 'É necessário selecionar uma organização antes de cadastrar uma fazenda',
       });
       return;
     }
@@ -785,8 +785,8 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     // Verificar se o cliente está vinculado ao analista
     if (!editingFarm && selectedClient && user) {
       if (user.role !== 'admin' && selectedClient.analystId !== user.id) {
-        onToast?.('O cliente selecionado não está vinculado ao seu perfil de analista', 'error');
-        setErrors({ client: 'O cliente selecionado não está vinculado ao seu perfil de analista' });
+        onToast?.('A organização selecionada não está vinculada ao seu perfil de analista', 'error');
+        setErrors({ client: 'A organização selecionada não está vinculada ao seu perfil de analista' });
         return;
       }
     }
@@ -853,7 +853,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     // Para novas fazendas, sempre deve haver cliente selecionado (já validado acima)
     if (!editingFarm) {
       if (!selectedClient) {
-        onToast?.('Erro: Cliente não selecionado. A fazenda não foi cadastrada.', 'error');
+        onToast?.('Erro: Organização não selecionada. A fazenda não foi cadastrada.', 'error');
         return;
       }
 
@@ -1153,16 +1153,16 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                   <span className="text-yellow-600 font-semibold">⚠️ Atenção:</span>
                   <div className="flex-1">
                     {loadingClientsAvailability ? (
-                      <p className="text-sm text-yellow-800">Verificando clientes cadastrados...</p>
+                      <p className="text-sm text-yellow-800">Verificando organizações cadastradas...</p>
                     ) : (availableClientsCount ?? 0) === 0 ? (
                       <p className="text-sm text-yellow-800">
-                        Aguardando cadastro de clientes. Cadastre um cliente em Cadastro de Clientes para liberar o
+                        Aguardando cadastro de organizações. Cadastre uma organização em Cadastro de Organizações para liberar o
                         cadastro de fazendas.
                       </p>
                     ) : (
                       <p className="text-sm text-yellow-800">
-                        É necessário selecionar um cliente antes de cadastrar uma fazenda. Por favor, selecione um
-                        cliente no cabeçalho da aplicação.
+                        É necessário selecionar uma organização antes de cadastrar uma fazenda. Por favor, selecione uma
+                        organização no cabeçalho da aplicação.
                       </p>
                     )}
                     {errors.client && <p className="text-red-600 text-sm mt-1 font-medium">{errors.client}</p>}
@@ -1686,7 +1686,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
             type="submit"
             disabled={formReadOnly || (!editingFarm && !selectedClient)}
             className="flex-1 px-4 py-2 text-sm bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={!editingFarm && !selectedClient ? 'Selecione um cliente antes de cadastrar uma fazenda' : ''}
+            title={!editingFarm && !selectedClient ? 'Selecione uma organização antes de cadastrar uma fazenda' : ''}
           >
             <CheckCircle2 size={16} />
             {editingFarm ? 'Atualizar Fazenda' : 'Cadastrar Fazenda'}

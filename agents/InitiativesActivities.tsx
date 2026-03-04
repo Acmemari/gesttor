@@ -267,8 +267,8 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
     if (!canCreate) {
       onToast?.(
         isAdmin
-          ? 'Selecione um Analista e um Cliente antes de criar uma iniciativa.'
-          : 'Selecione um Cliente antes de criar uma iniciativa.',
+          ? 'Selecione um Analista e uma Organização antes de criar uma iniciativa.'
+          : 'Selecione uma Organização antes de criar uma iniciativa.',
         'warning',
       );
       return;
@@ -1525,23 +1525,23 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
                 <label className="sr-only" htmlFor="period-start">
                   Data inicial do período
                 </label>
-                <input
+                <DateInputBR
                   id="period-start"
-                  type="date"
                   value={periodStart}
-                  onChange={e => applyCustomRange(e.target.value, periodEnd)}
-                  className="h-7 px-2 text-xs border border-ai-border rounded-md bg-ai-surface text-ai-text focus:outline-none focus:ring-1 focus:ring-ai-accent"
+                  onChange={v => applyCustomRange(v, periodEnd)}
+                  className="w-[130px]"
+                  placeholder="dd/mm/aaaa"
                 />
                 <span className="text-xs text-ai-subtext">–</span>
                 <label className="sr-only" htmlFor="period-end">
                   Data final do período
                 </label>
-                <input
+                <DateInputBR
                   id="period-end"
-                  type="date"
                   value={periodEnd}
-                  onChange={e => applyCustomRange(periodStart, e.target.value)}
-                  className="h-7 px-2 text-xs border border-ai-border rounded-md bg-ai-surface text-ai-text focus:outline-none focus:ring-1 focus:ring-ai-accent"
+                  onChange={v => applyCustomRange(periodStart, v)}
+                  className="w-[130px]"
+                  placeholder="dd/mm/aaaa"
                 />
                 {hasPeriodActive && (
                   <button
@@ -1720,8 +1720,8 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
               title={
                 !canCreate
                   ? isAdmin
-                    ? 'Selecione um Analista e Cliente no cabeçalho'
-                    : 'Selecione um Cliente no cabeçalho'
+                    ? 'Selecione um Analista e uma Organização no cabeçalho'
+                    : 'Selecione uma Organização no cabeçalho'
                   : undefined
               }
               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-ai-text text-white text-xs font-semibold hover:opacity-90 transition-opacity shrink-0 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1747,7 +1747,7 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
           <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <AlertTriangle size={20} className="text-blue-600 shrink-0" />
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              Exibindo todas as iniciativas do analista. Selecione um <strong>Cliente</strong> para filtrar.
+              Exibindo todas as iniciativas do analista. Selecione uma <strong>Organização</strong> para filtrar.
             </p>
           </div>
         )}
@@ -1764,8 +1764,8 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
               {canCreate
                 ? 'Crie sua primeira iniciativa para acompanhar marcos, entregas e progresso.'
                 : isAdmin
-                  ? 'Selecione um Analista e um Cliente no cabeçalho para criar uma iniciativa.'
-                  : 'Selecione um Cliente no cabeçalho para criar uma iniciativa.'}
+                  ? 'Selecione um Analista e uma Organização no cabeçalho para criar uma iniciativa.'
+                  : 'Selecione uma Organização no cabeçalho para criar uma iniciativa.'}
             </p>
             {canCreate && (
               <button
@@ -1945,7 +1945,7 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
                     )}
                     {selectedClient && (
                       <p>
-                        <strong>Cliente:</strong> {selectedClient.name}
+                        <strong>Organização:</strong> {selectedClient.name}
                       </p>
                     )}
                     {selectedFarm && (

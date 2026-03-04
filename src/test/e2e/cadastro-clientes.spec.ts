@@ -45,15 +45,15 @@ test.describe('Cadastro de Clientes', () => {
     await clientesCard.click();
     await page.waitForTimeout(500);
 
-    const novoBtn = page.getByRole('button', { name: /novo cliente|cadastrar primeiro cliente/i });
+    const novoBtn = page.getByRole('button', { name: /nova organização|cadastrar primeira organização/i });
     await novoBtn.click({ timeout: 8000 });
 
-    const nomeInput = page.getByPlaceholder(/digite o nome do cliente/i);
+    const nomeInput = page.getByPlaceholder(/digite o nome da organização/i);
     await expect(nomeInput).toBeVisible({ timeout: 5000 });
-    const nomeCliente = `Cliente E2E ${Date.now()}`;
+    const nomeCliente = `Organização E2E ${Date.now()}`;
     await nomeInput.fill(nomeCliente);
 
-    const emailInput = page.getByPlaceholder(/cliente@exemplo\.com/i);
+    const emailInput = page.getByPlaceholder(/organizacao@exemplo\.com/i);
     await emailInput.fill(`e2e-${Date.now()}@teste.com`);
 
     const phoneInput = page.locator('input[type="tel"]').first();
@@ -62,7 +62,7 @@ test.describe('Cadastro de Clientes', () => {
     const submitBtn = page.getByRole('button', { name: /cadastrar/i });
     await submitBtn.click();
 
-    await expect(page.getByText(/cliente cadastrado com sucesso/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(nomeCliente)).toBeVisible({ timeout: 5000 });
   });
 
@@ -86,9 +86,9 @@ test.describe('Cadastro de Clientes', () => {
     }
     await editBtn.click();
 
-    const nomeInput = page.getByPlaceholder(/digite o nome do cliente/i);
+    const nomeInput = page.getByPlaceholder(/digite o nome da organização/i);
     await expect(nomeInput).toBeVisible({ timeout: 5000 });
-    const nomeAtualizado = `Cliente Editado E2E ${Date.now()}`;
+    const nomeAtualizado = `Organização Editada E2E ${Date.now()}`;
     await nomeInput.clear();
     await nomeInput.fill(nomeAtualizado);
 
@@ -113,7 +113,7 @@ test.describe('Cadastro de Clientes', () => {
     await clientesCard.click();
     await page.waitForTimeout(1500);
 
-    const deleteBtn = page.getByTitle(/excluir cliente/i).first();
+    const deleteBtn = page.getByTitle(/excluir organização/i).first();
     if (!(await deleteBtn.isVisible({ timeout: 3000 }))) {
       test.skip(true, 'Nenhum cliente para excluir');
       return;
@@ -132,8 +132,8 @@ test.describe('Cadastro de Clientes', () => {
     page.on('dialog', d => d.accept());
 
     const sufixo = Date.now();
-    const nomeCriado = `Cliente Fluxo E2E ${sufixo}`;
-    const nomeEditado = `Cliente Fluxo Editado ${sufixo}`;
+    const nomeCriado = `Organização Fluxo E2E ${sufixo}`;
+    const nomeEditado = `Organização Fluxo Editada ${sufixo}`;
 
     await page.getByRole('button', { name: /cadastros/i }).click();
     await page.waitForTimeout(500);
@@ -146,15 +146,15 @@ test.describe('Cadastro de Clientes', () => {
     await page.waitForTimeout(800);
 
     // 1. Inclusão
-    const novoBtn = page.getByRole('button', { name: /novo cliente|cadastrar primeiro cliente/i });
+    const novoBtn = page.getByRole('button', { name: /nova organização|cadastrar primeira organização/i });
     await novoBtn.click({ timeout: 8000 });
 
-    await page.getByPlaceholder(/digite o nome do cliente/i).fill(nomeCriado);
-    await page.getByPlaceholder(/cliente@exemplo\.com/i).fill(`fluxo-${sufixo}@teste.com`);
+    await page.getByPlaceholder(/digite o nome da organização/i).fill(nomeCriado);
+    await page.getByPlaceholder(/organizacao@exemplo\.com/i).fill(`fluxo-${sufixo}@teste.com`);
     await page.locator('input[type="tel"]').first().fill('44999641122');
     await page.getByRole('button', { name: /cadastrar/i }).click();
 
-    await expect(page.getByText(/cliente cadastrado com sucesso/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(nomeCriado)).toBeVisible({ timeout: 5000 });
 
     // 2. Alteração
@@ -164,17 +164,17 @@ test.describe('Cadastro de Clientes', () => {
       .click();
     await page.waitForTimeout(500);
 
-    const nomeInput = page.getByPlaceholder(/digite o nome do cliente/i);
+    const nomeInput = page.getByPlaceholder(/digite o nome da organização/i);
     await nomeInput.clear();
     await nomeInput.fill(nomeEditado);
     await page.getByRole('button', { name: /atualizar/i }).click();
 
-    await expect(page.getByText(/cliente atualizado com sucesso/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/organização atualizada com sucesso/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(nomeEditado)).toBeVisible({ timeout: 5000 });
 
     // 3. Exclusão
     await page
-      .getByTitle(/excluir cliente/i)
+      .getByTitle(/excluir organização/i)
       .first()
       .click();
 
@@ -205,14 +205,14 @@ test.describe('Cadastro de Clientes', () => {
     if (!(await firstEditButton.isVisible({ timeout: 3000 }))) {
       const sufixoCliente = Date.now();
       await page
-        .getByRole('button', { name: /novo cliente|cadastrar primeiro cliente/i })
+        .getByRole('button', { name: /nova organização|cadastrar primeira organização/i })
         .first()
         .click({ timeout: 8000 });
-      await page.getByPlaceholder(/digite o nome do cliente/i).fill(`Cliente Base Gestor ${sufixoCliente}`);
-      await page.getByPlaceholder(/cliente@exemplo\.com/i).fill(`cliente-base-${sufixoCliente}@teste.com`);
+      await page.getByPlaceholder(/digite o nome da organização/i).fill(`Organização Base Gestor ${sufixoCliente}`);
+      await page.getByPlaceholder(/organizacao@exemplo\.com/i).fill(`org-base-${sufixoCliente}@teste.com`);
       await page.locator('input[type="tel"]').first().fill('44999641122');
       await page.getByRole('button', { name: /cadastrar/i }).click();
-      await expect(page.getByText(/cliente cadastrado com sucesso/i)).toBeVisible({ timeout: 8000 });
+      await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     }
 
     const targetClientName = (await page.locator('tbody tr').first().locator('td').first().innerText()).trim();
@@ -251,6 +251,6 @@ test.describe('Cadastro de Clientes', () => {
 
     // Salva o cliente ao final do fluxo validado na tela
     await page.getByRole('button', { name: /atualizar/i }).click();
-    await expect(page.getByText(/cliente atualizado com sucesso/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/organização atualizada com sucesso/i)).toBeVisible({ timeout: 8000 });
   });
 });

@@ -30,6 +30,7 @@ const PERSON_TYPES = [
 const JOB_ROLES = [
   'Auxiliar de Escritório',
   'Campeiro',
+  'Capataz de Gado',
   'Capataz de Máquinas',
   'Carpinteiro',
   'Cerqueiro',
@@ -37,7 +38,7 @@ const JOB_ROLES = [
   'Controlador Fazenda',
   'Cozinheira/limpeza',
   'Encarregado Adm Geral',
-  'Gerente de Operação',
+  'Gerente de op. Pecuária',
   'Gerente Financeiro',
   'Gerente Geral',
   'Mecânico',
@@ -335,11 +336,11 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       };
 
       if (editing) {
-        let photoUrl = editing.photo_url;
+        let photoUrl: string | null = formData.photo_url || null;
         if (photoFile) {
           photoUrl = await uploadPersonPhoto(user!.id, editing.id, photoFile);
         }
-        await updatePerson(editing.id, { ...payload, photo_url: photoUrl ?? undefined });
+        await updatePerson(editing.id, { ...payload, photo_url: photoUrl });
         onToast?.('Pessoa atualizada com sucesso.', 'success');
       } else {
         const created = await createPerson(creatorId, payload);
@@ -527,6 +528,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                         onClick={() => {
                           setPhotoFile(null);
                           setPhotoPreview(null);
+                          setFormData(f => ({ ...f, photo_url: '' }));
                         }}
                         className="text-sm text-ai-subtext hover:text-red-500 text-left"
                       >
