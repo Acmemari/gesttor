@@ -319,13 +319,18 @@ const AdminDashboard: React.FC = () => {
         throw error;
       }
 
-      console.log('[AdminDashboard] Update successful:', updateData);
+      console.log('[AdminDashboard] Update result:', updateData);
 
-      // Verificar se o update retornou dados
-      if (updateData && updateData.length > 0) {
-        console.log('[AdminDashboard] Updated qualification:', updateData[0].qualification);
-        console.log('[AdminDashboard] Updated status:', updateData[0].status);
+      // Se nenhuma linha foi atualizada, a policy RLS bloqueou o UPDATE silenciosamente
+      if (!updateData || updateData.length === 0) {
+        throw new Error(
+          'Nenhuma alteração foi aplicada no banco. ' +
+          'Verifique se a política de permissão de admin está ativa em user_profiles.',
+        );
       }
+
+      console.log('[AdminDashboard] Updated qualification:', updateData[0].qualification);
+      console.log('[AdminDashboard] Updated status:', updateData[0].status);
 
       // Recarregar dados do banco para garantir sincronização
       await loadClients();
