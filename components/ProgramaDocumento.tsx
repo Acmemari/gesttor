@@ -113,7 +113,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
 
   useEffect(() => {
     let active = true;
-    fetchPeople(effectiveUserId, selectedFarmId ? { farmId: selectedFarmId } : undefined)
+    fetchPeople(effectiveUserId, selectedFarmId ? { farmId: selectedFarmId, sharedScope: true } : undefined)
       .then(rows => {
         if (active && mountedRef.current) setPeople(rows);
       })

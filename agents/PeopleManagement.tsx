@@ -100,6 +100,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const CROP_SIZE = 280;
 
   const isAdmin = user?.role === 'admin';
+  const isCliente = user?.qualification === 'cliente';
   const effectiveUserId = useMemo(
     () => (isAdmin && selectedAnalyst ? selectedAnalyst.id : user?.id),
     [isAdmin, selectedAnalyst, user?.id],
@@ -116,19 +117,34 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   }, []);
 
   const loadPeople = useCallback(async () => {
-    if (!effectiveUserId) return;
+    if (!effectiveUserId && !isCliente) return;
     setLoading(true);
     try {
-      const filters = selectedFarm?.id ? { farmId: selectedFarm.id } : undefined;
-      const list = await fetchPeople(effectiveUserId, filters);
-      setPeople(list);
+      // Se há fazenda selecionada, busca por farm_id (escopo compartilhado).
+      // A policy RLS garante que só quem tem acesso à fazenda recebe os dados.
+      // Para cliente sem fazenda selecionada, não há como listar sem farm_id.
+      const farmId = selectedFarm?.id;
+      if (farmId) {
+        const list = await fetchPeople(effectiveUserId ?? user?.id ?? '', {
+          farmId,
+          sharedScope: true,
+        });
+        setPeople(list);
+      } else if (!isCliente) {
+        // Analista/admin sem fazenda selecionada: lista apenas os próprios cadastros
+        const list = await fetchPeople(effectiveUserId ?? '', undefined);
+        setPeople(list);
+      } else {
+        // Cliente sem fazenda selecionada ainda: lista vazia
+        setPeople([]);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erro ao carregar pessoas';
       onToast?.(msg, 'error');
     } finally {
       setLoading(false);
     }
-  }, [effectiveUserId, selectedFarm?.id, onToast]);
+  }, [effectiveUserId, isCliente, selectedFarm?.id, user?.id, onToast]);
 
   useEffect(() => {
     loadPeople();

@@ -497,7 +497,9 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
     try {
       const [editData, peopleList] = await Promise.all([
         fetchInitiativeForEdit(init.id),
-        effectiveUserId ? fetchPeople(effectiveUserId) : Promise.resolve([]),
+        effectiveUserId
+          ? fetchPeople(effectiveUserId, selectedFarm?.id ? { farmId: selectedFarm.id, sharedScope: true } : undefined)
+          : Promise.resolve([]),
       ]);
       const { initiative, team, milestones } = editData;
       const leaderId = peopleList.find(p => personDisplayName(p) === (initiative.leader || '').trim())?.id || '';
@@ -650,7 +652,9 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
       setPeople([]);
       return;
     }
-    const filters = selectedFarm?.id ? { farmId: selectedFarm.id } : undefined;
+    const filters = selectedFarm?.id
+      ? { farmId: selectedFarm.id, sharedScope: true }
+      : undefined;
     fetchPeople(effectiveUserId, filters)
       .then(setPeople)
       .catch(err => {

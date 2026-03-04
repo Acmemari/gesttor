@@ -44,6 +44,12 @@ export type PersonFormData = Omit<Person, 'id' | 'created_by' | 'created_at' | '
 
 export interface FetchPeopleFilters {
   farmId?: string;
+  /**
+   * Quando true, busca por farm_id sem filtrar por created_by.
+   * Usado por analistas/clientes que precisam ver registros da fazenda
+   * independentemente de quem criou cada pessoa.
+   */
+  sharedScope?: boolean;
 }
 
 /** Tipos de pessoa para Responsável (consultoria): Co-Gestor, Consultor, Analista */
@@ -80,6 +86,22 @@ function validatePersonId(id: string): void {
 
 export async function fetchPeople(userId: string, filters?: FetchPeopleFilters): Promise<Person[]> {
   validateUserId(userId);
+
+  // No sharedScope (fazenda selecionada), busca por farm_id sem filtrar por created_by.
+  // A policy RLS garante que apenas usuários com acesso à fazenda (analyst_farms ou client_id)
+  // recebam os dados. Fallback para created_by quando não há fazenda selecionada.
+  if (filters?.sharedScope && filters.farmId?.trim()) {
+    const { data, error } = await supabase
+      .from('people')
+      .select('*')
+      .eq('farm_id', filters.farmId)
+      .order('full_name', { ascending: true });
+    if (error) {
+      log.error('fetchPeople (sharedScope) failed', new Error(error.message));
+      throw error;
+    }
+    return (data || []) as Person[];
+  }
 
   let q = supabase.from('people').select('*').eq('created_by', userId).order('full_name', { ascending: true });
 

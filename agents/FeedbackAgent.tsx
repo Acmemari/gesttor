@@ -122,7 +122,7 @@ const FeedbackAgent: React.FC<FeedbackAgentProps> = ({ onToast }) => {
       }
       setLoadingPeople(true);
       try {
-        const list = await fetchPeople(user.id, { farmId: selectedFarm.id });
+        const list = await fetchPeople(user.id, { farmId: selectedFarm.id, sharedScope: true });
         setPeople(list);
       } catch (e) {
         console.error('[FeedbackAgent] Erro ao carregar pessoas:', e);
