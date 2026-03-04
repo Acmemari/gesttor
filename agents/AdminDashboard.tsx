@@ -292,7 +292,8 @@ const AdminDashboard: React.FC = () => {
       const updatePayload: any = {
         qualification: editingClientData.qualification,
         status: editingClientData.status,
-        updated_at: new Date().toISOString(),
+        organization_id: null,
+        client_id: null,
       };
 
       // Se for visitante, remover vínculo com empresa e organização
@@ -308,11 +309,13 @@ const AdminDashboard: React.FC = () => {
         updatePayload.client_id = editingClientData.clientId || null;
       }
 
-      const { data: updateData, error } = await supabase
-        .from('user_profiles')
-        .update(updatePayload)
-        .eq('id', editingClientId)
-        .select('id, qualification, status, organization_id');
+      const { data: updateData, error } = await supabase.rpc('admin_update_user_profile', {
+        p_user_id: editingClientId,
+        p_qualification: updatePayload.qualification,
+        p_status: updatePayload.status,
+        p_organization_id: updatePayload.organization_id,
+        p_client_id: updatePayload.client_id,
+      });
 
       if (error) {
         console.error('[AdminDashboard] Update error:', error);
@@ -321,11 +324,11 @@ const AdminDashboard: React.FC = () => {
 
       console.log('[AdminDashboard] Update result:', updateData);
 
-      // Se nenhuma linha foi atualizada, a policy RLS bloqueou o UPDATE silenciosamente
+      // Se nenhuma linha foi atualizada, algo bloqueou o update (permissão/dados inválidos)
       if (!updateData || updateData.length === 0) {
         throw new Error(
           'Nenhuma alteração foi aplicada no banco. ' +
-          'Verifique se a política de permissão de admin está ativa em user_profiles.',
+          'Verifique permissões de admin e se as migrations mais recentes foram aplicadas.',
         );
       }
 
