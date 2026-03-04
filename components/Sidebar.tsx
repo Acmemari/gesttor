@@ -368,7 +368,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               })}
 
             {/* Área Certificados - último item (oculto para cliente) */}
-            {user?.role !== 'client' && (
+            {(user?.role === 'admin' || user?.qualification === 'analista') && (
               <button
                 onClick={() => onSelectAgent('area-certificados')}
                 className={`
