@@ -27,6 +27,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('columns');
 
   const isAdmin = user?.role === 'admin';
+  const isCliente = user?.qualification === 'cliente';
   const effectiveUserId = useMemo(
     () => (isAdmin && selectedAnalyst ? selectedAnalyst.id : user?.id),
     [isAdmin, selectedAnalyst, user?.id],
@@ -100,7 +101,20 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
     );
   }
 
-  if (!effectiveUserId) {
+  if (isCliente && !selectedClient) {
+    return (
+      <div className="h-full flex items-center justify-center p-8">
+        <div className="max-w-xl w-full rounded-xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">
+            Selecione uma <strong>Fazenda</strong> no cabeçalho para visualizar os programas.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!effectiveUserId && !isCliente) {
     return (
       <div className="h-full flex items-center justify-center p-8">
         <p className="text-sm text-ai-subtext">Selecione um usuário para continuar.</p>
@@ -189,25 +203,28 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
       </header>
       {viewMode === 'columns' && (
         <ProgramaWorkbench
-          effectiveUserId={effectiveUserId}
+          effectiveUserId={effectiveUserId ?? ''}
           selectedClientId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
+          readonly={isCliente}
           onToast={onToast}
         />
       )}
       {viewMode === 'mindmap' && (
         <EAPMindMap
-          effectiveUserId={effectiveUserId}
+          effectiveUserId={effectiveUserId ?? ''}
           selectedClientId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
+          readonly={isCliente}
           onToast={onToast}
         />
       )}
       {viewMode === 'document' && (
         <ProgramaDocumento
-          effectiveUserId={effectiveUserId}
+          effectiveUserId={effectiveUserId ?? ''}
           selectedClientId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
+          readonly={isCliente}
           onToast={onToast}
         />
       )}

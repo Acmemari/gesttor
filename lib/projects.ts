@@ -35,6 +35,8 @@ export interface ProjectPayload {
 
 export interface FetchProjectsFilters {
   clientId?: string;
+  /** Quando presente, busca projetos vinculados ao client_id sem filtrar por created_by (modo cliente). */
+  clientMode?: boolean;
 }
 
 const MAX_NAME_LENGTH = 300;
@@ -126,6 +128,19 @@ function validatePayload(payload: ProjectPayload): void {
 }
 
 export async function fetchProjects(createdBy: string, filters?: FetchProjectsFilters): Promise<ProjectRow[]> {
+  // No clientMode, cliente lê projetos da própria organização sem filtro por created_by.
+  // A policy RLS "Clientes podem ver programas da sua organizacao" restringe o escopo no banco.
+  if (filters?.clientMode && filters.clientId?.trim()) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('client_id', filters.clientId)
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+    if (error) throw new Error(error.message || 'Erro ao carregar projetos.');
+    return (data || []).map(mapProjectRow);
+  }
+
   validateUserId(createdBy);
   let q = supabase
     .from('projects')

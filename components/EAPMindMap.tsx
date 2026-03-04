@@ -91,6 +91,8 @@ interface EAPMindMapProps {
   effectiveUserId: string;
   selectedClientId?: string | null;
   selectedFarmId?: string | null;
+  /** Quando true, desabilita mutações (modo visualização para cliente). */
+  readonly?: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -99,7 +101,7 @@ function getRawIdFromNodeId(nodeId: string): string {
   return parts.length >= 2 ? parts.slice(1).join('-') : nodeId;
 }
 
-const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedClientId, selectedFarmId, onToast }) => {
+const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedClientId, selectedFarmId, readonly = false, onToast }) => {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -381,11 +383,11 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
 
   const nodeActions = useMemo(
     () => ({
-      onAdd: openCreate,
-      onEdit: openEdit,
-      onDelete: openDelete,
+      onAdd: readonly ? undefined : openCreate,
+      onEdit: readonly ? undefined : openEdit,
+      onDelete: readonly ? undefined : openDelete,
     }),
-    [openCreate, openEdit, openDelete],
+    [readonly, openCreate, openEdit, openDelete],
   );
 
   const saveProgram = useCallback(async () => {
@@ -714,17 +716,19 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
       <>
         <div className="flex flex-col items-center justify-center h-96 gap-4 rounded-xl border border-ai-border bg-ai-bg">
           <p className="text-sm text-ai-subtext">Nenhum programa cadastrado.</p>
-          <button
-            type="button"
-            onClick={() => {
-              setModalEntity('program');
-              setModalMode('create');
-              setProgramForm(INITIAL_PROGRAM_FORM);
-            }}
-            className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-4 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
-          >
-            Novo Programa
-          </button>
+          {!readonly && (
+            <button
+              type="button"
+              onClick={() => {
+                setModalEntity('program');
+                setModalMode('create');
+                setProgramForm(INITIAL_PROGRAM_FORM);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-4 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
+            >
+              Novo Programa
+            </button>
+          )}
         </div>
         {modalEntity === 'program' && (
           <ProgramModal
@@ -769,17 +773,19 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
             }
           />
           <Panel position="top-right" className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setModalEntity('program');
-                setModalMode('create');
-                setProgramForm(INITIAL_PROGRAM_FORM);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-3 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
-            >
-              Novo Programa
-            </button>
+            {!readonly && (
+              <button
+                type="button"
+                onClick={() => {
+                  setModalEntity('program');
+                  setModalMode('create');
+                  setProgramForm(INITIAL_PROGRAM_FORM);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-3 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
+              >
+                Novo Programa
+              </button>
+            )}
             <button
               type="button"
               onClick={loadTree}

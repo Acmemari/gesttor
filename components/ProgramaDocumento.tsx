@@ -28,6 +28,8 @@ interface ProgramaDocumentoProps {
   effectiveUserId: string;
   selectedClientId?: string | null;
   selectedFarmId?: string | null;
+  /** Quando true, desabilita mutações (modo visualização para cliente). */
+  readonly?: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -50,6 +52,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
   effectiveUserId,
   selectedClientId,
   selectedFarmId,
+  readonly = false,
   onToast,
 }) => {
   const mountedRef = useRef(true);
@@ -476,7 +479,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-sm text-ai-subtext">Nenhum programa cadastrado.</p>
-        <button
+        {!readonly && <button
           type="button"
           onClick={async () => {
             setSaving(true);
@@ -498,7 +501,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         >
           <Plus size={14} />
           Criar primeiro programa
-        </button>
+        </button>}
       </div>
     );
   }
@@ -690,15 +693,17 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                 <Package size={18} className="text-blue-500" />
                 ENTREGAS
               </h2>
-              <button
-                type="button"
-                onClick={addDelivery}
-                disabled={saving || !selectedProgramId}
-                className="inline-flex items-center gap-1 text-sm text-ai-accent hover:underline disabled:opacity-50"
-              >
-                <Plus size={14} />
-                Adicionar Entrega
-              </button>
+              {!readonly && (
+                <button
+                  type="button"
+                  onClick={addDelivery}
+                  disabled={saving || !selectedProgramId}
+                  className="inline-flex items-center gap-1 text-sm text-ai-accent hover:underline disabled:opacity-50"
+                >
+                  <Plus size={14} />
+                  Adicionar Entrega
+                </button>
+              )}
             </div>
 
             {(selectedProgram?.children ?? []).map(delNode => {
@@ -757,15 +762,17 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                           <Layers size={14} className="text-emerald-500" />
                           Atividades
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => addActivity(del.id)}
-                          disabled={saving}
-                          className="text-xs text-ai-accent hover:underline flex items-center gap-1"
-                        >
-                          <Plus size={12} />
-                          Nova Atividade
-                        </button>
+                        {!readonly && (
+                          <button
+                            type="button"
+                            onClick={() => addActivity(del.id)}
+                            disabled={saving}
+                            className="text-xs text-ai-accent hover:underline flex items-center gap-1"
+                          >
+                            <Plus size={12} />
+                            Nova Atividade
+                          </button>
+                        )}
                       </div>
                       <div className="pl-4 space-y-4 border-l-2 border-emerald-200">
                         {delNode.children.map(actNode => {
@@ -828,15 +835,17 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                                       <CheckSquare size={12} className="text-amber-500" />
                                       Tarefas
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => addTask(act.id)}
-                                      disabled={saving}
-                                      className="text-xs text-ai-accent hover:underline flex items-center gap-1"
-                                    >
-                                      <Plus size={12} />
-                                      Nova Tarefa
-                                    </button>
+                                    {!readonly && (
+                                      <button
+                                        type="button"
+                                        onClick={() => addTask(act.id)}
+                                        disabled={saving}
+                                        className="text-xs text-ai-accent hover:underline flex items-center gap-1"
+                                      >
+                                        <Plus size={12} />
+                                        Nova Tarefa
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="space-y-3">
                                     {actNode.children.map(taskNode => {

@@ -43,6 +43,8 @@ interface ProgramaWorkbenchProps {
   effectiveUserId: string;
   selectedClientId?: string | null;
   selectedFarmId?: string | null;
+  /** Quando true, desabilita criação/edição/exclusão (modo visualização para cliente). */
+  readonly?: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -112,6 +114,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   effectiveUserId,
   selectedClientId,
   selectedFarmId,
+  readonly = false,
   onToast,
 }) => {
   const mountedRef = useRef(true);
@@ -160,7 +163,13 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   const [activityForm, setActivityForm] = useState<ActivityFormState>(INITIAL_ACTIVITY_FORM);
   const [taskForm, setTaskForm] = useState<TaskFormState>(INITIAL_TASK_FORM);
 
-  const filters = useMemo(() => (selectedClientId ? { clientId: selectedClientId } : undefined), [selectedClientId]);
+  const filters = useMemo(
+    () =>
+      selectedClientId
+        ? { clientId: selectedClientId, clientMode: readonly }
+        : undefined,
+    [selectedClientId, readonly],
+  );
 
   // ── Cascade data loading ───────────────────────────────────────────────
 
@@ -1107,10 +1116,16 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ai-subtext">
-        Cadastre o <strong>Programa</strong>, depois a <strong>Entrega</strong>, em seguida as{' '}
-        <strong>Atividades</strong> e por fim as <strong>Tarefas</strong>.
-      </p>
+      {readonly ? (
+        <p className="text-sm text-ai-subtext">
+          Visualização do Programa de Trabalho da fazenda selecionada.
+        </p>
+      ) : (
+        <p className="text-sm text-ai-subtext">
+          Cadastre o <strong>Programa</strong>, depois a <strong>Entrega</strong>, em seguida as{' '}
+          <strong>Atividades</strong> e por fim as <strong>Tarefas</strong>.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         <HierarchyColumn
@@ -1122,13 +1137,13 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           accentClassName="bg-indigo-100 text-indigo-900"
           addLabel="Novo"
           loading={loadingProjects}
-          onAdd={() => openCreateModal('program')}
+          onAdd={readonly ? undefined : () => openCreateModal('program')}
           onSelect={selectProgram}
-          onEdit={openEditProgram}
-          onDelete={deleteProgramById}
-          onMoveUp={id => moveProgram(id, -1)}
-          onMoveDown={id => moveProgram(id, 1)}
-          onReorder={reorderPrograms}
+          onEdit={readonly ? undefined : openEditProgram}
+          onDelete={readonly ? undefined : deleteProgramById}
+          onMoveUp={readonly ? undefined : id => moveProgram(id, -1)}
+          onMoveDown={readonly ? undefined : id => moveProgram(id, 1)}
+          onReorder={readonly ? undefined : reorderPrograms}
         />
 
         <HierarchyColumn
@@ -1141,13 +1156,13 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           addLabel="Nova"
           addDisabled={!selectedProgramId}
           loading={loadingDeliveries}
-          onAdd={() => openCreateModal('delivery')}
+          onAdd={readonly ? undefined : () => openCreateModal('delivery')}
           onSelect={selectDelivery}
-          onEdit={openEditDelivery}
-          onDelete={deleteDeliveryById}
-          onMoveUp={id => moveDelivery(id, -1)}
-          onMoveDown={id => moveDelivery(id, 1)}
-          onReorder={reorderDeliveries}
+          onEdit={readonly ? undefined : openEditDelivery}
+          onDelete={readonly ? undefined : deleteDeliveryById}
+          onMoveUp={readonly ? undefined : id => moveDelivery(id, -1)}
+          onMoveDown={readonly ? undefined : id => moveDelivery(id, 1)}
+          onReorder={readonly ? undefined : reorderDeliveries}
         />
 
         <HierarchyColumn
@@ -1160,13 +1175,13 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           addLabel="Nova"
           addDisabled={!selectedDeliveryId}
           loading={loadingActivities}
-          onAdd={() => openCreateModal('activity')}
+          onAdd={readonly ? undefined : () => openCreateModal('activity')}
           onSelect={selectActivity}
-          onEdit={openEditActivity}
-          onDelete={deleteActivityById}
-          onMoveUp={id => moveActivity(id, -1)}
-          onMoveDown={id => moveActivity(id, 1)}
-          onReorder={reorderActivities}
+          onEdit={readonly ? undefined : openEditActivity}
+          onDelete={readonly ? undefined : deleteActivityById}
+          onMoveUp={readonly ? undefined : id => moveActivity(id, -1)}
+          onMoveDown={readonly ? undefined : id => moveActivity(id, 1)}
+          onReorder={readonly ? undefined : reorderActivities}
         />
 
         <HierarchyColumn
@@ -1178,13 +1193,13 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           accentClassName="bg-amber-100 text-amber-900"
           addLabel="Nova"
           addDisabled={!selectedActivityId}
-          onAdd={() => openCreateModal('task')}
+          onAdd={readonly ? undefined : () => openCreateModal('task')}
           onSelect={noopSelect}
-          onEdit={openEditTask}
-          onDelete={deleteTaskById}
-          onMoveUp={id => moveTask(id, -1)}
-          onMoveDown={id => moveTask(id, 1)}
-          onReorder={reorderTasks}
+          onEdit={readonly ? undefined : openEditTask}
+          onDelete={readonly ? undefined : deleteTaskById}
+          onMoveUp={readonly ? undefined : id => moveTask(id, -1)}
+          onMoveDown={readonly ? undefined : id => moveTask(id, 1)}
+          onReorder={readonly ? undefined : reorderTasks}
         />
       </div>
 
