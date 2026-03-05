@@ -31,6 +31,19 @@ export const NO_ACCESS: FarmPermissionsResult = {
   hasAccess: false,
 };
 
+/** Somente leitura (ex.: cliente): pode ver card e formulário, sem editar/excluir. */
+export const VIEW_ONLY: FarmPermissionsResult = {
+  permissions: Object.fromEntries(
+    Object.keys(DEFAULT_PERMISSIONS).map(k => [k, 'view' as PermissionLevel]),
+  ) as Record<string, PermissionLevel>,
+  canView: () => true,
+  canEdit: () => false,
+  isHidden: () => false,
+  isLoading: false,
+  isResponsible: false,
+  hasAccess: true,
+};
+
 /** Estado de carregamento. Referencia estavel. */
 export const LOADING_RESULT: FarmPermissionsResult = {
   permissions: { ...DEFAULT_PERMISSIONS },

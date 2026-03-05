@@ -24,6 +24,7 @@ import {
   useFarmPermissions,
   useBatchFarmPermissions,
   NO_ACCESS,
+  VIEW_ONLY,
   type FarmPermissionsResult,
 } from '../lib/permissions/useFarmPermissions';
 
@@ -45,6 +46,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
   perms,
 }) => {
   if (perms.isHidden('farms:card')) return null;
+  const canViewForm = perms.canView('farms:form');
   const canEdit = perms.canEdit('farms:form');
   const canDelete = perms.canEdit('farms:delete');
   return (
@@ -81,7 +83,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
       <div className="flex flex-wrap gap-2 pt-4 mt-4 border-t border-gray-200">
         <button
           onClick={() => onEdit(farm)}
-          disabled={!canEdit}
+          disabled={!canViewForm}
           className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Edit2 size={14} />
@@ -163,13 +165,18 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [permissionsModalFarm, setPermissionsModalFarm] = useState<Farm | null>(null);
 
+  const isCliente = user?.qualification === 'cliente';
   const formPerms = useFarmPermissions(editingFarm?.id ?? null, user?.id, user?.role);
   const batchPerms = useBatchFarmPermissions(
     farms.map(f => f.id),
     user?.id,
     user?.role,
   );
-  const formReadOnly = editingFarm ? !formPerms.canEdit('farms:form') : false;
+  const effectiveFormPerms = isCliente ? VIEW_ONLY : formPerms;
+  const effectiveBatchPerms = isCliente
+    ? Object.fromEntries(farms.map(f => [f.id, VIEW_ONLY]))
+    : batchPerms;
+  const formReadOnly = isCliente || (editingFarm ? !formPerms.canEdit('farms:form') : false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -577,9 +584,22 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
 
   const loadFarms = async () => {
     try {
-      // Primeiro, tentar carregar do banco de dados (farms vinculadas ao analista/cliente)
+      // Cliente: carregar fazendas da organização (client_id)
+      if (user && isCliente && user.clientId) {
+        const { data: dbFarms, error: dbError } = await supabase
+          .from('farms')
+          .select('*')
+          .eq('client_id', user.clientId)
+          .order('created_at', { ascending: false });
+        if (!dbError && dbFarms && dbFarms.length > 0) {
+          const convertedFarms = mapFarmsFromDatabase(dbFarms);
+          setFarms(convertedFarms);
+          return convertedFarms;
+        }
+      }
+
+      // Analista/admin: carregar do banco
       if (user && (user.qualification === 'analista' || user.role === 'admin')) {
-        // Buscar fazendas do banco que pertencem aos clientes do analista
         const { data: dbFarms, error: dbError } = await supabase
           .from('farms')
           .select('*')
@@ -1072,17 +1092,19 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
         <div className="h-full flex flex-col p-4 md:p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-ai-text">Cadastro de Fazendas</h1>
-            <button
-              onClick={() => {
-                resetForm();
-                setIsCreatingNew(true);
-                setView('form');
-              }}
-              className="px-4 py-2 bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center gap-2"
-            >
-              <Plus size={18} />
-              Nova Fazenda
-            </button>
+            {!isCliente && (
+              <button
+                onClick={() => {
+                  resetForm();
+                  setIsCreatingNew(true);
+                  setView('form');
+                }}
+                className="px-4 py-2 bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center gap-2"
+              >
+                <Plus size={18} />
+                Nova Fazenda
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto content-start">
@@ -1093,8 +1115,8 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onOpenPermissions={setPermissionsModalFarm}
-                canManagePermissions={batchPerms[farm.id]?.isResponsible ?? false}
-                perms={batchPerms[farm.id] ?? NO_ACCESS}
+                canManagePermissions={effectiveBatchPerms[farm.id]?.isResponsible ?? false}
+                perms={effectiveBatchPerms[farm.id] ?? (isCliente ? VIEW_ONLY : NO_ACCESS)}
               />
             ))}
           </div>
@@ -1105,7 +1127,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
             onClose={() => setPermissionsModalFarm(null)}
             farmId={permissionsModalFarm.id}
             farmName={permissionsModalFarm.name}
-            isCurrentUserResponsible={batchPerms[permissionsModalFarm.id]?.isResponsible ?? false}
+            isCurrentUserResponsible={effectiveBatchPerms[permissionsModalFarm.id]?.isResponsible ?? false}
             onToast={onToast}
           />
         )}
