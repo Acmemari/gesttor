@@ -4,7 +4,7 @@ import { Client, Farm, User } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
-import { sanitizeUUID } from '../lib/uuid';
+import { sanitizeUUID, sanitizeId } from '../lib/uuid';
 
 const PAGE_SIZE = 50;
 const HIERARCHY_STORAGE_KEY = 'hierarchySelection.v1';
@@ -130,7 +130,7 @@ function loadInitialPersistedIds(): { analystId: string | null; clientId: string
       return {
         analystId: sanitizeUUID(typeof modern?.analystId === 'string' ? modern.analystId : null),
         clientId: sanitizeUUID(typeof modern?.clientId === 'string' ? modern.clientId : null),
-        farmId: sanitizeUUID(typeof modern?.farmId === 'string' ? modern.farmId : null),
+        farmId: sanitizeId(typeof modern?.farmId === 'string' ? modern.farmId : null),
       };
     }
   } catch {
@@ -139,7 +139,7 @@ function loadInitialPersistedIds(): { analystId: string | null; clientId: string
 
   const analystId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedAnalystId')));
   const clientId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
-  const farmId = sanitizeUUID(
+  const farmId = sanitizeId(
     localStorage.getItem('selectedFarmId') || parseLegacyId(localStorage.getItem('selectedFarm')),
   );
   return { analystId, clientId, farmId };
@@ -660,7 +660,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const current = stateRef.current;
       const sanitizedAnalystId = sanitizeUUID(current.analystId);
       const sanitizedClientId = sanitizeUUID(current.clientId);
-      const sanitizedFarmId = sanitizeUUID(current.farmId);
+      const sanitizedFarmId = sanitizeId(current.farmId);
       if (!sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
 
       const { data, error } = await supabase.rpc('validate_hierarchy', {

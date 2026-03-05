@@ -15,3 +15,10 @@ export function sanitizeUUID(value: string | null | undefined): string | null {
   if (!isValidUUID(value)) return null;
   return (value as string).trim();
 }
+
+/** Aceita qualquer string não-vazia (para IDs TEXT como farm IDs). */
+export function sanitizeId(value: string | null | undefined): string | null {
+  if (value == null || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}

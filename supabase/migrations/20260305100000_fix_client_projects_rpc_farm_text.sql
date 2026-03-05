@@ -2,6 +2,7 @@
 -- Change p_farm_id from UUID to TEXT so client Programa de Trabalho works without cast error.
 
 DROP FUNCTION IF EXISTS public.client_list_projects_by_farm(UUID, UUID);
+DROP FUNCTION IF EXISTS public.client_list_projects_by_farm(UUID, TEXT);
 
 CREATE FUNCTION public.client_list_projects_by_farm(
   p_client_id UUID,
