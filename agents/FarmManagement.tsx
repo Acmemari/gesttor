@@ -10,6 +10,7 @@ import {
   Factory,
   Trash2,
   Edit2,
+  Eye,
   CheckCircle2,
   XCircle,
   Info,
@@ -49,6 +50,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
   const canViewForm = perms.canView('farms:form');
   const canEdit = perms.canEdit('farms:form');
   const canDelete = perms.canEdit('farms:delete');
+  const isViewOnly = canViewForm && !canEdit;
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md hover:border-gray-800 transition-all duration-200 flex flex-col w-full min-h-[200px]">
       <div className="flex-1 min-w-0">
@@ -86,8 +88,8 @@ const FarmCard: React.FC<FarmCardProps> = ({
           disabled={!canViewForm}
           className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Edit2 size={14} />
-          Editar
+          {isViewOnly ? <Eye size={14} /> : <Edit2 size={14} />}
+          {isViewOnly ? 'Visualizar' : 'Editar'}
         </button>
         {canManagePermissions && (
           <button
@@ -1091,7 +1093,12 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
       <>
         <div className="h-full flex flex-col p-4 md:p-6">
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold text-ai-text">Cadastro de Fazendas</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-ai-text">Cadastro de Fazendas</h1>
+              {isCliente && (
+                <p className="text-sm font-medium text-red-600 mt-0.5">Apenas disponível para visualização.</p>
+              )}
+            </div>
             {!isCliente && (
               <button
                 onClick={() => {
