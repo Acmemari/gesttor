@@ -971,7 +971,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
       if (totalMeses > 12) {
         machos13a24 = qtdMachos;
-        tempoMachos13a24 = totalMeses - 12;
+        // Limite de 12 meses na categoria; excedente deve ir para a categoria posterior.
+        tempoMachos13a24 = Math.min(12, totalMeses - 12);
         const peso13 = pesoEmMeses(13);
         const peso24 = Math.min(pesoEmMeses(24), cicloPesoAbate);
         pesoIndividualMachos13a24 = (peso13 + peso24) / 2;
@@ -979,6 +980,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
       if (totalMeses > 24) {
         machos25a36 = qtdMachos;
+        // Recebe o excedente da categoria anterior (13-24).
         tempoMachos25a36 = totalMeses - 24;
         const peso25 = pesoEmMeses(25);
         pesoIndividualMachos25a36 = (peso25 + cicloPesoAbate) / 2;
@@ -2785,6 +2787,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-ai-text">Categoria</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-ai-text">Quantidade (Cabeças)</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-ai-text">Tempo (meses)</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-ai-text">Rebanho médio</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-ai-text">Peso Vivo (kg)</th>
                     </tr>
                   </thead>
@@ -2840,6 +2843,13 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                             </>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                        {averageHerdTable.vacas > 0
+                          ? ((averageHerdTable.vacas * averageHerdTable.tempoVacas) / 12).toLocaleString('pt-BR', {
+                              maximumFractionDigits: 0,
+                            })
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         <div
@@ -2926,6 +2936,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                        {averageHerdTable.bezerrosMamando > 0
+                          ? (
+                              (averageHerdTable.bezerrosMamando * averageHerdTable.tempoBezerros) /
+                              12
+                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                          : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         <div
                           className="flex items-center justify-center gap-1 relative"
                           ref={el => {
@@ -3002,7 +3020,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     </tr>
                     {isWeaningAgeOpen && averageHerdTable.bezerrosMamando > 0 && (
                       <tr className="bg-ai-surface2/30">
-                        <td colSpan={4} className="px-4 py-3">
+                        <td colSpan={5} className="px-4 py-3">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-ai-text">Selecione a idade ao desmame</span>
@@ -3039,6 +3057,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       </td>
                       <td className="px-4 py-3 text-center text-sm text-ai-text">
                         {averageHerdTable.novilhas8a12 > 0 ? averageHerdTable.tempoNovilhas8a12 : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                        {averageHerdTable.novilhas8a12 > 0
+                          ? (
+                              (averageHerdTable.novilhas8a12 * averageHerdTable.tempoNovilhas8a12) /
+                              12
+                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         <div
@@ -3134,6 +3160,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       </td>
                       <td className="px-4 py-3 text-center text-sm text-ai-text">
                         {averageHerdTable.novilhas13a24 > 0 ? averageHerdTable.tempoNovilhas13a24 : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                        {averageHerdTable.novilhas13a24 > 0
+                          ? (
+                              (averageHerdTable.novilhas13a24 * averageHerdTable.tempoNovilhas13a24) /
+                              12
+                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         <div
@@ -3290,6 +3324,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           </td>
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                             {averageHerdTable.machos8a12 > 0
+                              ? (
+                                  (averageHerdTable.machos8a12 * averageHerdTable.tempoMachos8a12) /
+                                  12
+                                ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                              : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos8a12 > 0
                               ? Math.round(averageHerdTable.pesoIndividualMachos8a12).toLocaleString('pt-BR')
                               : '-'}
                           </td>
@@ -3359,6 +3401,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           </td>
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                             {averageHerdTable.machos13a24 > 0
+                              ? (
+                                  (averageHerdTable.machos13a24 * averageHerdTable.tempoMachos13a24) /
+                                  12
+                                ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                              : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                            {averageHerdTable.machos13a24 > 0
                               ? Math.round(averageHerdTable.pesoIndividualMachos13a24).toLocaleString('pt-BR')
                               : '-'}
                           </td>
@@ -3416,6 +3466,12 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                              {(
+                                (averageHerdTable.machos25a36 * averageHerdTable.tempoMachos25a36) /
+                                12
+                              ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                               {Math.round(averageHerdTable.pesoIndividualMachos25a36).toLocaleString('pt-BR')}
                             </td>
                           </tr>
@@ -3442,6 +3498,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       </td>
                       <td className="px-4 py-3 text-center text-sm text-ai-text">
                         {averageHerdTable.touros > 0 ? averageHerdTable.tempoTouros : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
+                        {averageHerdTable.touros > 0
+                          ? (
+                              (averageHerdTable.touros * averageHerdTable.tempoTouros) /
+                              12
+                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         <div
@@ -3494,7 +3558,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     </tr>
                     {isBullCowRatioOpen && (
                       <tr className="bg-ai-surface2/30">
-                        <td colSpan={4} className="px-4 py-3">
+                        <td colSpan={5} className="px-4 py-3">
                           {(() => {
                             const vacas = averageHerdTable.vacas;
                             const totalTouros =
@@ -3567,27 +3631,13 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                   <tfoot className="bg-ai-surface2 border-t-2 border-ai-border">
                     <tr>
                       <td className="px-4 py-3 text-sm text-ai-text font-bold">Total</td>
+                      <td className="px-4 py-3 text-center text-sm font-bold text-ai-text">-</td>
+                      <td className="px-4 py-3 text-center text-sm text-ai-text font-bold">-</td>
                       <td className="px-4 py-3 text-center text-sm font-bold text-ai-text">
-                        {averageHerdTable.vacas +
-                          averageHerdTable.bezerrosMamando +
-                          averageHerdTable.novilhas8a12 +
-                          averageHerdTable.novilhas13a24 +
-                          averageHerdTable.machos8a12 +
-                          averageHerdTable.machos13a24 +
-                          averageHerdTable.machos25a36 +
-                          averageHerdTable.touros >
-                        0
-                          ? averageHerdTable.vacas +
-                            averageHerdTable.bezerrosMamando +
-                            averageHerdTable.novilhas8a12 +
-                            averageHerdTable.novilhas13a24 +
-                            averageHerdTable.machos8a12 +
-                            averageHerdTable.machos13a24 +
-                            averageHerdTable.machos25a36 +
-                            averageHerdTable.touros
+                        {rebanhoMedioCalculado > 0
+                          ? Math.round(rebanhoMedioCalculado).toLocaleString('pt-BR')
                           : '-'}
                       </td>
-                      <td className="px-4 py-3 text-center text-sm text-ai-text font-bold">-</td>
                       <td className="px-4 py-3 text-center text-sm font-bold text-ai-text">
                         {(() => {
                           // Peso Médio Ponderado = Σ(Quantidade × Peso Individual) / Σ(Quantidade)
