@@ -91,12 +91,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const hash = window.location.hash;
         const pathname = window.location.pathname;
 
-        // Se estiver na rota de callback, deixar o AuthCallback gerenciar o redirect
-        if (pathname === '/auth/callback') {
-          log.info('On /auth/callback route, letting AuthCallback handle redirect');
-          return;
-        }
-
         const isResetPasswordPath = pathname === '/reset-password' || pathname.includes('reset-password');
         const hasRecoveryToken =
           hash.includes('type=recovery') || hash.includes('type%3Drecovery') || hash.includes('access_token=');
