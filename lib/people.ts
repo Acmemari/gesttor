@@ -22,6 +22,8 @@ export interface Person {
   main_activities: string | null;
   farm_id: string | null;
   assume_tarefas_fazenda: boolean;
+  pode_alterar_semana_fechada: boolean;
+  pode_apagar_semana: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +42,8 @@ export type PersonFormData = Omit<Person, 'id' | 'created_by' | 'created_at' | '
   main_activities?: string;
   farm_id?: string | null;
   assume_tarefas_fazenda?: boolean;
+  pode_alterar_semana_fechada?: boolean;
+  pode_apagar_semana?: boolean;
 };
 
 export interface FetchPeopleFilters {
@@ -140,6 +144,9 @@ export async function createPerson(userId: string, payload: Partial<PersonFormDa
       photo_url: payload.photo_url || null,
       main_activities: payload.main_activities?.trim()?.slice(0, MAX_TEXT_LENGTH) || null,
       farm_id: payload.farm_id || null,
+      assume_tarefas_fazenda: payload.assume_tarefas_fazenda ?? false,
+      pode_alterar_semana_fechada: payload.pode_alterar_semana_fechada ?? false,
+      pode_apagar_semana: payload.pode_apagar_semana ?? false,
     })
     .select()
     .single();
@@ -179,6 +186,8 @@ export async function updatePerson(id: string, payload: Partial<PersonFormData>)
       }),
       ...(payload.farm_id !== undefined && { farm_id: payload.farm_id || null }),
       ...(payload.assume_tarefas_fazenda !== undefined && { assume_tarefas_fazenda: payload.assume_tarefas_fazenda }),
+      ...(payload.pode_alterar_semana_fechada !== undefined && { pode_alterar_semana_fechada: payload.pode_alterar_semana_fechada }),
+      ...(payload.pode_apagar_semana !== undefined && { pode_apagar_semana: payload.pode_apagar_semana }),
     })
     .eq('id', id)
     .select()

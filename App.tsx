@@ -873,7 +873,7 @@ const AppContent: React.FC = () => {
       case 'gestao-semanal':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <GestaoSemanal />
+            <GestaoSemanal onToast={handleToast} />
           </Suspense>
         );
       case 'area-certificados':

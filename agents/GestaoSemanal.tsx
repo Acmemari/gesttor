@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import DateInputBR from '../components/DateInputBR';
+import { useAuth } from '../contexts/AuthContext';
+import { useFarm } from '../contexts/FarmContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +18,7 @@ interface Semana {
   aberta: boolean;
   data_inicio: string;
   data_fim: string;
+  farm_id: string | null; // TEXT in DB (farms.id is text)
 }
 
 interface Atividade {
@@ -33,6 +36,7 @@ interface Atividade {
 interface HistoricoSemana {
   id: string;
   semana_numero: number;
+  semana_id: string | null;
   total: number;
   concluidas: number;
   pendentes: number;
@@ -71,16 +75,21 @@ const STATUS_STYLES: Record<string, { text: string; bg: string; border: string }
   'pausada':      { text: '#D97706', bg: '#FFFBEB', border: '#F59E0B' },
   'concluída':    { text: '#059669', bg: '#ECFDF5', border: '#10B981' },
 };
-
-const TAGS = [
-  '#planejamento', '#desenvolvimento', '#revisão',
-  '#deploy', '#reunião', '#bug', '#docs',
-];
-
 const STATUS_LIST = ['a fazer', 'em andamento', 'pausada', 'concluída'] as const;
 
 const GRID_COLS = '36px 2fr 3fr 110px 90px 120px 106px 28px';
 const PT_MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const SORT_COLS = ['titulo', 'desc', 'pessoa', 'dataTermino', 'tag', 'status'] as const;
+const FONT = "'DM Sans', sans-serif";
+const INPUT_ST: React.CSSProperties = {
+  padding: '7px 10px', borderRadius: 8, border: '1px solid #E2E8F0',
+  fontSize: 13, color: '#1E293B', outline: 'none', width: '100%', fontFamily: FONT,
+  background: '#FFF',
+};
+const FILTER_ST: React.CSSProperties = {
+  width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid #E2E8F0',
+  fontSize: 11, color: '#475569', outline: 'none', fontFamily: FONT, background: '#FFF',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,22 +135,21 @@ function getSafraLabel(): string {
 
 const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '', status: '' };
 
+interface GestaoSemanalProps {
+  onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const GestaoSemanal: React.FC = () => {
+const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
+  const { user } = useAuth();
+  const { selectedFarm } = useFarm();
   const [modo, setModo] = useState<'ano' | 'safra'>('ano');
   const [semana, setSemana] = useState<Semana | null>(null);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
   const [showHistorico, setShowHistorico] = useState(false);
-  const [viewingHistoricoSemana, setViewingHistoricoSemana] = useState<{
-    semanaNumero: number;
-    dataInicio?: string;
-    dataFim?: string;
-  } | null>(null);
-  const [historicoAtividades, setHistoricoAtividades] = useState<Atividade[]>([]);
-  const [historicoLoading, setHistoricoLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -160,8 +168,40 @@ const GestaoSemanal: React.FC = () => {
   } | null>(null);
   const [selectedCarryOver, setSelectedCarryOver] = useState<Set<string>>(new Set());
   const [ultimaSemanaId, setUltimaSemanaId] = useState<string | null>(null);
+  const [canEditClosedWeek, setCanEditClosedWeek] = useState(false);
+  const [canDeleteWeek, setCanDeleteWeek] = useState(false);
+  const [operating, setOperating] = useState(false);
   const deletingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+
+  // canEditClosedWeek e canDeleteWeek: admin/analista ou pessoa com flag + email igual
+  useEffect(() => {
+    if (!user) {
+      setCanEditClosedWeek(false);
+      setCanDeleteWeek(false);
+      return;
+    }
+    if (user.role === 'admin' || user.qualification === 'analista') {
+      setCanEditClosedWeek(true);
+      setCanDeleteWeek(true);
+      return;
+    }
+    const email = user.email?.trim()?.toLowerCase();
+    if (!email) {
+      setCanEditClosedWeek(false);
+      setCanDeleteWeek(false);
+      return;
+    }
+    supabase
+      .from('people')
+      .select('pode_alterar_semana_fechada, pode_apagar_semana')
+      .ilike('email', email)
+      .then(({ data }) => {
+        const rows = data || [];
+        setCanEditClosedWeek(rows.some(r => r.pode_alterar_semana_fechada));
+        setCanDeleteWeek(rows.some(r => r.pode_apagar_semana));
+      });
+  }, [user]);
 
   // Inject fonts and animation keyframes once
   useEffect(() => {
@@ -185,11 +225,23 @@ const GestaoSemanal: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pessoasRes, semanaRes, historicoRes] = await Promise.all([
-        supabase.from('people').select('id, full_name, preferred_name').eq('assume_tarefas_fazenda', true).order('full_name'),
-        supabase.from('semanas').select('*').eq('modo', modo).order('numero', { ascending: false }).limit(1),
-        supabase.from('historico_semanas').select('*').order('closed_at', { ascending: false }),
-      ]);
+      const farmId = selectedFarm?.id ?? null;
+
+      // Build people query filtered by farm when available
+      let pessoasQuery = supabase.from('people').select('id, full_name, preferred_name').eq('assume_tarefas_fazenda', true).order('full_name');
+      if (farmId) pessoasQuery = pessoasQuery.eq('farm_id', farmId);
+
+      // Build semanas query filtered by farm when available
+      let semanaQuery = supabase.from('semanas').select('*').eq('modo', modo).order('numero', { ascending: false }).order('created_at', { ascending: false }).limit(1);
+      if (farmId) semanaQuery = semanaQuery.eq('farm_id', farmId);
+      else semanaQuery = semanaQuery.is('farm_id', null);
+
+      // Build historico query filtered by farm when available
+      let historicoQuery = supabase.from('historico_semanas').select('*').order('closed_at', { ascending: false });
+      if (farmId) historicoQuery = historicoQuery.eq('farm_id', farmId);
+      else historicoQuery = historicoQuery.is('farm_id', null);
+
+      const [pessoasRes, semanaRes, historicoRes] = await Promise.all([pessoasQuery, semanaQuery, historicoQuery]);
 
       const pessoasData: Pessoa[] = (pessoasRes.data || []).map((p: { id: string; full_name: string; preferred_name: string | null }) => ({
         id: p.id,
@@ -205,11 +257,11 @@ const GestaoSemanal: React.FC = () => {
         const today = new Date();
         const weekNum = calcWeekNumber(today, modo);
         const monday = getMondayOfWeek(today);
-        const friday = new Date(monday);
-        friday.setDate(monday.getDate() + 4);
+        const saturday = new Date(monday);
+        saturday.setDate(monday.getDate() + 5);
         const { data: created } = await supabase
           .from('semanas')
-          .insert({ numero: weekNum, modo, aberta: true, data_inicio: toDateStr(monday), data_fim: toDateStr(friday) })
+          .insert({ farm_id: farmId, numero: weekNum, modo, aberta: true, data_inicio: toDateStr(monday), data_fim: toDateStr(saturday) })
           .select()
           .single();
         semanaData = created;
@@ -233,7 +285,7 @@ const GestaoSemanal: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [modo]);
+  }, [modo, selectedFarm?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -246,14 +298,27 @@ const GestaoSemanal: React.FC = () => {
   // ─── Computed ─────────────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
+    let concluidas = 0, em_andamento = 0, pausada = 0, a_fazer = 0;
+    for (const a of atividades) {
+      switch (a.status) {
+        case 'concluída': concluidas++; break;
+        case 'em andamento': em_andamento++; break;
+        case 'pausada': pausada++; break;
+        case 'a fazer': a_fazer++; break;
+      }
+    }
     const total = atividades.length;
-    const concluidas = atividades.filter(a => a.status === 'concluída').length;
-    const em_andamento = atividades.filter(a => a.status === 'em andamento').length;
-    const pausada = atividades.filter(a => a.status === 'pausada').length;
-    const a_fazer = atividades.filter(a => a.status === 'a fazer').length;
     const progresso = total > 0 ? Math.round((concluidas / total) * 100) : 0;
     return { total, concluidas, em_andamento, pausada, a_fazer, progresso };
   }, [atividades]);
+
+  const pessoaMap = useMemo(() => {
+    const m = new Map<string, string>();
+    pessoas.forEach(p => m.set(p.id, p.nome));
+    return m;
+  }, [pessoas]);
+
+  const getPessoaNome = useCallback((id: string) => pessoaMap.get(id) || '—', [pessoaMap]);
 
   const filteredAndSorted = useMemo(() => {
     let result = [...atividades];
@@ -274,8 +339,8 @@ const GestaoSemanal: React.FC = () => {
           case 'tag':         va = a.tag;          vb = b.tag;          break;
           case 'status':      va = a.status;       vb = b.status;       break;
           case 'pessoa': {
-            va = pessoas.find(p => p.id === a.pessoa_id)?.nome || '';
-            vb = pessoas.find(p => p.id === b.pessoa_id)?.nome || '';
+            va = pessoaMap.get(a.pessoa_id) || '';
+            vb = pessoaMap.get(b.pessoa_id) || '';
             break;
           }
         }
@@ -284,9 +349,14 @@ const GestaoSemanal: React.FC = () => {
       });
     }
     return result;
-  }, [atividades, filters, sortConfig, pessoas]);
+  }, [atividades, filters, sortConfig, pessoaMap]);
 
   const hasActiveFilters = useMemo(() => Object.values(filters).some(v => v !== ''), [filters]);
+
+  const maxHistoricoNumero = useMemo(
+    () => (historico.length > 0 ? Math.max(...historico.map(x => x.semana_numero)) : 0),
+    [historico]
+  );
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -322,10 +392,12 @@ const GestaoSemanal: React.FC = () => {
   }, [resetForm]);
 
   const handleSave = useCallback(async () => {
-    if (!newForm.titulo.trim() || !semana) return;
+    if (operating || !newForm.titulo.trim() || !semana) return;
     const pessoaId = newForm.pessoaId || pessoas[0]?.id;
     if (!pessoaId) return;
 
+    setOperating(true);
+    try {
     if (editingId) {
       const { error } = await supabase.from('atividades').update({
         titulo: newForm.titulo.trim(),
@@ -334,7 +406,7 @@ const GestaoSemanal: React.FC = () => {
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
       }).eq('id', editingId);
-      if (error) { console.error('Erro ao editar atividade:', error); return; }
+      if (error) { onToast?.('Erro ao salvar atividade.', 'error'); return; }
       setAtividades(prev => prev.map(a => a.id === editingId ? {
         ...a,
         titulo: newForm.titulo.trim(),
@@ -354,13 +426,16 @@ const GestaoSemanal: React.FC = () => {
         tag: newForm.tag,
         status: 'a fazer',
       }).select().single();
-      if (error) { console.error('Erro ao adicionar atividade:', error); return; }
+      if (error) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
       if (data) {
         setAtividades(prev => [...prev, data as Atividade]);
         setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
       }
     }
-  }, [newForm, semana, pessoas, editingId, resetForm]);
+    } finally {
+      setOperating(false);
+    }
+  }, [newForm, semana, pessoas, editingId, resetForm, operating, onToast]);
 
   const handleRemoveAtividade = useCallback(async (id: string) => {
     if (deletingId !== id) {
@@ -371,83 +446,67 @@ const GestaoSemanal: React.FC = () => {
     }
     if (deletingTimerRef.current) clearTimeout(deletingTimerRef.current);
     setDeletingId(null);
-    await supabase.from('atividades').delete().eq('id', id);
+    const { error } = await supabase.from('atividades').delete().eq('id', id);
+    if (error) { onToast?.('Erro ao excluir atividade.', 'error'); return; }
     setAtividades(prev => prev.filter(a => a.id !== id));
     if (editingId === id) resetForm();
-  }, [deletingId, editingId, resetForm]);
+  }, [deletingId, editingId, resetForm, onToast]);
 
   const handleStatusChange = useCallback(async (id: string, status: string) => {
-    await supabase.from('atividades').update({ status }).eq('id', id);
+    const { error } = await supabase.from('atividades').update({ status }).eq('id', id);
+    if (error) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, []);
+  }, [onToast]);
 
   const handleCheckboxChange = useCallback(async (id: string, checked: boolean) => {
     const status = checked ? 'concluída' : 'a fazer';
-    await supabase.from('atividades').update({ status }).eq('id', id);
+    const { error } = await supabase.from('atividades').update({ status }).eq('id', id);
+    if (error) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, []);
+  }, [onToast]);
 
   const handleFecharSemana = useCallback(async () => {
-    if (!semana?.aberta) return;
+    if (operating || !semana?.aberta) return;
+    setOperating(true);
+    try {
     const total = atividades.length;
     const concluidas = atividades.filter(a => a.status === 'concluída').length;
-    await supabase.from('semanas').update({ aberta: false }).eq('id', semana.id);
-    await supabase.from('historico_semanas').insert({
+    const { error: err1 } = await supabase.from('semanas').update({ aberta: false }).eq('id', semana.id);
+    if (err1) { onToast?.('Erro ao fechar semana.', 'error'); return; }
+    const { error: err2 } = await supabase.from('historico_semanas').insert({
+      farm_id: semana.farm_id,
+      semana_id: semana.id,
       semana_numero: semana.numero,
       total,
       concluidas,
       pendentes: total - concluidas,
       closed_at: new Date().toISOString(),
     });
+    if (err2) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
+    onToast?.('Semana fechada com sucesso.', 'success');
     await fetchData();
-  }, [semana, atividades, fetchData]);
-
-  const handleVerSemanaAnterior = useCallback(async (semanaNumero: number) => {
-    setViewingHistoricoSemana({ semanaNumero });
-    setHistoricoLoading(true);
-    setHistoricoAtividades([]);
-    try {
-      const { data: semanaData } = await supabase
-        .from('semanas')
-        .select('id, data_inicio, data_fim')
-        .eq('numero', semanaNumero)
-        .eq('modo', modo)
-        .maybeSingle();
-      if (!semanaData) {
-        setHistoricoLoading(false);
-        return;
-      }
-      setViewingHistoricoSemana(prev =>
-        prev ? { ...prev, dataInicio: semanaData.data_inicio, dataFim: semanaData.data_fim } : prev
-      );
-      const { data: atividadesData } = await supabase
-        .from('atividades')
-        .select('*')
-        .eq('semana_id', semanaData.id)
-        .order('created_at');
-      setHistoricoAtividades(atividadesData || []);
     } finally {
-      setHistoricoLoading(false);
+      setOperating(false);
     }
-  }, [modo]);
+  }, [semana, atividades, fetchData, operating, onToast]);
 
-  const handleFecharSemanaAnterior = useCallback(() => {
-    setViewingHistoricoSemana(null);
-    setHistoricoAtividades([]);
-  }, []);
-
-  const handleAbrirSemanaDoHistorico = useCallback(async (semanaNumero: number) => {
+  const handleAbrirSemanaDoHistorico = useCallback(async (semanaId: string | null, semanaNumero: number) => {
     setLoading(true);
-    setViewingHistoricoSemana(null);
-    setHistoricoAtividades([]);
     setShowHistorico(false);
     try {
-      const { data: semanaData } = await supabase
-        .from('semanas')
-        .select('*')
-        .eq('numero', semanaNumero)
-        .eq('modo', modo)
-        .maybeSingle();
+      let semanaData;
+      if (semanaId) {
+        const res = await supabase.from('semanas').select('*').eq('id', semanaId).maybeSingle();
+        semanaData = res.data;
+      }
+      if (!semanaData) {
+        let q = supabase.from('semanas').select('*').eq('numero', semanaNumero).eq('modo', modo);
+        const farmId = selectedFarm?.id ?? null;
+        if (farmId) q = q.eq('farm_id', farmId);
+        else q = q.is('farm_id', null);
+        const res = await q.maybeSingle();
+        semanaData = res.data;
+      }
       if (!semanaData) {
         setLoading(false);
         return;
@@ -462,7 +521,26 @@ const GestaoSemanal: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [modo]);
+  }, [modo, selectedFarm?.id]);
+
+  const handleExcluirSemanaDoHistorico = useCallback(async (h: HistoricoSemana, maxNumero: number) => {
+    if (operating || !canDeleteWeek) {
+      if (!canDeleteWeek) onToast?.('Apagar semana deve ser feito por usuário autorizado', 'warning');
+      return;
+    }
+    if (h.semana_numero !== maxNumero) return;
+    setOperating(true);
+    try {
+    if (h.semana_id) {
+      await supabase.from('atividades').delete().eq('semana_id', h.semana_id);
+      await supabase.from('semanas').delete().eq('id', h.semana_id);
+    }
+    await supabase.from('historico_semanas').delete().eq('id', h.id);
+    await fetchData();
+    } finally {
+      setOperating(false);
+    }
+  }, [canDeleteWeek, fetchData, onToast, operating]);
 
   const handleVoltarSemanaAtual = useCallback(async () => {
     await fetchData();
@@ -496,46 +574,71 @@ const GestaoSemanal: React.FC = () => {
   }, [fetchData]);
 
   const handleAbrirSemana = useCallback(async () => {
-    if (semana?.aberta === true) return;
+    if (operating || semana?.aberta === true) return;
+
+    setOperating(true);
+    try {
+    const farmId = selectedFarm?.id ?? null;
 
     if (semana === null) {
       // Primeiro lançamento: cria semana a partir da data de hoje
       const today = new Date();
       const weekNum = calcWeekNumber(today, modo);
       const monday = getMondayOfWeek(today);
-      const friday = new Date(monday);
-      friday.setDate(monday.getDate() + 4);
+      const saturday = new Date(monday);
+      saturday.setDate(monday.getDate() + 5);
       await supabase.from('semanas').insert({
+        farm_id: farmId,
         numero: weekNum,
         modo,
         aberta: true,
         data_inicio: toDateStr(monday),
-        data_fim: toDateStr(friday),
+        data_fim: toDateStr(saturday),
       });
     } else {
       // Semana existente fechada: abre a próxima
+      const nextNumero = semana.numero + 1;
       const nextStart = new Date(semana.data_inicio + 'T00:00:00');
       nextStart.setDate(nextStart.getDate() + 7);
       const nextEnd = new Date(semana.data_fim + 'T00:00:00');
       nextEnd.setDate(nextEnd.getDate() + 7);
 
-      const { data: newSemana } = await supabase
-        .from('semanas')
-        .insert({
-          numero: semana.numero + 1,
-          modo: semana.modo,
-          aberta: true,
-          data_inicio: toDateStr(nextStart),
-          data_fim: toDateStr(nextEnd),
-        })
-        .select()
-        .single();
+      // Verificar se a próxima semana já existe para esta fazenda (evita duplicatas)
+      let existenteQuery = supabase.from('semanas').select('*').eq('numero', nextNumero).eq('modo', semana.modo);
+      if (farmId) existenteQuery = existenteQuery.eq('farm_id', farmId);
+      else existenteQuery = existenteQuery.is('farm_id', null);
+      const { data: existente } = await existenteQuery.maybeSingle();
 
-      if (newSemana) {
+      let targetSemana = existente as Semana | null;
+
+      if (targetSemana) {
+        // Já existe: reabrir se estiver fechada
+        if (!targetSemana.aberta) {
+          await supabase.from('semanas').update({ aberta: true }).eq('id', targetSemana.id);
+          targetSemana = { ...targetSemana, aberta: true };
+        }
+      } else {
+        // Não existe: criar normalmente
+        const { data: newSemana } = await supabase
+          .from('semanas')
+          .insert({
+            farm_id: farmId,
+            numero: nextNumero,
+            modo: semana.modo,
+            aberta: true,
+            data_inicio: toDateStr(nextStart),
+            data_fim: toDateStr(nextEnd),
+          })
+          .select()
+          .single();
+        targetSemana = newSemana as Semana | null;
+      }
+
+      if (targetSemana) {
         const pending = atividades.filter(a => a.status !== 'concluída');
         if (pending.length > 0) {
           setCarryOverModal({
-            pendingSemanaId: newSemana.id,
+            pendingSemanaId: targetSemana.id,
             candidates: pending,
             semanaNumero: semana.numero,
             dataInicio: semana.data_inicio,
@@ -548,7 +651,10 @@ const GestaoSemanal: React.FC = () => {
       }
     }
     await fetchData();
-  }, [semana, modo, atividades, fetchData]);
+    } finally {
+      setOperating(false);
+    }
+  }, [semana, modo, atividades, fetchData, selectedFarm?.id, operating]);
 
   // ─── Render helpers ───────────────────────────────────────────────────────────
 
@@ -557,7 +663,6 @@ const GestaoSemanal: React.FC = () => {
     return <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const getPessoaNome = (id: string) => pessoas.find(p => p.id === id)?.nome || '—';
   const getTagStyle  = (tag: string) => TAG_STYLES[tag] ?? { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB' };
   const getStatusSt  = (s: string)   => STATUS_STYLES[s]  ?? STATUS_STYLES['a fazer'];
 
@@ -566,39 +671,53 @@ const GestaoSemanal: React.FC = () => {
 
   // ─── Shared styles ────────────────────────────────────────────────────────────
 
-  const font = "'DM Sans', sans-serif";
   const mono = "'JetBrains Mono', monospace";
 
-  const inputSt: React.CSSProperties = {
-    padding: '7px 10px', borderRadius: 8, border: '1px solid #E2E8F0',
-    fontSize: 13, color: '#1E293B', outline: 'none', width: '100%', fontFamily: font,
-    background: '#FFF',
-  };
+  const sortBtnStylesMap = useMemo(() => {
+    const map: Record<string, React.CSSProperties> = {};
+    SORT_COLS.forEach(col => {
+      map[col] = {
+        background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 3,
+        fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
+        color: sortConfig?.column === col ? '#4338CA' : '#94A3B8',
+        padding: '2px 0', fontFamily: font,
+      };
+    });
+    return map;
+  }, [sortConfig]);
 
-  const filterSt: React.CSSProperties = {
-    width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid #E2E8F0',
-    fontSize: 11, color: '#475569', outline: 'none', fontFamily: font, background: '#FFF',
-  };
-
-  const sortBtnSt = (col: string): React.CSSProperties => ({
-    background: 'none', border: 'none', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', gap: 3,
-    fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
-    color: sortConfig?.column === col ? '#4338CA' : '#94A3B8',
-    padding: '2px 0', fontFamily: font,
-  });
-
-  const actionBtnSt = (active: boolean, activeColor: string): React.CSSProperties => ({
+  const isAbertaForStyles = semana?.aberta === true;
+  const canAbrirForStyles = semana === null || semana?.aberta === false;
+  const actionBtnStFechar = useMemo(() => ({
     padding: '8px 18px', borderRadius: 8, border: 'none',
-    background: active ? activeColor : '#E2E8F0',
-    color: active ? '#FFF' : '#94A3B8',
-    opacity: active ? 1 : 0.5,
-    cursor: active ? 'pointer' : 'default',
+    background: isAbertaForStyles ? '#DC2626' : '#E2E8F0',
+    color: isAbertaForStyles ? '#FFF' : '#94A3B8',
+    opacity: isAbertaForStyles ? 1 : 0.5,
+    cursor: isAbertaForStyles ? 'pointer' : 'default',
     fontSize: 13, fontWeight: 500,
     transition: 'all 0.15s ease', fontFamily: font,
-  });
+  }), [isAbertaForStyles]);
+  const actionBtnStAbrir = useMemo(() => ({
+    padding: '8px 18px', borderRadius: 8, border: 'none',
+    background: canAbrirForStyles ? '#059669' : '#E2E8F0',
+    color: canAbrirForStyles ? '#FFF' : '#94A3B8',
+    opacity: canAbrirForStyles ? 1 : 0.5,
+    cursor: canAbrirForStyles ? 'pointer' : 'default',
+    fontSize: 13, fontWeight: 500,
+    transition: 'all 0.15s ease', fontFamily: font,
+  }), [canAbrirForStyles]);
 
   // ─── Loading / empty ──────────────────────────────────────────────────────────
+
+  if (!selectedFarm) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: '#94A3B8', fontFamily: font, flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 32 }}>🌾</span>
+        <span>Selecione uma fazenda para acessar a gestão semanal.</span>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -612,6 +731,8 @@ const GestaoSemanal: React.FC = () => {
   const isFechada = semana?.aberta === false;
   // Abrir Semana disponível quando: semana fechada OU sem semana alguma (primeiro lançamento)
   const canAbrirSemana = semana === null || semana.aberta === false;
+  // Pode incluir/editar/excluir: semana aberta OU (semana fechada E usuário com permissão)
+  const canEditInWeek = isAberta || (isFechada && canEditClosedWeek);
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -636,7 +757,7 @@ const GestaoSemanal: React.FC = () => {
                     transition: 'all 0.15s ease',
                     background: modo === m ? '#0F172A' : 'transparent',
                     color: modo === m ? '#FFF' : '#94A3B8',
-                    fontFamily: font,
+                    fontFamily: FONT,
                   }}
                 >
                   {m === 'ano' ? 'Ano' : 'Safra'}
@@ -698,10 +819,10 @@ const GestaoSemanal: React.FC = () => {
             >
               Histórico
             </button>
-            <button onClick={handleFecharSemana} disabled={!isAberta} style={actionBtnSt(isAberta, '#DC2626')}>
+            <button onClick={handleFecharSemana} disabled={operating || !isAberta} style={actionBtnStFechar}>
               Fechar Semana
             </button>
-            <button onClick={handleAbrirSemana} disabled={!canAbrirSemana} style={actionBtnSt(canAbrirSemana, '#059669')}>
+            <button onClick={handleAbrirSemana} disabled={operating || !canAbrirSemana} style={actionBtnStAbrir}>
               Abrir Semana
             </button>
           </div>
@@ -719,34 +840,59 @@ const GestaoSemanal: React.FC = () => {
               <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Nenhum histórico disponível.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {historico.map(h => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onClick={() => handleAbrirSemanaDoHistorico(h.semana_numero)}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', fontSize: 13,
-                      border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left',
-                      fontFamily: font,
-                      transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#F1F5F9'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#F8FAFC'; }}
-                  >
-                    <span style={{ fontFamily: mono, fontWeight: 500 }}>
-                      Semana {String(h.semana_numero).padStart(2, '0')}
-                    </span>
-                    <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                      <span style={{ color: '#64748B' }}>{h.total} tarefas</span>
-                      <span style={{ color: '#059669' }}>✓ {h.concluidas}</span>
-                      {h.pendentes > 0
-                        ? <span style={{ color: '#DC2626' }}>→ {h.pendentes} pendentes</span>
-                        : <span style={{ color: '#059669', fontWeight: 500 }}>100%</span>
-                      }
-                    </span>
-                  </button>
-                ))}
+                {historico.map(h => {
+                  const isLatest = h.semana_numero === maxHistoricoNumero;
+                  const deleteEnabled = isLatest && canDeleteWeek;
+                  return (
+                    <div
+                      key={h.id}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', fontSize: 13,
+                        border: 'none', width: '100%', fontFamily: font,
+                        transition: 'background 0.15s', gap: 8,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F1F5F9'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#F8FAFC'; }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleAbrirSemanaDoHistorico(h.semana_id, h.semana_numero)}
+                        style={{
+                          flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: 0, border: 'none', cursor: 'pointer', background: 'transparent',
+                          textAlign: 'left', fontFamily: font, fontSize: 13,
+                        }}
+                      >
+                        <span style={{ fontFamily: mono, fontWeight: 500 }}>
+                          Semana {String(h.semana_numero).padStart(2, '0')}
+                        </span>
+                        <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                          <span style={{ color: '#64748B' }}>{h.total} tarefas</span>
+                          <span style={{ color: '#059669' }}>✓ {h.concluidas}</span>
+                          {h.pendentes > 0
+                            ? <span style={{ color: '#DC2626' }}>→ {h.pendentes} pendentes</span>
+                            : <span style={{ color: '#059669', fontWeight: 500 }}>100%</span>
+                          }
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExcluirSemanaDoHistorico(h, maxHistoricoNumero)}
+                        title={deleteEnabled ? 'Excluir semana' : (isLatest ? 'Apagar semana deve ser feito por usuário autorizado' : 'Exclua a semana mais recente primeiro')}
+                        style={{
+                          flexShrink: 0, padding: 4, border: 'none', borderRadius: 6, cursor: deleteEnabled ? 'pointer' : 'not-allowed',
+                          background: deleteEnabled ? '#FEE2E2' : 'transparent',
+                          color: deleteEnabled ? '#DC2626' : '#94A3B8',
+                          opacity: deleteEnabled ? 1 : 0.3,
+                          fontSize: 16, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -792,8 +938,8 @@ const GestaoSemanal: React.FC = () => {
             background: '#FFF', borderRadius: 12,
             border: editingId ? '1.5px solid #6366F1' : '1px solid #E2E8F0',
             padding: 16, marginBottom: 16,
-            opacity: isAberta ? 1 : 0.55,
-            pointerEvents: isAberta ? 'auto' : 'none',
+            opacity: (canEditInWeek || editingId) ? 1 : 0.55,
+            pointerEvents: (canEditInWeek || editingId) ? 'auto' : 'none',
             transition: 'border-color 0.2s',
           }}
         >
@@ -803,7 +949,7 @@ const GestaoSemanal: React.FC = () => {
             </p>
             {!isAberta && (
               <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                {canAbrirSemana ? 'Abra a semana para adicionar atividades' : 'Semana fechada'}
+                {canAbrirSemana ? 'Abra a semana para adicionar atividades' : 'Semana fechada — é possível editar atividades existentes'}
               </span>
             )}
           </div>
@@ -815,7 +961,7 @@ const GestaoSemanal: React.FC = () => {
                 type="text" placeholder="Título" value={newForm.titulo}
                 onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && handleSave()}
-                style={inputSt}
+                style={INPUT_ST}
               />
             </div>
 
@@ -824,13 +970,13 @@ const GestaoSemanal: React.FC = () => {
               <input
                 type="text" placeholder="Descrição breve" value={newForm.descricao}
                 onChange={e => setNewForm(p => ({ ...p, descricao: e.target.value }))}
-                style={inputSt}
+                style={INPUT_ST}
               />
             </div>
 
             <div style={{ flex: '0 1 140px', minWidth: 120 }}>
               <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Responsável</label>
-              <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={inputSt}>
+              <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
                 {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
@@ -849,7 +995,7 @@ const GestaoSemanal: React.FC = () => {
               <input
                 type="text" placeholder="#tag" value={newForm.tag}
                 onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
-                style={inputSt}
+                style={INPUT_ST}
               />
             </div>
 
@@ -869,11 +1015,11 @@ const GestaoSemanal: React.FC = () => {
 
             <button
               onClick={handleSave}
-              disabled={!isAberta || !newForm.titulo.trim()}
+              disabled={operating || (editingId ? !newForm.titulo.trim() : (!canEditInWeek || !newForm.titulo.trim()))}
               style={{
                 flex: '0 0 auto', padding: '7px 20px', borderRadius: 8, border: 'none',
-                background: isAberta && newForm.titulo.trim() ? '#6366F1' : '#C7D2FE',
-                color: '#FFF', cursor: isAberta && newForm.titulo.trim() ? 'pointer' : 'default',
+                background: (editingId ? newForm.titulo.trim() : (canEditInWeek && newForm.titulo.trim())) ? '#6366F1' : '#C7D2FE',
+                color: '#FFF', cursor: (editingId ? newForm.titulo.trim() : (canEditInWeek && newForm.titulo.trim())) ? 'pointer' : 'default',
                 fontSize: 13, fontWeight: 600, fontFamily: font,
               }}
             >
@@ -896,7 +1042,7 @@ const GestaoSemanal: React.FC = () => {
               { col: 'tag',         label: '#' },
               { col: 'status',      label: 'STATUS' },
             ].map(({ col, label }) => (
-              <button key={col} onClick={() => handleSort(col)} style={sortBtnSt(col)}>
+              <button key={col} onClick={() => handleSort(col)} style={sortBtnStylesMap[col]}>
                 {label} {getSortIcon(col)}
               </button>
             ))}
@@ -911,10 +1057,10 @@ const GestaoSemanal: React.FC = () => {
           }}>
             <div />
             <input type="text" placeholder="Filtrar..." value={filters.titulo}
-              onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={filterSt} />
+              onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={FILTER_ST} />
             <input type="text" placeholder="Filtrar..." value={filters.descricao}
-              onChange={e => setFilters(p => ({ ...p, descricao: e.target.value }))} style={filterSt} />
-            <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={filterSt}>
+              onChange={e => setFilters(p => ({ ...p, descricao: e.target.value }))} style={FILTER_ST} />
+            <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={FILTER_ST}>
               <option value="">Todos</option>
               {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
             </select>
@@ -925,8 +1071,8 @@ const GestaoSemanal: React.FC = () => {
               className="w-full"
             />
             <input type="text" placeholder="Filtrar..." value={filters.tag}
-              onChange={e => setFilters(p => ({ ...p, tag: e.target.value }))} style={filterSt} />
-            <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={filterSt}>
+              onChange={e => setFilters(p => ({ ...p, tag: e.target.value }))} style={FILTER_ST} />
+            <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={FILTER_ST}>
               <option value="">Todos</option>
               {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -950,7 +1096,7 @@ const GestaoSemanal: React.FC = () => {
             const isHovered   = hoveredRow === at.id;
             const isEditing   = editingId === at.id;
             const isDeleting  = deletingId === at.id;
-            const isDisabled  = !semana?.aberta;
+            const isDisabled  = false;
             const tagSt       = getTagStyle(at.tag);
             const stSt        = getStatusSt(at.status);
 
@@ -1060,7 +1206,7 @@ const GestaoSemanal: React.FC = () => {
                 </select>
 
                 {/* Delete */}
-                {isAberta ? (
+                {canEditInWeek ? (
                   <button
                     onClick={() => handleRemoveAtividade(at.id)}
                     title={isDeleting ? 'Clique novamente para confirmar exclusão' : 'Excluir'}
@@ -1264,106 +1410,6 @@ const GestaoSemanal: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL SEMANA ANTERIOR ───────────────────────────────────────────── */}
-      {viewingHistoricoSemana && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000, padding: 24, animation: 'gsFadeIn 0.2s ease',
-          }}
-          onClick={handleFecharSemanaAnterior}
-        >
-          <div
-            style={{
-              background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
-              maxWidth: 900, width: '100%', maxHeight: '85vh', overflow: 'hidden',
-              display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0F172A', fontFamily: font }}>
-                  Semana {String(viewingHistoricoSemana.semanaNumero).padStart(2, '0')}
-                </h2>
-                {viewingHistoricoSemana.dataInicio && viewingHistoricoSemana.dataFim && (
-                  <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94A3B8' }}>
-                    {formatWeekRange(viewingHistoricoSemana.dataInicio, viewingHistoricoSemana.dataFim)}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleFecharSemanaAnterior}
-                style={{
-                  width: 36, height: 36, borderRadius: 8, border: '1px solid #E2E8F0',
-                  background: '#F8FAFC', color: '#64748B', cursor: 'pointer',
-                  fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            {/* Modal content */}
-            <div style={{ overflow: 'auto', flex: 1, padding: 16 }}>
-              {historicoLoading ? (
-                <div style={{ textAlign: 'center', padding: 48, color: '#94A3B8', fontSize: 13 }}>
-                  Carregando tarefas...
-                </div>
-              ) : historicoAtividades.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 48, color: '#94A3B8', fontSize: 13 }}>
-                  Nenhuma tarefa nesta semana.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {historicoAtividades.map(at => {
-                    const tagSt = getTagStyle(at.tag);
-                    const stSt = getStatusSt(at.status);
-                    const isConcluida = at.status === 'concluída';
-                    return (
-                      <div
-                        key={at.id}
-                        style={{
-                          display: 'grid', gridTemplateColumns: '24px 1fr 1.2fr 110px 90px 100px 100px',
-                          alignItems: 'center', gap: 12, padding: '10px 12px',
-                          borderRadius: 8, background: isConcluida ? '#FAFFF9' : '#F8FAFC',
-                          border: '1px solid #F1F5F9', fontSize: 13,
-                        }}
-                      >
-                        <span style={{ color: isConcluida ? '#059669' : '#94A3B8', fontSize: 14 }}>
-                          {isConcluida ? '✓' : '○'}
-                        </span>
-                        <div style={{ fontWeight: 600, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.7 } : {}) }}>
-                          {at.titulo}
-                        </div>
-                        <div style={{ color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.6 } : {}) }}>
-                          {at.descricao || '—'}
-                        </div>
-                        <div style={{ color: '#475569', fontWeight: 500, fontSize: 12 }}>{getPessoaNome(at.pessoa_id)}</div>
-                        <div style={{ color: '#94A3B8', fontFamily: mono, fontSize: 11 }}>{formatDatePtBr(at.data_termino)}</div>
-                        <span style={{
-                          fontSize: 11, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
-                          background: tagSt.bg, color: tagSt.text, border: `1px solid ${tagSt.border}`, whiteSpace: 'nowrap',
-                        }}>
-                          {at.tag}
-                        </span>
-                        <span style={{
-                          fontSize: 11, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
-                          color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, whiteSpace: 'nowrap',
-                        }}>
-                          {at.status}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

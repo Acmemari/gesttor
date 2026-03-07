@@ -74,6 +74,8 @@ const initialForm = {
   main_activities: '',
   farm_id: '' as string,
   assume_tarefas_fazenda: false,
+  pode_alterar_semana_fechada: false,
+  pode_apagar_semana: false,
 };
 
 const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
@@ -95,6 +97,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const [cropZoom, setCropZoom] = useState(1);
   const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 });
   const [cropImageSize, setCropImageSize] = useState<{ w: number; h: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<'dados' | 'autorizacoes'>('dados');
   const cropDragRef = useRef<{ startX: number; startY: number; startPos: { x: number; y: number } } | null>(null);
   const cropImageRef = useRef<HTMLImageElement | null>(null);
   const CROP_SIZE = 280;
@@ -177,6 +180,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     });
     setPhotoFile(null);
     setPhotoPreview(null);
+    setActiveTab('dados');
     setView('form');
   };
 
@@ -196,9 +200,12 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       main_activities: p.main_activities ?? '',
       farm_id: p.farm_id ?? selectedFarm?.id ?? '',
       assume_tarefas_fazenda: p.assume_tarefas_fazenda ?? false,
+      pode_alterar_semana_fechada: p.pode_alterar_semana_fechada ?? false,
+      pode_apagar_semana: p.pode_apagar_semana ?? false,
     });
     setPhotoPreview(signedUrls[p.id] ?? p.photo_url);
     setPhotoFile(null);
+    setActiveTab('dados');
     setView('form');
   };
 
@@ -349,6 +356,10 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
         // Ao editar, manter farm_id da pessoa; ao criar, usar fazenda selecionada
         farm_id: editing ? (formData.farm_id || null) : (selectedFarm?.id || formData.farm_id || null),
         assume_tarefas_fazenda: formData.assume_tarefas_fazenda,
+        ...((user?.qualification === 'analista' || user?.role === 'admin') && {
+          pode_alterar_semana_fechada: formData.pode_alterar_semana_fechada,
+          pode_apagar_semana: formData.pode_apagar_semana,
+        }),
       };
 
       if (editing) {
@@ -410,6 +421,33 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
           <h1 className="text-xl font-semibold text-ai-text">{editing ? 'Editar pessoa' : 'Nova pessoa'}</h1>
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="flex gap-6 border-b border-ai-border mb-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab('dados')}
+                className={`pb-3 text-sm font-medium transition-colors ${
+                  activeTab === 'dados'
+                    ? 'text-ai-accent border-b-2 border-ai-accent'
+                    : 'text-ai-subtext hover:text-ai-text'
+                }`}
+              >
+                Dados
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('autorizacoes')}
+                className={`pb-3 text-sm font-medium transition-colors ${
+                  activeTab === 'autorizacoes'
+                    ? 'text-ai-accent border-b-2 border-ai-accent'
+                    : 'text-ai-subtext hover:text-ai-text'
+                }`}
+              >
+                Autorizações
+              </button>
+            </div>
+
+            {activeTab === 'dados' && (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-ai-text mb-1">Nome completo *</label>
@@ -566,7 +604,11 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                 placeholder="Descreva as principais atividades desta pessoa..."
               />
             </div>
+            </>
+            )}
 
+            {activeTab === 'autorizacoes' && (
+            <>
             <div className="flex items-center justify-between rounded-lg border border-ai-border bg-ai-surface px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-ai-text">Assume tarefas na fazenda</p>
@@ -584,6 +626,48 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                 />
               </button>
             </div>
+
+            {(user?.qualification === 'analista' || user?.role === 'admin') && (
+              <div className="flex items-center justify-between rounded-lg border border-ai-border bg-ai-surface px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-ai-text">Pode alterar semana fechada</p>
+                  <p className="text-xs text-ai-subtext mt-0.5">Controle total sobre semanas fechadas (incluir, editar, excluir tarefas). Usuário com mesmo e-mail terá essa permissão.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData(f => ({ ...f, pode_alterar_semana_fechada: !f.pode_alterar_semana_fechada }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.pode_alterar_semana_fechada ? 'bg-ai-accent' : 'bg-ai-surface2'}`}
+                  role="switch"
+                  aria-checked={formData.pode_alterar_semana_fechada}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${formData.pode_alterar_semana_fechada ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+            )}
+
+            {(user?.qualification === 'analista' || user?.role === 'admin') && (
+              <div className="flex items-center justify-between rounded-lg border border-ai-border bg-ai-surface px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-ai-text">Apagar semana</p>
+                  <p className="text-xs text-ai-subtext mt-0.5">Permite excluir semanas do histórico (apenas da última para a primeira). Usuário com mesmo e-mail terá essa permissão.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData(f => ({ ...f, pode_apagar_semana: !f.pode_apagar_semana }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.pode_apagar_semana ? 'bg-ai-accent' : 'bg-ai-surface2'}`}
+                  role="switch"
+                  aria-checked={formData.pode_apagar_semana}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${formData.pode_apagar_semana ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+            )}
+            </>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button
