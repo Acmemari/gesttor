@@ -111,6 +111,11 @@ const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onToast, onBack
             <p className="text-[10px] sm:text-xs text-ai-subtext mt-1">
               Digite seu email e enviaremos um link para redefinir sua senha.
             </p>
+            {email.trim() && (
+              <p className="text-xs sm:text-sm text-ai-text mt-2 font-medium">
+                Solicitação para: <span className="text-ai-text font-semibold">{email}</span>
+              </p>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">

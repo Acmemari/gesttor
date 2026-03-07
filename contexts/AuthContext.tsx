@@ -11,12 +11,67 @@ const log = logger.withContext({ component: 'AuthContext' });
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const PASSWORD_RECOVERY_KEY = 'password_recovery_email';
+const PASSWORD_RECOVERY_MARKER = 'recovery';
+const PASSWORD_RECOVERY_MARKER_VALUE = '1';
+
+const isRecoveryFlowUrl = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  const { pathname, hash, search } = window.location;
+  const normalizedPath = pathname.toLowerCase();
+  const isResetPasswordPath = normalizedPath === '/reset-password' || normalizedPath.includes('reset-password');
+
+  const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  const searchParams = new URLSearchParams(search);
+
+  const hashType = hashParams.get('type');
+  const searchType = searchParams.get('type');
+  const hasRecoveryType =
+    hashType === 'recovery' ||
+    searchType === 'recovery' ||
+    hash.includes('type=recovery') ||
+    hash.includes('type%3Drecovery') ||
+    search.includes('type=recovery') ||
+    search.includes('type%3Drecovery');
+
+  const hasRecoveryToken =
+    hashParams.has('access_token') ||
+    hashParams.has('refresh_token') ||
+    hashParams.has('token') ||
+    hashParams.has('token_hash') ||
+    searchParams.has('code') ||
+    searchParams.has('token') ||
+    searchParams.has('token_hash');
+
+  // Marker explícito na URL de redirect para recovery (funciona mesmo sem localStorage)
+  const hasRecoveryMarker = searchParams.get(PASSWORD_RECOVERY_MARKER) === PASSWORD_RECOVERY_MARKER_VALUE;
+
+  // PKCE flow: URL has ?code=xxx and user requested recovery from same browser
+  const hasRecoveryFlag = typeof localStorage !== 'undefined' && !!localStorage.getItem(PASSWORD_RECOVERY_KEY);
+  const hasPkceCode = searchParams.has('code');
+  const isRootPath = normalizedPath === '/';
+  // Fallback importante: links de recovery podem chegar em "/?code=..." quando redirectTo é ignorado.
+  // Com OAuth indo para /auth/callback, code na raiz passa a ser tratado como recovery.
+  const isRootCodeFallback = isRootPath && hasPkceCode;
+  const isPkceRecovery = hasPkceCode && (hasRecoveryFlag || hasRecoveryMarker || isRootCodeFallback);
+
+  return isResetPasswordPath || isPkceRecovery || hasRecoveryMarker || (hasRecoveryType && hasRecoveryToken);
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
+    // Detectar recovery pela URL IMEDIATAMENTE (antes de qualquer async)
+    // Evita cair na tela de login enquanto o onAuthStateChange ainda não disparou
+    if (isRecoveryFlowUrl()) {
+      log.info('Recovery URL detected on load, showing reset password page');
+      setIsPasswordRecovery(true);
+    }
+
     // Timeout de segurança para garantir que isLoading sempre se torne false
     const safetyTimeout = setTimeout(() => {
       log.warn('Auth initialization timeout - forçando isLoading = false');
@@ -33,11 +88,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
           log.error('Error getting session', error instanceof Error ? error : new Error(String(error)));
-          // Mesmo com erro, definir isLoading como false para não travar a aplicação
           setIsLoading(false);
         } else if (session?.user) {
           // Optimistically set user from session metadata specific to Supabase Auth
-          // This allows immediate rendering while we fetch the full profile
           setUser({
             id: session.user.id,
             email: session.user.email || '',
@@ -56,12 +109,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .catch((err: unknown) => {
               log.error('Error loading user profile', err instanceof Error ? err : new Error(String(err)));
             });
+          clearTimeout(safetyTimeout);
+          setIsLoading(false);
         } else {
-          setUser(null);
+          // Sem sessão: verificar se há code PKCE na URL (SDK ainda pode trocar)
+          const searchParams = new URLSearchParams(window.location.search);
+          const hasPkceCode = searchParams.has('code');
+          const hasRecoveryFlag = !!localStorage.getItem(PASSWORD_RECOVERY_KEY);
+          const hasRecoveryMarker = searchParams.get(PASSWORD_RECOVERY_MARKER) === PASSWORD_RECOVERY_MARKER_VALUE;
+          const isRootPath = window.location.pathname === '/';
+          const waitingForPkceExchange = hasPkceCode && (hasRecoveryFlag || hasRecoveryMarker || isRootPath);
+
+          if (!waitingForPkceExchange) {
+            setUser(null);
+            clearTimeout(safetyTimeout);
+            setIsLoading(false);
+          }
+          // Se waitingForPkceExchange: não setar isLoading=false aqui;
+          // PASSWORD_RECOVERY ou SIGNED_IN vai chamar setIsLoading(false)
         }
       } catch (error: unknown) {
         log.error('Error initializing auth', error instanceof Error ? error : new Error(String(error)));
-      } finally {
         clearTimeout(safetyTimeout);
         setIsLoading(false);
       }
@@ -69,11 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuth();
 
-    return () => {
-      clearTimeout(safetyTimeout);
-    };
-
-    // Listen for auth changes
+    // Listen for auth changes - registrar ANTES do return para evitar dead code
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -83,20 +147,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'PASSWORD_RECOVERY') {
         log.info('Password recovery token detected, showing reset password page');
         setIsPasswordRecovery(true);
-        // Não definir user aqui - deixar na página de reset
+        clearTimeout(safetyTimeout);
+        setIsLoading(false);
         return;
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
-        const hash = window.location.hash;
-        const pathname = window.location.pathname;
-
-        const isResetPasswordPath = pathname === '/reset-password' || pathname.includes('reset-password');
-        const hasRecoveryToken =
-          hash.includes('type=recovery') || hash.includes('type%3Drecovery') || hash.includes('access_token=');
-
-        if (isResetPasswordPath || hasRecoveryToken) {
-          log.info('Recovery session detected, skipping user set');
+        // PKCE flow: localStorage flag indica recovery; URL pode não ter type=recovery
+        const hasRecoveryFlag = !!localStorage.getItem(PASSWORD_RECOVERY_KEY);
+        const isRootPath = window.location.pathname === '/';
+        const hasCode = new URLSearchParams(window.location.search).has('code');
+        if (isRecoveryFlowUrl() || hasRecoveryFlag || (isRootPath && hasCode)) {
+          log.info('Recovery session detected via SIGNED_IN, activating recovery mode');
+          setIsPasswordRecovery(true);
+          clearTimeout(safetyTimeout);
+          setIsLoading(false);
           return;
         }
 
@@ -145,6 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -250,7 +316,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}`,
+          // Isola callback OAuth para não conflitar com recovery em "/?code=..."
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -402,9 +469,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      // Persistir intent para detecção quando usuário clicar no link (PKCE flow)
+      localStorage.setItem(PASSWORD_RECOVERY_KEY, email);
+
       // Garantir que a URL use o protocolo correto (https em produção)
       const origin = window.location.origin || window.location.protocol + '//' + window.location.host;
-      const redirectUrl = `${origin}/reset-password`;
+      const redirectUrl = `${origin}/reset-password?${PASSWORD_RECOVERY_MARKER}=${PASSWORD_RECOVERY_MARKER_VALUE}&email=${encodeURIComponent(email)}`;
 
       log.debug(`Sending password reset email with redirect URL: ${redirectUrl}`);
 
@@ -469,6 +539,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Função para limpar estado de recovery (quando usuário cancela ou volta ao login)
   const clearPasswordRecovery = useCallback(() => {
+    localStorage.removeItem(PASSWORD_RECOVERY_KEY);
     setIsPasswordRecovery(false);
   }, []);
 

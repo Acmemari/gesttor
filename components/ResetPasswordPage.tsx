@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface ResetPasswordPageProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -16,9 +17,47 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
   const { updatePassword } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const readRecoveryEmail = async () => {
+      try {
+        // Fonte 1: localStorage (definido ao solicitar recovery - PKCE flow)
+        const emailFromStorage = localStorage.getItem('password_recovery_email');
+        if (emailFromStorage && isMounted) {
+          setRecoveryEmail(emailFromStorage);
+        }
+
+        // Fonte 2: URL params
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '');
+        const emailFromUrl = searchParams.get('email') || hashParams.get('email');
+        if (emailFromUrl && isMounted) {
+          setRecoveryEmail(emailFromUrl);
+        }
+
+        // Fonte 3: sessão Supabase (após exchange do code)
+        const { data } = await supabase.auth.getUser();
+        const emailFromAuth = data.user?.email || '';
+        if (emailFromAuth && isMounted) {
+          setRecoveryEmail(emailFromAuth);
+        }
+      } catch (err) {
+        console.warn('Could not load recovery email', err);
+      }
+    };
+
+    readRecoveryEmail();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +85,10 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
         return;
       }
 
-      // Sucesso
+      // Sucesso: limpar flag de recovery no localStorage
+      try {
+        localStorage.removeItem('password_recovery_email');
+      } catch (_) {}
       setIsSuccess(true);
       setIsSubmitting(false);
       if (onToast) {
@@ -108,6 +150,11 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
             <p className="text-[10px] sm:text-xs text-ai-subtext mt-1">
               Digite sua nova senha abaixo. A senha deve ter no mínimo 6 caracteres.
             </p>
+            {recoveryEmail && (
+              <p className="text-[10px] sm:text-xs text-ai-text mt-2">
+                Recuperação solicitada para: <span className="font-semibold">{recoveryEmail}</span>
+              </p>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
