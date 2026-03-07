@@ -71,7 +71,7 @@ const isRecoveryFlowUrl = (): boolean => {
   const isRootCodeFallback = isRootPath && hasPkceCode;
   const isPkceRecovery = hasPkceCode && (hasRecoveryFlag || hasRecoveryMarker || isRootCodeFallback);
 
-  return isResetPasswordPath || isPkceRecovery || hasRecoveryMarker || (hasRecoveryType && hasRecoveryToken);
+  return isPkceRecovery || hasRecoveryMarker || (hasRecoveryType && hasRecoveryToken);
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -572,12 +572,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: errorMessage };
       }
 
-      // Limpa URL de recovery após sucesso
-      cleanupRecoveryUrl();
+      // Limpa URL IMEDIATAMENTE para impedir re-detecção por event handlers do onAuthStateChange
       localStorage.removeItem(PASSWORD_RECOVERY_KEY);
-      // Garante sessão limpa pós-recovery para evitar estado residual no próximo login
-      await supabase.auth.signOut({ scope: 'local' });
-      setIsPasswordRecovery(false);
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/');
+      }
+      // NÃO chamar signOut nem setIsPasswordRecovery aqui.
+      // ResetPasswordPage mostra tela de sucesso por 2s, depois onSuccess → clearPasswordRecovery()
       return { success: true };
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -586,9 +587,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Função para limpar estado de recovery (quando usuário cancela ou volta ao login)
-  const clearPasswordRecovery = useCallback(() => {
+  // Função para limpar estado de recovery (após sucesso ou quando usuário cancela)
+  const clearPasswordRecovery = useCallback(async () => {
     localStorage.removeItem(PASSWORD_RECOVERY_KEY);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/');
+    }
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (_) {
+      // signOut pode falhar se sessão já expirou — OK
+    }
     setIsPasswordRecovery(false);
   }, []);
 
