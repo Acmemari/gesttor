@@ -159,6 +159,7 @@ const GestaoSemanal: React.FC = () => {
     dataFim: string;
   } | null>(null);
   const [selectedCarryOver, setSelectedCarryOver] = useState<Set<string>>(new Set());
+  const [ultimaSemanaId, setUltimaSemanaId] = useState<string | null>(null);
   const deletingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -215,6 +216,7 @@ const GestaoSemanal: React.FC = () => {
       }
 
       setSemana(semanaData);
+      setUltimaSemanaId(semanaData?.id ?? null);
 
       if (semanaData) {
         const { data: atividadesData } = await supabase
@@ -434,6 +436,38 @@ const GestaoSemanal: React.FC = () => {
     setHistoricoAtividades([]);
   }, []);
 
+  const handleAbrirSemanaDoHistorico = useCallback(async (semanaNumero: number) => {
+    setLoading(true);
+    setViewingHistoricoSemana(null);
+    setHistoricoAtividades([]);
+    setShowHistorico(false);
+    try {
+      const { data: semanaData } = await supabase
+        .from('semanas')
+        .select('*')
+        .eq('numero', semanaNumero)
+        .eq('modo', modo)
+        .maybeSingle();
+      if (!semanaData) {
+        setLoading(false);
+        return;
+      }
+      setSemana(semanaData as Semana);
+      const { data: atividadesData } = await supabase
+        .from('atividades')
+        .select('*')
+        .eq('semana_id', semanaData.id)
+        .order('created_at');
+      setAtividades(atividadesData || []);
+    } finally {
+      setLoading(false);
+    }
+  }, [modo]);
+
+  const handleVoltarSemanaAtual = useCallback(async () => {
+    await fetchData();
+  }, [fetchData]);
+
   const handleConfirmCarryOver = useCallback(async (selectedIds: Set<string>) => {
     if (!carryOverModal) return;
     const chosen = carryOverModal.candidates.filter(a => selectedIds.has(a.id));
@@ -641,6 +675,18 @@ const GestaoSemanal: React.FC = () => {
 
           {/* Right side: action buttons */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
+              <button
+                onClick={handleVoltarSemanaAtual}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, border: '1px solid #6366F1',
+                  background: '#EEF2FF', color: '#4338CA', fontSize: 13, fontWeight: 500,
+                  cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: font,
+                }}
+              >
+                Voltar para semana atual
+              </button>
+            )}
             <button
               onClick={() => setShowHistorico(v => !v)}
               style={{
@@ -677,7 +723,7 @@ const GestaoSemanal: React.FC = () => {
                   <button
                     key={h.id}
                     type="button"
-                    onClick={() => handleVerSemanaAnterior(h.semana_numero)}
+                    onClick={() => handleAbrirSemanaDoHistorico(h.semana_numero)}
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', fontSize: 13,
