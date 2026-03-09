@@ -95,6 +95,7 @@ const AppContent: React.FC = () => {
   const [isClientFormView, setIsClientFormView] = useState(false);
   // Estado para controlar se está no formulário de pessoas
   const [isPeopleFormView, setIsPeopleFormView] = useState(false);
+  const [inttegraActiveView, setInttegraActiveView] = useState('dashboard');
 
   const canAccessFeedbackAgent = user?.qualification === 'analista';
 
@@ -908,6 +909,7 @@ const AppContent: React.FC = () => {
             setActiveAgentId('settings');
           }}
           onSwitchToPecuaria={() => setActiveApp('pecuaria')}
+          onViewChange={setInttegraActiveView}
         />
 
         <div
@@ -935,7 +937,7 @@ const AppContent: React.FC = () => {
           <main className="flex-1 min-h-0 bg-ai-bg overflow-hidden">
             <div className="h-full w-full max-w-[1600px] mx-auto flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <InttegraDashboard />
+                <InttegraDashboard view={inttegraActiveView} />
               </div>
             </div>
           </main>

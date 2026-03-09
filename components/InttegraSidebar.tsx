@@ -34,6 +34,7 @@ interface InttegraSidebarProps {
   onLogout: () => void;
   onSettingsClick?: () => void;
   onSwitchToPecuaria: () => void;
+  onViewChange?: (view: string) => void;
 }
 
 const INTEGRA_SIDEBAR_BG = '#1A212E';
@@ -131,6 +132,7 @@ const expandableSections: ExpandableItem[] = [
     label: 'Cadastros Gerais',
     icon: Settings,
     subItems: [
+      { label: 'Smart Start', icon: 'star' },
       { label: 'Propriedades', icon: 'chevron' },
       { label: 'Safras', icon: 'chevron' },
       { label: 'Dispositivos', icon: 'chevron' },
@@ -178,6 +180,7 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
   onLogout,
   onSettingsClick,
   onSwitchToPecuaria,
+  onViewChange,
 }) => {
   const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(false);
   const [openFinanceiroSub, setOpenFinanceiroSub] = useState<Record<string, boolean>>({
@@ -377,9 +380,18 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                         key={sub.label}
                         className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
                         style={{ color: INTEGRA_TEXT }}
+                        onClick={() => {
+                          if (sub.label === 'Smart Start' && onViewChange) {
+                            onViewChange('smart-start');
+                          }
+                        }}
                       >
                         <span className="text-[13px] truncate">{sub.label}</span>
-                        <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
+                        {sub.icon === 'star' ? (
+                          <Star size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
+                        ) : (
+                          <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
+                        )}
                       </div>
                     ))}
                   </div>

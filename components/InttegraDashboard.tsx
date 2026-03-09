@@ -1,7 +1,16 @@
 import React from 'react';
 import { Layers } from 'lucide-react';
+import SmartStart from './SmartStart';
 
-const InttegraDashboard: React.FC = () => {
+interface InttegraDashboardProps {
+  view?: string;
+}
+
+const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view }) => {
+  if (view === 'smart-start') {
+    return <SmartStart />;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center h-full text-ai-subtext px-4">
       <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-6">
