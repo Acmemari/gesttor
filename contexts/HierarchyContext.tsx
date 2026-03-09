@@ -380,7 +380,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       initial.analystId = user.id;
     }
     dispatch({ type: 'HYDRATE_IDS', payload: initial });
-  }, [user?.id]);
+  }, [user?.id, user?.role, user?.qualification, user?.clientId]);
 
   useEffect(() => {
     if (!user) return;
@@ -693,6 +693,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     if (!user) return;
+    if (user.qualification === 'visitante') return;
     const runValidation = async () => {
       const current = stateRef.current;
       const sanitizedAnalystId = sanitizeUUID(effectiveAnalystId);
@@ -745,7 +746,16 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     void runValidation();
-  }, [user?.id, effectiveAnalystId]);
+  }, [
+    user?.id,
+    user?.role,
+    user?.qualification,
+    user?.clientId,
+    effectiveAnalystId,
+    state.analystId,
+    state.clientId,
+    state.farmId,
+  ]);
 
   useEffect(() => {
     if (!user) return;

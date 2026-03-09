@@ -14,12 +14,53 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const PASSWORD_RECOVERY_KEY = 'password_recovery_email';
 const PASSWORD_RECOVERY_MARKER = 'recovery';
 const PASSWORD_RECOVERY_MARKER_VALUE = '1';
+const HIERARCHY_STORAGE_PREFIX = 'hierarchySelection.';
 
 const AUTH_TIMEOUTS = {
   SAFETY: 10_000,
   PROFILE_WAIT: 500,
   LOGIN_REF_RESET: 3_000,
 } as const;
+
+const clearBrowserSessionData = async () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const localKeysToRemove = [
+      PASSWORD_RECOVERY_KEY,
+      'selectedAnalystId',
+      'selectedClientId',
+      'selectedFarmId',
+      'selectedFarm',
+      'selectedCountry',
+      'agro-farms',
+    ];
+
+    localKeysToRemove.forEach(key => localStorage.removeItem(key));
+
+    // Remove versões antigas e por usuário da hierarquia.
+    Object.keys(localStorage)
+      .filter(key => key.startsWith(HIERARCHY_STORAGE_PREFIX))
+      .forEach(key => localStorage.removeItem(key));
+  } catch (_) {
+    // limpeza localStorage best-effort
+  }
+
+  try {
+    sessionStorage.clear();
+  } catch (_) {
+    // limpeza sessionStorage best-effort
+  }
+
+  try {
+    if ('caches' in window) {
+      const cacheKeys = await caches.keys();
+      await Promise.all(cacheKeys.map(cacheKey => caches.delete(cacheKey)));
+    }
+  } catch (_) {
+    // limpeza cache storage best-effort
+  }
+};
 
 const cleanupRecoveryUrl = () => {
   if (typeof window === 'undefined') return;
@@ -341,6 +382,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabase.auth.signOut();
     } catch (error: unknown) {
       log.error('Logout error', error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      await clearBrowserSessionData();
     }
   }, []);
 
