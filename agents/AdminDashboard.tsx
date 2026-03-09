@@ -26,6 +26,7 @@ const AdminDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [qualificationFilter, setQualificationFilter] = useState<'all' | 'visitante' | 'cliente' | 'analista'>('all');
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -234,11 +235,14 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const filteredClients = clients.filter(
-    client =>
+  const filteredClients = clients.filter(client => {
+    const matchesSearch =
       client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+      client.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesQualification =
+      qualificationFilter === 'all' || client.qualification === qualificationFilter;
+    return matchesSearch && matchesQualification;
+  });
 
   const formatLastLogin = (lastLogin?: string) => {
     if (!lastLogin) return 'Nunca';
@@ -738,17 +742,42 @@ const AdminDashboard: React.FC = () => {
       {/* Main Table Area */}
       <div className="flex-1 bg-white rounded-xl border border-ai-border shadow-sm flex flex-col overflow-hidden">
         {/* Table Header / Toolbar */}
-        <div className="p-4 border-b border-ai-border flex justify-between items-center">
-          <h2 className="text-sm font-bold text-ai-text">Base de Usuários</h2>
-          <div className="relative w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ai-subtext" />
-            <input
-              type="text"
-              placeholder="Buscar usuário..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs border border-ai-border rounded-md bg-ai-surface focus:outline-none focus:border-ai-text transition-colors"
-            />
+        <div className="p-4 border-b border-ai-border flex flex-col gap-3">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-bold text-ai-text">Base de Usuários</h2>
+            <div className="relative w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ai-subtext" />
+              <input
+                type="text"
+                placeholder="Buscar usuário..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs border border-ai-border rounded-md bg-ai-surface focus:outline-none focus:border-ai-text transition-colors"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {([
+              { key: 'all' as const, label: 'Todos', color: 'bg-gray-100 text-gray-700', activeColor: 'bg-gray-700 text-white' },
+              { key: 'visitante' as const, label: 'Visitante', color: 'bg-gray-100 text-gray-700', activeColor: 'bg-gray-700 text-white' },
+              { key: 'cliente' as const, label: 'Cliente', color: 'bg-blue-50 text-blue-700', activeColor: 'bg-blue-600 text-white' },
+              { key: 'analista' as const, label: 'Analista', color: 'bg-purple-50 text-purple-700', activeColor: 'bg-purple-600 text-white' },
+            ]).map(opt => {
+              const count = opt.key === 'all'
+                ? clients.length
+                : clients.filter(c => c.qualification === opt.key).length;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setQualificationFilter(opt.key)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    qualificationFilter === opt.key ? opt.activeColor : opt.color
+                  }`}
+                >
+                  {opt.label} ({count})
+                </button>
+              );
+            })}
           </div>
         </div>
 
