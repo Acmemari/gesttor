@@ -3,6 +3,7 @@ import { User, AuthContextType, Plan } from '../types';
 import { supabase } from '../lib/supabase';
 import { loadUserProfile } from '../lib/auth/loadUserProfile';
 import { createUserProfileIfMissing } from '../lib/auth/createProfile';
+import { getAccessToken as getAccessTokenLib } from '../lib/session';
 import { checkPermission as checkPermissionUtil, checkLimit as checkLimitUtil } from '../lib/auth/permissions';
 import { mapUserProfile } from '../lib/auth/mapUserProfile';
 import { logger } from '../lib/logger';
@@ -150,6 +151,7 @@ const buildBasicUser = (
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const loginInProgressRef = useRef(false);
   const inactivityTimerRef = useRef<number | null>(null);
@@ -188,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const safetyTimeout = setTimeout(() => {
       log.warn('Auth initialization timeout - forçando isLoading = false');
       setIsLoading(false);
+      setSessionReady(true);
     }, AUTH_TIMEOUTS.SAFETY);
 
     // Check for existing session
@@ -201,7 +204,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) {
           log.error('Error getting session', error instanceof Error ? error : new Error(String(error)));
           setIsLoading(false);
+          setSessionReady(true);
         } else if (session?.user) {
+          setSessionReady(true);
           setUser(buildBasicUser(session.user));
 
           // Load full profile in background
@@ -215,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearTimeout(safetyTimeout);
           setIsLoading(false);
         } else {
+          setSessionReady(true);
           // Sem sessão: verificar se há code PKCE na URL (SDK ainda pode trocar)
           const searchParams = new URLSearchParams(window.location.search);
           const hasPkceCode = searchParams.has('code');
@@ -236,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         log.error('Error initializing auth', error instanceof Error ? error : new Error(String(error)));
         clearTimeout(safetyTimeout);
         setIsLoading(false);
+        setSessionReady(true);
       }
     };
 
@@ -246,6 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       log.debug(`Auth state changed: ${event}`, { userId: session?.user?.id });
+
+      // INITIAL_SESSION: SDK terminou de restaurar sessão do storage — seguro para fetches
+      if (event === 'INITIAL_SESSION') {
+        setSessionReady(true);
+      }
 
       // Detectar evento de recovery - mostrar página de reset de senha
       if (event === 'PASSWORD_RECOVERY') {
@@ -258,6 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
+        setSessionReady(true);
         // Recovery só é detectado via isRecoveryFlowUrl() que exige flag explícita
         if (isRecoveryFlowUrl()) {
           log.info('Recovery session detected via SIGNED_IN, activating recovery mode');
@@ -270,7 +283,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Se login() já está tratando, não duplicar o processamento de perfil
         if (loginInProgressRef.current) {
-          log.debug('Login in progress, skipping profile load in onAuthStateChange');
+          log.debug('Login in progress, scheduling fallback profile load in onAuthStateChange');
+          void loadUserProfile(session.user.id, 3, 1000)
+            .then(userProfile => {
+              if (userProfile) {
+                setUser(userProfile);
+              }
+            })
+            .catch((err: unknown) => {
+              log.warn('Fallback profile load failed during SIGNED_IN', {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
           clearTimeout(safetyTimeout);
           setIsLoading(false);
           return;
@@ -716,12 +740,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsPasswordRecovery(false);
   }, []);
 
+  const getAccessToken = useCallback(() => getAccessTokenLib(), []);
+
   const authContextValue = useMemo(
     () => ({
       user,
       login,
       logout,
       isLoading,
+      sessionReady,
       isProfileReady,
       isPasswordRecovery,
       checkPermission,
@@ -733,12 +760,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       resetPassword,
       updatePassword,
       clearPasswordRecovery,
+      getAccessToken,
     }),
     [
       user,
       login,
       logout,
       isLoading,
+      sessionReady,
       isProfileReady,
       isPasswordRecovery,
       checkPermission,
@@ -750,6 +779,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       resetPassword,
       updatePassword,
       clearPasswordRecovery,
+      getAccessToken,
     ],
   );
 
