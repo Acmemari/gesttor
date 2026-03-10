@@ -26,10 +26,16 @@ const CalculatorCard: React.FC<CalculatorCardProps> = ({
   locked = false,
   lockedLabel,
 }) => (
-  <button
-    type="button"
+  <div
+    role="button"
+    tabIndex={0}
     onClick={locked ? undefined : onClick}
-    disabled={locked}
+    onKeyDown={e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (!locked) onClick();
+      }
+    }}
     className={`group relative flex flex-col p-5 rounded-xl border border-gray-200 bg-white text-left w-full transition-all duration-200 ${
       locked ? 'opacity-70 cursor-not-allowed' : 'hover:border-gray-800 hover:shadow-sm cursor-pointer'
     }`}
@@ -62,7 +68,7 @@ const CalculatorCard: React.FC<CalculatorCardProps> = ({
         <Lock size={12} className="text-gray-400 shrink-0" aria-hidden />
       </div>
     )}
-  </button>
+  </div>
 );
 
 interface CalculadorasDesktopProps {
