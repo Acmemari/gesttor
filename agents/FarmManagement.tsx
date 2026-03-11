@@ -156,11 +156,16 @@ const BRAZILIAN_STATES = [
 const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
-  const { farms: hierarchyFarms, loading: hierarchyLoading, refreshCurrentLevel } = useHierarchy();
+  const {
+    farms: hierarchyFarms,
+    clients: hierarchyClients,
+    loading: hierarchyLoading,
+    refreshCurrentLevel,
+  } = useHierarchy();
   const [farms, setFarms] = useState<Farm[]>([]);
   const [view, setView] = useState<'list' | 'form'>('list');
-  const [availableClientsCount, setAvailableClientsCount] = useState<number | null>(null);
-  const [loadingClientsAvailability, setLoadingClientsAvailability] = useState(false);
+  const availableClientsCount = hierarchyClients.length;
+  const loadingClientsAvailability = hierarchyLoading.clients;
 
   // Notificar App.tsx sobre mudanças de view
   useEffect(() => {
@@ -591,60 +596,6 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     setFarms(hierarchyFarms);
   }, [hierarchyFarms]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchAvailableClients = async () => {
-      if (!user) {
-        if (isMounted) {
-          setAvailableClientsCount(0);
-          setLoadingClientsAvailability(false);
-        }
-        return;
-      }
-
-      setLoadingClientsAvailability(true);
-      try {
-        let query = supabase.from('clients').select('*', { count: 'exact', head: true });
-
-        if (user.qualification === 'analista' && user.role !== 'admin') {
-          query = query.eq('analyst_id', user.id);
-        }
-
-        const { count, error } = await query;
-        if (error) {
-          console.error('[FarmManagement] Error loading clients count:', error);
-          if (isMounted) setAvailableClientsCount(0);
-          return;
-        }
-
-        if (isMounted) setAvailableClientsCount(count ?? 0);
-      } catch (err) {
-        console.error('[FarmManagement] Unexpected error loading clients count:', err);
-        if (isMounted) setAvailableClientsCount(0);
-      } finally {
-        if (isMounted) setLoadingClientsAvailability(false);
-      }
-    };
-
-    fetchAvailableClients();
-
-    const handleClientsChanged = () => {
-      fetchAvailableClients();
-    };
-
-    window.addEventListener('clientAdded', handleClientsChanged);
-    window.addEventListener('clientUpdated', handleClientsChanged);
-    window.addEventListener('clientDeleted', handleClientsChanged);
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener('clientAdded', handleClientsChanged);
-      window.removeEventListener('clientUpdated', handleClientsChanged);
-      window.removeEventListener('clientDeleted', handleClientsChanged);
-    };
-  }, [user]);
-
   // Se houver fazendas e estiver no formulário vazio (sem estar criando nova), mudar para lista
   useEffect(() => {
     if (!isLoading && farms.length > 0 && view === 'form' && !editingFarm && !isCreatingNew) {
@@ -757,34 +708,6 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     // Limpar erro de estado se o país não for Brasil (estado não é obrigatório)
     if (country !== 'Brasil' && errors.state) {
       setErrors({ ...errors, state: '' });
-    }
-  };
-
-  const linkFarmToClient = async (farmId: string, clientId: string) => {
-    try {
-      // Verificar se o vínculo já existe
-      const { data: existing } = await supabase
-        .from('client_farms')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('farm_id', farmId)
-        .single();
-
-      if (!existing) {
-        // Criar vínculo se não existir
-        const { error } = await supabase.from('client_farms').insert({
-          client_id: clientId,
-          farm_id: farmId,
-        });
-
-        if (error) {
-          console.error('[FarmManagement] Error linking farm to client:', error);
-        } else {
-          console.log('[FarmManagement] Farm linked to client successfully');
-        }
-      }
-    } catch (err: any) {
-      console.error('[FarmManagement] Error linking farm to client:', err);
     }
   };
 
@@ -936,7 +859,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
             return;
           }
 
-          await linkFarmToClient(newFarm.id, clientIdForNewFarm);
+          // farms.client_id é a fonte canônica (definido em buildFarmDatabasePayload)
           if (user && (user.qualification === 'analista' || user.role === 'admin')) {
             await linkFarmToAnalyst(newFarm.id, user.id, true);
           }
@@ -946,9 +869,6 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
           onToast?.('Erro ao salvar fazenda no banco de dados', 'error');
           return;
         }
-
-        // Disparar evento para atualizar o FarmSelector
-        window.dispatchEvent(new CustomEvent('farmAdded'));
       } else if (editingFarm) {
         try {
           const updatedFarm: Partial<Farm> = {
@@ -975,11 +895,9 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
           onToast?.('Erro ao atualizar fazenda no banco de dados', 'error');
           return;
         }
-
-        window.dispatchEvent(new CustomEvent('farmUpdated'));
       }
 
-      setFarms(updatedFarms);
+      // Fonte única: HierarchyContext. Não aplicar setFarms local.
 
       // Show success toast with animation
       onToast?.(editingFarm ? 'Fazenda atualizada com sucesso!' : 'Fazenda cadastrada com sucesso!', 'success');
@@ -1003,11 +921,10 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   const handleDelete = async (farmId: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta fazenda?')) {
       try {
-        // Primeiro, remover vínculos client_farms e analyst_farms
-        await supabase.from('client_farms').delete().eq('farm_id', farmId);
+        // Remover vínculos analyst_farms; farms.client_id é canônico
         await supabase.from('analyst_farms').delete().eq('farm_id', farmId);
 
-        // Depois, excluir do banco de dados
+        // Excluir fazenda (client_farms cascade via FK se existir)
         const { error: dbError } = await supabase.from('farms').delete().eq('id', farmId);
 
         if (dbError) {
@@ -1015,14 +932,9 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
         }
 
         // Atualizar localStorage
-        const updatedFarms = farms.filter(farm => farm.id !== farmId);
-        setFarms(updatedFarms);
         await refreshCurrentLevel('farms');
 
         onToast?.('Fazenda excluída com sucesso!', 'success');
-
-        // Disparar evento para atualizar FarmSelector
-        window.dispatchEvent(new CustomEvent('farmUpdated'));
       } catch (err) {
         console.error('[FarmManagement] Error deleting farm:', err);
         onToast?.('Erro ao excluir fazenda', 'error');

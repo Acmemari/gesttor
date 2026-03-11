@@ -9,7 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LocationProvider, useLocation } from './contexts/LocationContext';
 import { useFarm } from './contexts/FarmContext';
-import { HierarchyProvider } from './contexts/HierarchyContext';
+import { HierarchyProvider, useHierarchy } from './contexts/HierarchyContext';
 import AnalystHeader from './components/AnalystHeader';
 import VisitorContentGuard from './components/VisitorContentGuard';
 import { Agent } from './types';
@@ -65,7 +65,9 @@ const AppContent: React.FC = () => {
     useAuth();
   const { country } = useLocation();
   const { selectedFarm, setSelectedFarm } = useFarm();
+  const { refreshCurrentLevel } = useHierarchy();
   const [activeApp, setActiveApp] = useState<'pecuaria' | 'inttegra'>('pecuaria');
+  const prevActiveAppRef = React.useRef<'pecuaria' | 'inttegra'>('pecuaria');
   const [activeAgentId, setActiveAgentId] = useState<string>('cattle-profit');
   const [viewMode, setViewMode] = useState<
     'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo'
@@ -97,6 +99,14 @@ const AppContent: React.FC = () => {
   const [inttegraActiveView, setInttegraActiveView] = useState('dashboard');
 
   const canAccessFeedbackAgent = user?.qualification === 'analista';
+
+  // Recarregar hierarquia (organizações e fazendas) quando retornar ao workspace Pecuária
+  useEffect(() => {
+    if (prevActiveAppRef.current === 'inttegra' && activeApp === 'pecuaria' && user) {
+      void refreshCurrentLevel('clients');
+    }
+    prevActiveAppRef.current = activeApp;
+  }, [activeApp, user, refreshCurrentLevel]);
 
   // Handle window resize to adjust sidebar state
   useEffect(() => {

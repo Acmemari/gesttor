@@ -16,7 +16,6 @@ export function useFarmOperations() {
    */
   const getClientFarms = useCallback(async (clientId: string): Promise<Farm[]> => {
     try {
-      // Fonte canônica: farms.client_id
       const { data, error } = await supabase
         .from('farms')
         .select('*')
@@ -28,37 +27,7 @@ export function useFarmOperations() {
         return [];
       }
 
-      if (data && data.length > 0) {
-        return mapFarmsFromDatabase(data);
-      }
-
-      // Compatibilidade temporária: alguns registros legados ainda podem existir só em client_farms.
-      const { data: legacyLinks, error: legacyError } = await supabase
-        .from('client_farms')
-        .select('farm_id')
-        .eq('client_id', clientId);
-
-      if (legacyError || !legacyLinks || legacyLinks.length === 0) {
-        return [];
-      }
-
-      const legacyFarmIds = legacyLinks
-        .map(link => link.farm_id)
-        .filter((farmId): farmId is string => typeof farmId === 'string' && farmId.length > 0);
-      if (legacyFarmIds.length === 0) {
-        return [];
-      }
-
-      const { data: legacyFarms, error: legacyFarmsError } = await supabase
-        .from('farms')
-        .select('*')
-        .in('id', legacyFarmIds);
-      if (legacyFarmsError) {
-        log.error('Error loading legacy linked farms', new Error(legacyFarmsError.message));
-        return [];
-      }
-
-      return legacyFarms ? mapFarmsFromDatabase(legacyFarms) : [];
+      return data ? mapFarmsFromDatabase(data) : [];
     } catch (err: unknown) {
       log.error('Exception loading client farms', err instanceof Error ? err : new Error(String(err)));
       return [];
@@ -70,13 +39,10 @@ export function useFarmOperations() {
    */
   const deleteFarm = useCallback(async (farmId: string): Promise<boolean> => {
     try {
-      // Deletar vínculos primeiro
-      await Promise.all([
-        supabase.from('client_farms').delete().eq('farm_id', farmId),
-        supabase.from('analyst_farms').delete().eq('farm_id', farmId),
-      ]);
+      // Deletar vínculos analyst_farms primeiro. client_farms tem FK para farms com CASCADE.
+      await supabase.from('analyst_farms').delete().eq('farm_id', farmId);
 
-      // Deletar fazenda
+      // Deletar fazenda (client_farms cascade se configurado; senão, orphan rows não afetam fonte canônica)
       const { error } = await supabase.from('farms').delete().eq('id', farmId);
 
       if (error) {
@@ -111,15 +77,7 @@ export function useFarmOperations() {
 
       if (error) {
         log.error('Error counting farms', new Error(error.message));
-        // Compatibilidade temporária com dados legados.
-        const { count: legacyCount, error: legacyError } = await supabase
-          .from('client_farms')
-          .select('*', { count: 'exact', head: true })
-          .eq('client_id', clientId);
-        if (legacyError) {
-          return 0;
-        }
-        return legacyCount || 0;
+        return 0;
       }
 
       return count || 0;

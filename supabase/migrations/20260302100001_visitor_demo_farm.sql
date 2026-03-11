@@ -2,6 +2,7 @@
 -- MIGRATION: Visitor Demo Farm
 -- Creates a fixed demo farm under the visitor demo client.
 -- Completes the hierarchy: Analyst → Client → Farm for visitors.
+-- IDs must match HierarchyContext: VISITOR_FARM_ID, VISITOR_CLIENT_ID.
 -- ============================================================
 
 -- 0. Precondition: verify client from migration 024 exists; fail loudly if missing

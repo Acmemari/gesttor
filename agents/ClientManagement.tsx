@@ -19,6 +19,7 @@ import {
 import { Client, Farm } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useHierarchy } from '../contexts/HierarchyContext';
 import { useFarmOperations } from '../lib/hooks/useFarmOperations';
 import { createPerson } from '../lib/people';
 
@@ -54,6 +55,7 @@ const DEFAULT_PHONE_COUNTRY_CODE = '+55';
 const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
   type OwnerFieldError = { email?: string; phone?: string };
   const { user: currentUser } = useAuth();
+  const { refreshCurrentLevel } = useHierarchy();
   const { getClientFarms, deleteFarm } = useFarmOperations();
   const clientFormReadOnly = currentUser?.role === 'admin' ? false : currentUser?.qualification !== 'analista';
   const [clients, setClients] = useState<Client[]>([]);
@@ -383,13 +385,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       resetForm();
       setView('list');
       loadClients();
-
-      // Disparar evento para atualizar o ClientSelector após um pequeno delay
-      // para garantir que o banco de dados foi atualizado
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('clientAdded'));
-        window.dispatchEvent(new CustomEvent('clientUpdated'));
-      }, 500);
+      void refreshCurrentLevel('clients');
     } catch (err: any) {
       console.error('[ClientManagement] Error saving client:', err);
       onToast?.(`Erro ao salvar organização: ${err.message || 'Erro desconhecido'}`, 'error');
@@ -612,12 +608,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         }
 
         await loadClients();
-
-        // Disparar eventos para atualizar seletores
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('clientDeleted'));
-          window.dispatchEvent(new CustomEvent('farmUpdated'));
-        }, 300);
+        void refreshCurrentLevel('clients');
+        void refreshCurrentLevel('farms');
       } catch (err: any) {
         console.error('[ClientManagement] Error deleting client:', err);
         onToast?.(`Erro ao excluir organização: ${err.message || 'Erro desconhecido'}`, 'error');
@@ -625,7 +617,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         setDeletingClientId(null);
       }
     },
-    [getClientFarms, deleteFarm, onToast, loadClients],
+    [getClientFarms, deleteFarm, onToast, loadClients, refreshCurrentLevel],
   );
 
   const resetForm = () => {
