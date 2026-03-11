@@ -4,7 +4,7 @@ import { Client, Farm, User } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
-import { sanitizeUUID, sanitizeId } from '../lib/uuid';
+import { sanitizeUUID, sanitizeId, sanitizeFarmIdAsUUID } from '../lib/uuid';
 
 const PAGE_SIZE = 50;
 const HIERARCHY_STORAGE_KEY_V1 = 'hierarchySelection.v1';
@@ -20,6 +20,17 @@ function getHierarchyStorageKey(userId: string): string {
 const VISITOR_ANALYST_ID = '0238f4f4-5967-429e-9dce-3f6cc03f5a80';
 const VISITOR_CLIENT_ID = '00000000-0000-0000-0000-000000000002';
 const VISITOR_FARM_ID = '00000000-0000-0000-0000-000000000003';
+
+/** Cliente stub para modo visitante; evita query Supabase que pode travar por RLS. */
+const VISITOR_CLIENT: Client = {
+  id: VISITOR_CLIENT_ID,
+  name: 'Inttegra (Visitante)',
+  phone: '',
+  email: '',
+  analystId: VISITOR_ANALYST_ID,
+  createdAt: '',
+  updatedAt: '',
+};
 
 interface HierarchyLoadingState {
   analysts: boolean;
@@ -140,7 +151,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
       return {
         analystId: sanitizeUUID(typeof modern?.analystId === 'string' ? modern.analystId : null),
         clientId: sanitizeUUID(typeof modern?.clientId === 'string' ? modern.clientId : null),
-        farmId: sanitizeId(typeof modern?.farmId === 'string' ? modern.farmId : null),
+        farmId: sanitizeFarmIdAsUUID(typeof modern?.farmId === 'string' ? modern.farmId : null),
       };
     }
   } catch {
@@ -154,7 +165,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
       const migrated = {
         analystId: sanitizeUUID(typeof legacy?.analystId === 'string' ? legacy.analystId : null),
         clientId: sanitizeUUID(typeof legacy?.clientId === 'string' ? legacy.clientId : null),
-        farmId: sanitizeId(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
+        farmId: sanitizeFarmIdAsUUID(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
       };
       localStorage.setItem(scopedKey, JSON.stringify(migrated));
       localStorage.removeItem(HIERARCHY_STORAGE_KEY_V1);
@@ -166,7 +177,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
 
   const analystId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedAnalystId')));
   const clientId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
-  const farmId = sanitizeId(
+  const farmId = sanitizeFarmIdAsUUID(
     localStorage.getItem('selectedFarmId') || parseLegacyId(localStorage.getItem('selectedFarm')),
   );
   const normalized = { analystId, clientId, farmId };
@@ -406,21 +417,22 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (user.qualification === 'visitante') return; // IDs são determinísticos, não persistir
     const scopedKey = getHierarchyStorageKey(user.id);
     if (user.qualification === 'cliente') {
-      // Para clientes, persiste apenas a fazenda (o clientId vem sempre do perfil)
+      // Para clientes, persiste apenas a fazenda (o clientId vem sempre do perfil); só UUID
+      const farmIdToSave = sanitizeFarmIdAsUUID(state.farmId);
       try {
         const stored = localStorage.getItem(scopedKey);
         const parsed = stored ? JSON.parse(stored) : {};
-        localStorage.setItem(scopedKey, JSON.stringify({ ...parsed, farmId: state.farmId }));
+        localStorage.setItem(scopedKey, JSON.stringify({ ...parsed, farmId: farmIdToSave }));
       } catch {
         // Dados corrompidos: sobrescreve com estado limpo
-        localStorage.setItem(scopedKey, JSON.stringify({ farmId: state.farmId }));
+        localStorage.setItem(scopedKey, JSON.stringify({ farmId: farmIdToSave }));
       }
       return;
     }
     const payload = {
       analystId: state.analystId,
       clientId: state.clientId,
-      farmId: state.farmId,
+      farmId: sanitizeFarmIdAsUUID(state.farmId),
     };
     localStorage.setItem(scopedKey, JSON.stringify(payload));
   }, [state.analystId, state.clientId, state.farmId, user, isProfileReady, sessionReady]);
@@ -505,10 +517,14 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // Se for cliente mas não tiver clientId vinculado, limpa e retorna
-      if (isClientUser && !user.clientId) {
-        dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
-        dispatch({ type: 'SELECT_CLIENT_ID', payload: null });
+      // Visitante: não chamar Supabase (query com analyst_id = VISITOR_ANALYST_ID pode travar por RLS).
+      if (effectiveAnalystId === VISITOR_ANALYST_ID) {
+        dispatch({
+          type: 'SET_CLIENTS',
+          payload: { data: [VISITOR_CLIENT], append: false, hasMore: false },
+        });
+        dispatch({ type: 'SELECT_CLIENT_ID', payload: VISITOR_CLIENT_ID });
+        dispatch({ type: 'SET_LOADING', payload: { level: 'clients', value: false } });
         return;
       }
 
@@ -770,6 +786,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!sessionReady || !user || !isProfileReady) return;
     if (user.qualification === 'visitante') return;
 
+    const abortController = new AbortController();
+
     const timer = window.setTimeout(() => {
       const runValidation = async () => {
         const current = stateRef.current;
@@ -777,6 +795,12 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const sanitizedClientId = sanitizeUUID(current.clientId);
         const sanitizedFarmId = sanitizeId(current.farmId);
         if (!sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
+
+        // Bootstrap guard: skip validation when only analystId is set; fetchClients will
+        // auto-select the first client and this effect will re-run with clientId.
+        if (sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
+
+        const snapshotClientId = current.clientId;
 
         if (DEBUG_HIERARCHY) {
           console.debug('[HierarchyContext] validate_hierarchy start', {
@@ -790,11 +814,17 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         let error: { message?: string } | null = null;
 
         for (let attempt = 0; attempt < VALIDATE_RETRIES; attempt++) {
-          const result = await supabase.rpc('validate_hierarchy', {
-            p_analyst_id: sanitizedAnalystId,
-            p_client_id: sanitizedClientId,
-            p_farm_id: sanitizedFarmId,
-          });
+          if (abortController.signal.aborted) return;
+
+          const result = await supabase.rpc(
+            'validate_hierarchy',
+            {
+              p_analyst_id: sanitizedAnalystId,
+              p_client_id: sanitizedClientId,
+              p_farm_id: sanitizedFarmId,
+            },
+            { signal: abortController.signal },
+          );
           data = result.data;
           error = result.error;
 
@@ -802,6 +832,9 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           const msg = error.message || '';
           const isNetwork = /fetch|network|ECONNREFUSED|Failed to fetch|aggregateerror/i.test(msg);
+          const isAbort = error?.message?.toLowerCase?.().includes('abort') ?? false;
+
+          if (isAbort || abortController.signal.aborted) return;
 
           console.warn('[HierarchyContext] validate_hierarchy failed:', {
             attempt: attempt + 1,
@@ -813,6 +846,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!isNetwork) {
             validationFailureCountRef.current += 1;
             if (validationFailureCountRef.current >= 2) {
+              if (abortController.signal.aborted) return;
+              if (stateRef.current.clientId !== snapshotClientId) return;
               if (DEBUG_HIERARCHY) {
                 console.debug('[HierarchyContext] validate_hierarchy RESET IDs (consecutive RPC failures)');
               }
@@ -834,8 +869,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               console.debug('[HierarchyContext] validate_hierarchy retry in', delayMs, 'ms');
             }
             await new Promise(r => setTimeout(r, delayMs));
+            if (abortController.signal.aborted) return;
           }
         }
+
+        if (abortController.signal.aborted) return;
 
         if (error) {
           console.warn('[HierarchyContext] validate_hierarchy failed after retries:', error.message);
@@ -845,6 +883,13 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (!data || !Array.isArray(data) || data.length === 0) {
           if (DEBUG_HIERARCHY) console.debug('[HierarchyContext] validate_hierarchy empty data');
           console.warn('[HierarchyContext] validate_hierarchy returned empty data');
+          return;
+        }
+
+        if (stateRef.current.clientId !== snapshotClientId) {
+          if (DEBUG_HIERARCHY) {
+            console.debug('[HierarchyContext] State changed during validate_hierarchy, discarding stale result');
+          }
           return;
         }
 
@@ -877,6 +922,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return () => {
       window.clearTimeout(timer);
+      abortController.abort();
     };
   }, [
     user?.id,

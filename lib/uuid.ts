@@ -22,3 +22,13 @@ export function sanitizeId(value: string | null | undefined): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+/**
+ * Para persistência de hierarchySelection: aceita apenas UUID como farmId.
+ * Evita gravar IDs no formato "farm-*" (TEXT) no localStorage.
+ */
+export function sanitizeFarmIdAsUUID(value: string | null | undefined): string | null {
+  if (value == null || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return isValidUUID(trimmed) ? trimmed : null;
+}
