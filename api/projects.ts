@@ -1,0 +1,191 @@
+/**
+ * API de projetos. GET list, POST create, PATCH update, DELETE.
+ */
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
+import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { assertOrgAccess } from './_lib/orgAccess.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../src/DB/index.js';
+import { userProfiles, projects as projectsTable } from '../src/DB/schema.js';
+import {
+  fetchProjectsByCreatedBy,
+  fetchProjectsForClient,
+  createProject,
+  updateProject,
+  deleteProject,
+  getNextSortOrder,
+} from '../src/DB/repositories/projects.js';
+
+const MAX_NAME_LENGTH = 300;
+const MAX_STAKEHOLDER_ROWS = 50;
+
+function sanitize(val: string): string {
+  return String(val ?? '').trim();
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setCorsHeaders(res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
+  const userId = await getAuthUserIdFromRequest(req);
+  if (!userId) {
+    jsonError(res, 'Não autorizado', { code: 'AUTH_MISSING_OR_INVALID_TOKEN', status: 401 });
+    return;
+  }
+
+  const [profile] = await db
+    .select({ role: userProfiles.role })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, userId))
+    .limit(1);
+
+  if (!profile) {
+    jsonError(res, 'Perfil não encontrado', { code: 'AUTH_PROFILE_NOT_FOUND', status: 401 });
+    return;
+  }
+
+  // No Neon, role='cliente' identifica usuários do tipo cliente
+  const isClientRole = (profile.role ?? '') === 'cliente';
+  const isAdmin = (profile.role ?? '') === 'administrador';
+
+  if (req.method === 'GET') {
+    const clientMode = req.query?.clientMode === 'true';
+    const clientId = typeof req.query?.clientId === 'string' ? req.query.clientId : undefined;
+    const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : null;
+
+    if (clientMode && clientId && isClientRole) {
+      const rows = await fetchProjectsForClient(userId, clientId, farmId);
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    const rows = await fetchProjectsByCreatedBy(userId, clientId);
+    jsonSuccess(res, rows);
+    return;
+  }
+
+  if (req.method === 'POST') {
+    const body = req.body as Record<string, unknown>;
+    const name = sanitize(String(body?.name ?? ''));
+    if (!name) {
+      jsonError(res, 'Nome do projeto é obrigatório', { status: 400 });
+      return;
+    }
+    if (name.length > MAX_NAME_LENGTH) {
+      jsonError(res, `Nome muito longo (máx ${MAX_NAME_LENGTH})`, { status: 400 });
+      return;
+    }
+
+    const stakeholder = Array.isArray(body?.stakeholder_matrix)
+      ? body.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS)
+      : [];
+    const successEvidence = Array.isArray(body?.success_evidence)
+      ? body.success_evidence.filter((s: unknown) => typeof s === 'string' && (s as string).trim())
+      : [];
+
+    const orgIdForProject = (body?.client_id as string) || null;
+    if (orgIdForProject && !isAdmin) {
+      await assertOrgAccess(orgIdForProject, userId, profile.role ?? 'visitante');
+    }
+
+    const nextOrder = await getNextSortOrder(userId, orgIdForProject);
+    const row = await createProject({
+      created_by: userId,
+      client_id: orgIdForProject,
+      name,
+      description: body?.description ? sanitize(String(body.description)) : null,
+      transformations_achievements: body?.transformations_achievements
+        ? sanitize(String(body.transformations_achievements))
+        : null,
+      success_evidence: successEvidence,
+      start_date: body?.start_date ? String(body.start_date) : null,
+      end_date: body?.end_date ? String(body.end_date) : null,
+      sort_order: nextOrder,
+      stakeholder_matrix: stakeholder,
+    });
+    jsonSuccess(res, row);
+    return;
+  }
+
+  if (req.method === 'PATCH' || req.method === 'PUT') {
+    const projectId = typeof req.query?.id === 'string' ? req.query.id : (req.body as { id?: string })?.id;
+    if (!projectId) {
+      jsonError(res, 'ID do projeto é obrigatório', { status: 400 });
+      return;
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const stakeholder = Array.isArray(body?.stakeholder_matrix)
+      ? body.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS)
+      : undefined;
+    const successEvidence = Array.isArray(body?.success_evidence)
+      ? body.success_evidence.filter((s: unknown) => typeof s === 'string' && (s as string).trim())
+      : undefined;
+
+    const payload: Record<string, unknown> = {};
+    if (body?.name !== undefined) payload.name = sanitize(String(body.name));
+    if (body?.description !== undefined) payload.description = body.description ? sanitize(String(body.description)) : null;
+    if (body?.transformations_achievements !== undefined)
+      payload.transformations_achievements = body.transformations_achievements ? sanitize(String(body.transformations_achievements)) : null;
+    if (successEvidence !== undefined) payload.success_evidence = successEvidence;
+    if (body?.start_date !== undefined) payload.start_date = body.start_date ? String(body.start_date) : null;
+    if (body?.end_date !== undefined) payload.end_date = body.end_date ? String(body.end_date) : null;
+    if (stakeholder !== undefined) payload.stakeholder_matrix = stakeholder;
+    if (body?.client_id !== undefined) payload.client_id = body.client_id || null;
+    if (body?.sort_order !== undefined) payload.sort_order = Number(body.sort_order);
+
+    if (!isAdmin) {
+      const [proj] = await db
+        .select({ createdBy: projectsTable.createdBy })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, projectId))
+        .limit(1);
+      if (!proj) {
+        jsonError(res, 'Projeto não encontrado', { status: 404 });
+        return;
+      }
+      if (proj.createdBy !== userId) {
+        jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+        return;
+      }
+    }
+
+    const row = await updateProject(projectId, payload);
+    jsonSuccess(res, row);
+    return;
+  }
+
+  if (req.method === 'DELETE') {
+    const projectId = typeof req.query?.id === 'string' ? req.query.id : (req.body as { id?: string })?.id;
+    if (!projectId) {
+      jsonError(res, 'ID do projeto é obrigatório', { status: 400 });
+      return;
+    }
+
+    if (!isAdmin) {
+      const [proj] = await db
+        .select({ createdBy: projectsTable.createdBy })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, projectId))
+        .limit(1);
+      if (!proj) {
+        jsonError(res, 'Projeto não encontrado', { status: 404 });
+        return;
+      }
+      if (proj.createdBy !== userId) {
+        jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+        return;
+      }
+    }
+
+    await deleteProject(projectId);
+    jsonSuccess(res, { deleted: true });
+    return;
+  }
+
+  jsonError(res, 'Método não permitido', { status: 405 });
+}

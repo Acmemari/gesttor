@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import DateInputBR from '../components/DateInputBR';
+import * as semanasApi from '../lib/api/semanasClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
+import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,14 +193,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       setCanDeleteWeek(false);
       return;
     }
-    supabase
-      .from('people')
-      .select('pode_alterar_semana_fechada, pode_apagar_semana')
-      .ilike('email', email)
-      .then(({ data }) => {
-        const rows = data || [];
+    checkPermsByEmail(email)
+      .then(rows => {
         setCanEditClosedWeek(rows.some(r => r.pode_alterar_semana_fechada));
         setCanDeleteWeek(rows.some(r => r.pode_apagar_semana));
+      })
+      .catch(() => {
+        setCanEditClosedWeek(false);
+        setCanDeleteWeek(false);
       });
   }, [user]);
 
@@ -227,30 +228,20 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     try {
       const farmId = selectedFarm?.id ?? null;
 
-      // Build people query filtered by farm when available
-      let pessoasQuery = supabase.from('people').select('id, full_name, preferred_name').eq('assume_tarefas_fazenda', true).order('full_name');
-      if (farmId) pessoasQuery = pessoasQuery.eq('farm_id', farmId);
+      const [pessoasRows, semanaRes, historicoRes] = await Promise.all([
+        farmId ? listPessoasByFarm(farmId, { assumeTarefas: true }) : Promise.resolve([]),
+        semanasApi.getCurrentSemana(modo, farmId),
+        semanasApi.listHistorico(farmId),
+      ]);
 
-      // Build semanas query filtered by farm when available
-      let semanaQuery = supabase.from('semanas').select('*').eq('modo', modo).order('numero', { ascending: false }).order('created_at', { ascending: false }).limit(1);
-      if (farmId) semanaQuery = semanaQuery.eq('farm_id', farmId);
-      else semanaQuery = semanaQuery.is('farm_id', null);
-
-      // Build historico query filtered by farm when available
-      let historicoQuery = supabase.from('historico_semanas').select('*').order('closed_at', { ascending: false });
-      if (farmId) historicoQuery = historicoQuery.eq('farm_id', farmId);
-      else historicoQuery = historicoQuery.is('farm_id', null);
-
-      const [pessoasRes, semanaRes, historicoRes] = await Promise.all([pessoasQuery, semanaQuery, historicoQuery]);
-
-      const pessoasData: Pessoa[] = (pessoasRes.data || []).map((p: { id: string; full_name: string; preferred_name: string | null }) => ({
+      const pessoasData: Pessoa[] = pessoasRows.map(p => ({
         id: p.id,
         nome: p.preferred_name || p.full_name,
       }));
       setPessoas(pessoasData);
-      setHistorico(historicoRes.data || []);
+      setHistorico(historicoRes.ok ? (historicoRes.data as HistoricoSemana[]) : []);
 
-      let semanaData: Semana | null = semanaRes.data?.[0] ?? null;
+      let semanaData: Semana | null = semanaRes.ok ? (semanaRes.data as Semana | null) : null;
 
       // Auto-create first week for this mode if none exists
       if (!semanaData) {
@@ -259,24 +250,23 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         const monday = getMondayOfWeek(today);
         const saturday = new Date(monday);
         saturday.setDate(monday.getDate() + 5);
-        const { data: created } = await supabase
-          .from('semanas')
-          .insert({ farm_id: farmId, numero: weekNum, modo, aberta: true, data_inicio: toDateStr(monday), data_fim: toDateStr(saturday) })
-          .select()
-          .single();
-        semanaData = created;
+        const createRes = await semanasApi.createSemana({
+          farm_id: farmId,
+          numero: weekNum,
+          modo,
+          aberta: true,
+          data_inicio: toDateStr(monday),
+          data_fim: toDateStr(saturday),
+        });
+        semanaData = createRes.ok ? (createRes.data as Semana) : null;
       }
 
       setSemana(semanaData);
       setUltimaSemanaId(semanaData?.id ?? null);
 
       if (semanaData) {
-        const { data: atividadesData } = await supabase
-          .from('atividades')
-          .select('*')
-          .eq('semana_id', semanaData.id)
-          .order('created_at');
-        setAtividades(atividadesData || []);
+        const atRes = await semanasApi.listAtividades(semanaData.id);
+        setAtividades(atRes.ok ? (atRes.data as Atividade[]) : []);
       } else {
         setAtividades([]);
       }
@@ -399,14 +389,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setOperating(true);
     try {
     if (editingId) {
-      const { error } = await supabase.from('atividades').update({
+      const res = await semanasApi.updateAtividade(editingId, {
         titulo: newForm.titulo.trim(),
         descricao: newForm.descricao.trim(),
         pessoa_id: pessoaId,
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
-      }).eq('id', editingId);
-      if (error) { onToast?.('Erro ao salvar atividade.', 'error'); return; }
+      });
+      if (!res.ok) { onToast?.('Erro ao salvar atividade.', 'error'); return; }
       setAtividades(prev => prev.map(a => a.id === editingId ? {
         ...a,
         titulo: newForm.titulo.trim(),
@@ -417,7 +407,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       } : a));
       resetForm();
     } else {
-      const { data, error } = await supabase.from('atividades').insert({
+      const res = await semanasApi.createAtividade({
         semana_id: semana.id,
         titulo: newForm.titulo.trim(),
         descricao: newForm.descricao.trim(),
@@ -425,12 +415,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
         status: 'a fazer',
-      }).select().single();
-      if (error) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
-      if (data) {
-        setAtividades(prev => [...prev, data as Atividade]);
-        setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
-      }
+      });
+      if (!res.ok) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
+      setAtividades(prev => [...prev, res.data as Atividade]);
+      setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
     }
     } finally {
       setOperating(false);
@@ -446,22 +434,22 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     }
     if (deletingTimerRef.current) clearTimeout(deletingTimerRef.current);
     setDeletingId(null);
-    const { error } = await supabase.from('atividades').delete().eq('id', id);
-    if (error) { onToast?.('Erro ao excluir atividade.', 'error'); return; }
+    const res = await semanasApi.deleteAtividade(id);
+    if (!res.ok) { onToast?.('Erro ao excluir atividade.', 'error'); return; }
     setAtividades(prev => prev.filter(a => a.id !== id));
     if (editingId === id) resetForm();
   }, [deletingId, editingId, resetForm, onToast]);
 
   const handleStatusChange = useCallback(async (id: string, status: string) => {
-    const { error } = await supabase.from('atividades').update({ status }).eq('id', id);
-    if (error) { onToast?.('Erro ao atualizar status.', 'error'); return; }
+    const res = await semanasApi.updateAtividade(id, { status });
+    if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
   }, [onToast]);
 
   const handleCheckboxChange = useCallback(async (id: string, checked: boolean) => {
     const status = checked ? 'concluída' : 'a fazer';
-    const { error } = await supabase.from('atividades').update({ status }).eq('id', id);
-    if (error) { onToast?.('Erro ao atualizar status.', 'error'); return; }
+    const res = await semanasApi.updateAtividade(id, { status });
+    if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
   }, [onToast]);
 
@@ -471,18 +459,17 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     try {
     const total = atividades.length;
     const concluidas = atividades.filter(a => a.status === 'concluída').length;
-    const { error: err1 } = await supabase.from('semanas').update({ aberta: false }).eq('id', semana.id);
-    if (err1) { onToast?.('Erro ao fechar semana.', 'error'); return; }
-    const { error: err2 } = await supabase.from('historico_semanas').insert({
+    const res1 = await semanasApi.updateSemana(semana.id, { aberta: false });
+    if (!res1.ok) { onToast?.('Erro ao fechar semana.', 'error'); return; }
+    const res2 = await semanasApi.createHistorico({
       farm_id: semana.farm_id,
       semana_id: semana.id,
       semana_numero: semana.numero,
       total,
       concluidas,
       pendentes: total - concluidas,
-      closed_at: new Date().toISOString(),
     });
-    if (err2) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
+    if (!res2.ok) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
     onToast?.('Semana fechada com sucesso.', 'success');
     await fetchData();
     } finally {
@@ -494,30 +481,23 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setLoading(true);
     setShowHistorico(false);
     try {
-      let semanaData;
+      let semanaData: Semana | null = null;
       if (semanaId) {
-        const res = await supabase.from('semanas').select('*').eq('id', semanaId).maybeSingle();
-        semanaData = res.data;
+        const res = await semanasApi.getSemanaById(semanaId);
+        semanaData = res.ok ? (res.data as Semana | null) : null;
       }
       if (!semanaData) {
-        let q = supabase.from('semanas').select('*').eq('numero', semanaNumero).eq('modo', modo);
         const farmId = selectedFarm?.id ?? null;
-        if (farmId) q = q.eq('farm_id', farmId);
-        else q = q.is('farm_id', null);
-        const res = await q.maybeSingle();
-        semanaData = res.data;
+        const res = await semanasApi.getSemanaByNumero(semanaNumero, modo, farmId);
+        semanaData = res.ok ? (res.data as Semana | null) : null;
       }
       if (!semanaData) {
         setLoading(false);
         return;
       }
-      setSemana(semanaData as Semana);
-      const { data: atividadesData } = await supabase
-        .from('atividades')
-        .select('*')
-        .eq('semana_id', semanaData.id)
-        .order('created_at');
-      setAtividades(atividadesData || []);
+      setSemana(semanaData);
+      const atRes = await semanasApi.listAtividades(semanaData.id);
+      setAtividades(atRes.ok ? (atRes.data as Atividade[]) : []);
     } finally {
       setLoading(false);
     }
@@ -532,10 +512,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setOperating(true);
     try {
     if (h.semana_id) {
-      await supabase.from('atividades').delete().eq('semana_id', h.semana_id);
-      await supabase.from('semanas').delete().eq('id', h.semana_id);
+      await semanasApi.deleteAtividadesBySemana(h.semana_id);
+      await semanasApi.deleteSemana(h.semana_id);
     }
-    await supabase.from('historico_semanas').delete().eq('id', h.id);
+    await semanasApi.deleteHistorico(h.id);
     await fetchData();
     } finally {
       setOperating(false);
@@ -550,7 +530,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     if (!carryOverModal) return;
     const chosen = carryOverModal.candidates.filter(a => selectedIds.has(a.id));
     if (chosen.length > 0) {
-      await supabase.from('atividades').insert(
+      await semanasApi.createAtividadesBulk(
         chosen.map(({ titulo, descricao, pessoa_id, data_termino, tag }) => ({
           semana_id: carryOverModal.pendingSemanaId,
           titulo,
@@ -559,7 +539,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           data_termino,
           tag,
           status: 'a fazer',
-        }))
+        })),
       );
     }
     setCarryOverModal(null);
@@ -587,7 +567,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       const monday = getMondayOfWeek(today);
       const saturday = new Date(monday);
       saturday.setDate(monday.getDate() + 5);
-      await supabase.from('semanas').insert({
+      await semanasApi.createSemana({
         farm_id: farmId,
         numero: weekNum,
         modo,
@@ -604,34 +584,26 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       nextEnd.setDate(nextEnd.getDate() + 7);
 
       // Verificar se a próxima semana já existe para esta fazenda (evita duplicatas)
-      let existenteQuery = supabase.from('semanas').select('*').eq('numero', nextNumero).eq('modo', semana.modo);
-      if (farmId) existenteQuery = existenteQuery.eq('farm_id', farmId);
-      else existenteQuery = existenteQuery.is('farm_id', null);
-      const { data: existente } = await existenteQuery.maybeSingle();
-
-      let targetSemana = existente as Semana | null;
+      const existenteRes = await semanasApi.getSemanaByNumero(nextNumero, semana.modo, farmId);
+      let targetSemana: Semana | null = existenteRes.ok ? (existenteRes.data as Semana | null) : null;
 
       if (targetSemana) {
         // Já existe: reabrir se estiver fechada
         if (!targetSemana.aberta) {
-          await supabase.from('semanas').update({ aberta: true }).eq('id', targetSemana.id);
+          await semanasApi.updateSemana(targetSemana.id, { aberta: true });
           targetSemana = { ...targetSemana, aberta: true };
         }
       } else {
         // Não existe: criar normalmente
-        const { data: newSemana } = await supabase
-          .from('semanas')
-          .insert({
-            farm_id: farmId,
-            numero: nextNumero,
-            modo: semana.modo,
-            aberta: true,
-            data_inicio: toDateStr(nextStart),
-            data_fim: toDateStr(nextEnd),
-          })
-          .select()
-          .single();
-        targetSemana = newSemana as Semana | null;
+        const newRes = await semanasApi.createSemana({
+          farm_id: farmId,
+          numero: nextNumero,
+          modo: semana.modo,
+          aberta: true,
+          data_inicio: toDateStr(nextStart),
+          data_fim: toDateStr(nextEnd),
+        });
+        targetSemana = newRes.ok ? (newRes.data as Semana) : null;
       }
 
       if (targetSemana) {

@@ -10,7 +10,7 @@ import {
   MessageSquare,
   ChevronRight,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { getAuthHeaders } from '../lib/session';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AgentRegistryEntry {
@@ -61,17 +61,17 @@ const AIAgentConfigAdmin: React.FC = () => {
   const loadAgents = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('agent_registry')
-        .select('id, version, name, description, system_prompt')
-        .eq('status', 'active')
-        .order('name');
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/agent-registry', { headers });
+      const json = await res.json() as { ok: boolean; data?: Array<{ id: string; version: string; name: string; description: string; systemPrompt: string }>; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao carregar agentes');
+      const raw = json.data ?? [];
+      // Map camelCase from API to snake_case used in component
+      const mapped: AgentRegistryEntry[] = raw.map(a => ({ id: a.id, version: a.version, name: a.name, description: a.description, system_prompt: a.systemPrompt }));
 
       // Filter to keep only latest version of each agent for simplicity in this UI
       const latestAgents: Record<string, AgentRegistryEntry> = {};
-      data?.forEach(agent => {
+      mapped.forEach(agent => {
         if (!latestAgents[agent.id] || agent.version > latestAgents[agent.id].version) {
           latestAgents[agent.id] = agent;
         }
@@ -89,8 +89,8 @@ const AIAgentConfigAdmin: React.FC = () => {
         setSelectedAgentId(agentsList[0].id);
         setConfig({ ...agentsList[0] });
       }
-    } catch (error: any) {
-      console.error('Error loading agents:', error);
+    } catch (err: unknown) {
+      console.error('Error loading agents:', err);
       showToast('Erro ao carregar agentes da IA', 'error');
     } finally {
       setIsLoading(false);
@@ -107,29 +107,22 @@ const AIAgentConfigAdmin: React.FC = () => {
 
     try {
       setIsSaving(true);
-      const { error } = await supabase
-        .from('agent_registry')
-        .update({
-          system_prompt: config.system_prompt,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', config.id)
-        .eq('version', config.version);
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/agent-registry?id=${encodeURIComponent(config.id)}&version=${encodeURIComponent(config.version)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ systemPrompt: config.system_prompt }),
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao salvar');
 
       // Update local list
       setAgents(prev => prev.map(a => (a.id === config.id ? { ...a, system_prompt: config.system_prompt } : a)));
 
       showToast('Instruções salvas com sucesso!', 'success');
-    } catch (error: any) {
-      console.error('Error saving config:', error);
-      const isPermissionError =
-        error.message?.toLowerCase().includes('permission') || error.message?.toLowerCase().includes('security');
-      showToast(
-        isPermissionError ? 'Acesso negado. Rode a migração SQL no Supabase.' : 'Erro ao salvar instruções',
-        'error',
-      );
+    } catch (err: unknown) {
+      console.error('Error saving config:', err);
+      showToast('Erro ao salvar instruções', 'error');
     } finally {
       setIsSaving(false);
     }

@@ -58,7 +58,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
               const keysToRemove = [];
               for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.startsWith('sb-') || key.startsWith('pecuaria-'))) {
+                if (key && (key.startsWith('sb-') || key.startsWith('gesttor-') || key.startsWith('pecuaria-'))) {
                   keysToRemove.push(key);
                 }
               }

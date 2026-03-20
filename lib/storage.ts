@@ -20,7 +20,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl as awsGetSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getEnv } from './env';
-import { supabase } from './supabase';
+import { getAuthHeaders } from './session';
 
 let _client: S3Client | null = null;
 
@@ -48,11 +48,7 @@ function fullKey(prefix: string, path: string): string {
 }
 
 /** Retrieves the current Supabase session token for authenticated API calls. */
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+const getAuthHeader = getAuthHeaders;
 
 /** In-memory cache for presigned GET URLs to avoid repeated signing for the same object. */
 const _resolveUrlCache = new Map<string, { url: string; expiresAt: number }>();

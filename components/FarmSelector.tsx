@@ -18,11 +18,13 @@ const FarmSelector: React.FC = () => {
     return null;
   }
 
+  const activeFarms = farms.filter(f => f.ativo !== false);
+
   return (
     <HierarchyCombobox
       label="Fazenda"
       icon={<Building2 className="w-4 h-4 text-ai-accent flex-shrink-0" />}
-      items={farms}
+      items={activeFarms}
       selectedItem={selectedFarm}
       getItemId={item => item.id}
       getItemLabel={item => item.name}

@@ -3,42 +3,96 @@ import {
   Plus,
   Search,
   Edit2,
-  Trash2,
   Save,
   X,
   Loader2,
   AlertCircle,
   CheckCircle2,
-  XCircle,
   Building2,
   User,
   Mail,
   Phone,
   Users,
+  MapPin,
+  ToggleLeft,
+  ToggleRight,
+  XCircle,
+  FileText,
+  Upload,
+  Trash2,
+  Download,
 } from 'lucide-react';
-import { Client, Farm } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useHierarchy } from '../contexts/HierarchyContext';
-import { useFarmOperations } from '../lib/hooks/useFarmOperations';
-import { createPerson } from '../lib/people';
+import { getAuthHeaders } from '../lib/session';
+import { fetchAnalysts } from '../lib/api/hierarchyClient';
+import { storageUpload, storageGetSignedUrl, storageRemove } from '../lib/storage';
+import type { User as AppUser } from '../types';
+import OrgAnalystsSection from '../components/OrgAnalystsSection';
 
-interface ClientManagementProps {
-  onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+// ─── Tipos locais ─────────────────────────────────────────────────────────────
+
+interface OrgItem {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string;
+  analystId: string;
+  cnpj: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  status: string | null;
+  plan: string | null;
+  ownerId: string | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+  ownersCount: number;
+  farmsCount: number;
 }
+
+interface OrgOwner {
+  id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  phoneCountryCode: string;
+}
+
+interface OrgDetail extends OrgItem {
+  owners: Array<{
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    sortOrder: number;
+  }>;
+}
+
+type OwnerFieldError = { email?: string; phone?: string };
+
+interface OrgDocument {
+  id: string;
+  organizationId: string;
+  uploadedBy: string;
+  fileName: string;
+  originalName: string;
+  fileType: string;
+  fileSize: number;
+  storagePath: string;
+  category: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 type PhoneCountryOption = {
   iso: 'BR' | 'PY' | 'UY' | 'BO' | 'CO' | 'AR';
   code: string;
   label: string;
   localLengths: number[];
-};
-
-type OwnerFormRow = {
-  name: string;
-  email: string;
-  phone: string;
-  phoneCountryCode: string;
 };
 
 const PHONE_COUNTRIES: PhoneCountryOption[] = [
@@ -52,30 +106,133 @@ const PHONE_COUNTRIES: PhoneCountryOption[] = [
 
 const DEFAULT_PHONE_COUNTRY_CODE = '+55';
 
+const UF_LIST = [
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA',
+  'MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN',
+  'RS','RO','RR','SC','SP','SE','TO',
+];
+
+// ─── Helpers de telefone ──────────────────────────────────────────────────────
+
+function getCountryByCode(code: string): PhoneCountryOption {
+  return (
+    PHONE_COUNTRIES.find(c => c.code === code) ||
+    PHONE_COUNTRIES.find(c => c.code === DEFAULT_PHONE_COUNTRY_CODE)!
+  );
+}
+
+function normalizeLocalDigits(value: string, countryCode: string): string {
+  const country = getCountryByCode(countryCode);
+  const digitsOnly = value.replace(/\D/g, '');
+  const countryDigits = countryCode.replace(/\D/g, '');
+  const withoutCode = digitsOnly.startsWith(countryDigits) ? digitsOnly.slice(countryDigits.length) : digitsOnly;
+  return withoutCode.slice(0, Math.max(...country.localLengths));
+}
+
+function formatLocalPhoneByCountry(countryCode: string, rawValue: string): string {
+  const country = getCountryByCode(countryCode);
+  const digits = normalizeLocalDigits(rawValue, countryCode);
+  if (country.iso === 'BR') {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  return `${digits.slice(0, 3)} ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function composePhoneWithCountry(countryCode: string, localPhone: string): string | null {
+  const normalized = formatLocalPhoneByCountry(countryCode, localPhone);
+  const localDigits = normalized.replace(/\D/g, '');
+  if (!localDigits) return null;
+  return `${countryCode} ${normalized}`;
+}
+
+function splitPhoneForForm(rawPhone?: string | null): { countryCode: string; localPhone: string } {
+  if (!rawPhone?.trim()) return { countryCode: DEFAULT_PHONE_COUNTRY_CODE, localPhone: '' };
+  const normalized = rawPhone.trim();
+  const byPrefix = PHONE_COUNTRIES.find(
+    c => normalized.startsWith(`${c.code} `) || normalized.startsWith(c.code),
+  );
+  if (byPrefix) {
+    const countryDigits = byPrefix.code.replace(/\D/g, '');
+    const allDigits = normalized.replace(/\D/g, '');
+    const localDigits = allDigits.startsWith(countryDigits) ? allDigits.slice(countryDigits.length) : allDigits;
+    return { countryCode: byPrefix.code, localPhone: formatLocalPhoneByCountry(byPrefix.code, localDigits) };
+  }
+  return { countryCode: DEFAULT_PHONE_COUNTRY_CODE, localPhone: formatLocalPhoneByCountry(DEFAULT_PHONE_COUNTRY_CODE, normalized) };
+}
+
+// ─── Máscara de CNPJ ─────────────────────────────────────────────────────────
+
+function formatCNPJ(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  return digits
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+// ─── Cliente HTTP para /api/organizations ─────────────────────────────────────
+
+async function orgApiCall<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<{ ok: true; data: T; meta?: Record<string, unknown> } | { ok: false; error: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`/api/organizations${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...headers, ...((options?.headers as Record<string, string>) ?? {}) },
+  });
+  const json = await res.json().catch(() => ({ ok: false, error: 'Erro de parse' }));
+  return json as { ok: true; data: T } | { ok: false; error: string };
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────────
+
+interface ClientManagementProps {
+  onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
-  type OwnerFieldError = { email?: string; phone?: string };
   const { user: currentUser } = useAuth();
   const { refreshCurrentLevel } = useHierarchy();
-  const { getClientFarms, deleteFarm } = useFarmOperations();
   const clientFormReadOnly = currentUser?.role === 'admin' ? false : currentUser?.qualification !== 'analista';
-  const [clients, setClients] = useState<Client[]>([]);
-  const [analysts, setAnalysts] = useState<any[]>([]);
+
+  const [orgs, setOrgs] = useState<OrgItem[]>([]);
+  const [analysts, setAnalysts] = useState<AppUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterState, setFilterState] = useState<string>('');
   const [view, setView] = useState<'list' | 'form'>('list');
 
   // Notificar App.tsx sobre mudanças de view
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('clientViewChange', { detail: view }));
   }, [view]);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+
+  const [editingOrg, setEditingOrg] = useState<OrgItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
-  const [owners, setOwners] = useState<OwnerFormRow[]>([]);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [owners, setOwners] = useState<OrgOwner[]>([]);
   const [ownerErrors, setOwnerErrors] = useState<OwnerFieldError[]>([]);
-  const [editingClientFarms, setEditingClientFarms] = useState<Farm[]>([]);
-  const [loadingEditingClientFarms, setLoadingEditingClientFarms] = useState(false);
+  const [docs, setDocs] = useState<OrgDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+
+  // Verificação de nome duplicado (debounce)
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [checkingName, setCheckingName] = useState(false);
+  const nameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -83,114 +240,98 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     phone: '',
     phoneCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
     email: '',
+    cnpj: '',
+    address: '',
+    city: '',
+    state: '',
+    status: 'active',
+    plan: 'basic',
+    ativo: true,
     analystId: currentUser?.id || '',
   });
-
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // ── Carregar dados ──────────────────────────────────────────────────────────
+
+  const loadOrgs = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      setIsLoading(true);
+      setError(null);
+      const params = new URLSearchParams();
+      if (filterStatus) params.set('status', filterStatus);
+      if (filterState) params.set('state', filterState);
+      params.set('limit', '100');
+
+      const res = await orgApiCall<OrgItem[]>(`?${params.toString()}`);
+      if (!res.ok) {
+        setError(`Erro ao carregar organizações: ${res.error}`);
+        return;
+      }
+      setOrgs(res.data || []);
+    } catch (err: unknown) {
+      setError(`Erro inesperado: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUser, filterStatus, filterState]);
+
+  const loadAnalysts = useCallback(async () => {
+    if (currentUser?.role !== 'admin') return;
+    try {
+      const { data } = await fetchAnalysts({ limit: 200 });
+      setAnalysts(data);
+    } catch {
+      // analistas são opcionais para admin
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser && (currentUser.role === 'admin' || currentUser.qualification === 'analista')) {
-      loadClients();
-      loadAnalysts();
+      void loadOrgs();
+      void loadAnalysts();
     } else if (currentUser) {
       setError('Acesso negado. Apenas analistas e administradores podem acessar esta página.');
       setIsLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, loadOrgs, loadAnalysts]);
 
-  const loadClients = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  // ── Verificação de nome duplicado ───────────────────────────────────────────
 
-      // Construir query base
-      let query = supabase.from('clients').select('*');
-
-      // Filtrar por analista: se for analista, mostrar apenas seus clientes; se for admin, mostrar todos
-      if (currentUser?.qualification === 'analista' && currentUser?.role !== 'admin') {
-        query = query.eq('analyst_id', currentUser.id);
-      }
-
-      query = query.order('created_at', { ascending: false });
-
-      const { data, error: queryError } = await query;
-
-      if (queryError) {
-        console.error('[ClientManagement] Error loading clients:', queryError);
-        setError(`Erro ao carregar clientes: ${queryError.message}`);
+  const triggerNameCheck = useCallback(
+    (name: string) => {
+      if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
+      if (name.trim().length < 3) {
+        setNameError(null);
         return;
       }
+      nameDebounceRef.current = setTimeout(async () => {
+        setCheckingName(true);
+        try {
+          const params = new URLSearchParams({ action: 'check-name', name: name.trim() });
+          if (editingOrg?.id) params.set('excludeId', editingOrg.id);
+          const res = await orgApiCall<{ exists: boolean }>(`?${params.toString()}`);
+          if (res.ok && res.data.exists) {
+            setNameError('Este nome de organização já está em uso.');
+          } else {
+            setNameError(null);
+          }
+        } finally {
+          setCheckingName(false);
+        }
+      }, 500);
+    },
+    [editingOrg],
+  );
 
-      if (data) {
-        const uniqueAnalystIds = [...new Set(data.map(c => c.analyst_id).filter(Boolean))];
-
-        const { data: analystsData } = await supabase
-          .from('user_profiles')
-          .select('id, name, email')
-          .in('id', uniqueAnalystIds);
-
-        const analystsMap = new Map((analystsData || []).map(a => [a.id, a]));
-
-        const mappedClients = data.map(client => ({
-          id: client.id,
-          name: client.name,
-          phone: client.phone || '',
-          email: client.email,
-          analystId: client.analyst_id,
-          createdAt: client.created_at,
-          updatedAt: client.updated_at,
-          analyst: analystsMap.get(client.analyst_id) || null,
-        }));
-
-        setClients(mappedClients as any);
-      }
-    } catch (err: any) {
-      console.error('[ClientManagement] Unexpected error:', err);
-      setError(`Erro inesperado: ${err.message || 'Erro desconhecido'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentUser]);
-
-  const loadAnalysts = async () => {
-    try {
-      const { data, error: queryError } = await supabase
-        .from('user_profiles')
-        .select('id, name, email, qualification, role')
-        .or('qualification.eq.analista,role.eq.admin')
-        .order('name', { ascending: true });
-
-      if (queryError) {
-        console.error('[ClientManagement] Error loading analysts:', queryError);
-        return;
-      }
-
-      if (data) {
-        const uniqueAnalysts = Array.from(new Map(data.map(a => [a.id, a])).values());
-        setAnalysts(uniqueAnalysts);
-      }
-    } catch (err: any) {
-      console.error('[ClientManagement] Error loading analysts:', err);
-    }
-  };
+  // ── Validação ───────────────────────────────────────────────────────────────
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-
-    if (!formData.name.trim()) {
-      errors.name = 'Nome é obrigatório';
-    }
-
-    if (!formData.email.trim()) {
-      errors.email = 'Email é obrigatório';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = 'Email inválido';
-    }
-
-    if (!formData.analystId) {
-      errors.analystId = 'Analista responsável é obrigatório';
-    }
-
+    if (!formData.name.trim()) errors.name = 'Nome é obrigatório';
+    if (!formData.email.trim()) errors.email = 'Email é obrigatório';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.email = 'Email inválido';
+    if (!formData.analystId) errors.analystId = 'Analista responsável é obrigatório';
     if (formData.phone.trim()) {
       const country = getCountryByCode(formData.phoneCountryCode);
       const phoneDigits = normalizeLocalDigits(formData.phone, formData.phoneCountryCode);
@@ -198,427 +339,187 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         errors.phone = `Telefone inválido para ${country.label}`;
       }
     }
-
+    if (nameError) errors.name = nameError;
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
-
-  const getCountryByCode = (countryCode: string): PhoneCountryOption =>
-    PHONE_COUNTRIES.find(country => country.code === countryCode) ||
-    PHONE_COUNTRIES.find(country => country.code === DEFAULT_PHONE_COUNTRY_CODE)!;
-
-  const normalizeLocalDigits = (value: string, countryCode: string): string => {
-    const country = getCountryByCode(countryCode);
-    const digitsOnly = value.replace(/\D/g, '');
-    const countryDigits = countryCode.replace(/\D/g, '');
-    const withoutCode = digitsOnly.startsWith(countryDigits) ? digitsOnly.slice(countryDigits.length) : digitsOnly;
-    const maxLength = Math.max(...country.localLengths);
-    return withoutCode.slice(0, maxLength);
-  };
-
-  const formatLocalPhoneByCountry = (countryCode: string, rawValue: string): string => {
-    const country = getCountryByCode(countryCode);
-    const digits = normalizeLocalDigits(rawValue, countryCode);
-
-    if (country.iso === 'BR') {
-      if (digits.length <= 2) return digits;
-      if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-      if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-    }
-
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-    return `${digits.slice(0, 3)} ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  };
-
-  const composePhoneWithCountry = (countryCode: string, localPhone: string): string | null => {
-    const normalized = formatLocalPhoneByCountry(countryCode, localPhone);
-    const localDigits = normalized.replace(/\D/g, '');
-    if (!localDigits) return null;
-    return `${countryCode} ${normalized}`;
-  };
-
-  const splitPhoneForForm = (rawPhone?: string | null): { countryCode: string; localPhone: string } => {
-    if (!rawPhone?.trim()) {
-      return { countryCode: DEFAULT_PHONE_COUNTRY_CODE, localPhone: '' };
-    }
-
-    const normalized = rawPhone.trim();
-    const byPrefix = PHONE_COUNTRIES.find(
-      country => normalized.startsWith(`${country.code} `) || normalized.startsWith(country.code),
-    );
-    if (byPrefix) {
-      const countryDigits = byPrefix.code.replace(/\D/g, '');
-      const allDigits = normalized.replace(/\D/g, '');
-      const localDigits = allDigits.startsWith(countryDigits) ? allDigits.slice(countryDigits.length) : allDigits;
-      return {
-        countryCode: byPrefix.code,
-        localPhone: formatLocalPhoneByCountry(byPrefix.code, localDigits),
-      };
-    }
-
-    return {
-      countryCode: DEFAULT_PHONE_COUNTRY_CODE,
-      localPhone: formatLocalPhoneByCountry(DEFAULT_PHONE_COUNTRY_CODE, normalized),
-    };
   };
 
   const validateOwnerContacts = (): boolean => {
     const nextErrors: OwnerFieldError[] = owners.map(() => ({}));
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let hasError = false;
-
     owners.forEach((owner, idx) => {
       const email = owner.email.trim();
       const country = getCountryByCode(owner.phoneCountryCode);
       const phoneDigits = normalizeLocalDigits(owner.phone, owner.phoneCountryCode);
       const hasContent = owner.name.trim() || email || phoneDigits;
-
       if (!hasContent) return;
-
       if (email && !emailRegex.test(email)) {
         nextErrors[idx].email = 'Informe um e-mail válido';
         hasError = true;
       }
-
       if (phoneDigits && !country.localLengths.includes(phoneDigits.length)) {
         nextErrors[idx].phone = `Telefone inválido para ${country.label}`;
         hasError = true;
       }
     });
-
     setOwnerErrors(nextErrors);
     return !hasError;
   };
 
+  // ── Salvar ──────────────────────────────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!validateForm()) {
-      const freshErrors: string[] = [];
-      if (!formData.name.trim()) freshErrors.push('Nome');
-      if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) freshErrors.push('Email');
-      if (!formData.analystId) freshErrors.push('Analista responsável');
-
-      if (freshErrors.length > 0) {
-        onToast?.(`Corrija os campos obrigatórios: ${freshErrors.join(', ')}`, 'error');
-      }
-
-      const firstErrorField = document.querySelector('[data-error="true"]');
-      if (firstErrorField) {
-        firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      onToast?.('Corrija os campos obrigatórios.', 'error');
+      document.querySelector('[data-error="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-
     if (!validateOwnerContacts()) {
-      onToast?.('Corrija os contatos dos proprietários gestores (e-mail/telefone).', 'error');
+      onToast?.('Corrija os contatos dos proprietários gestores.', 'error');
       return;
     }
 
     setIsSaving(true);
-
     try {
-      if (editingClient) {
-        // Update existing client
-        const { data, error: updateError } = await supabase
-          .from('clients')
-          .update({
-            name: formData.name.trim(),
-            phone: composePhoneWithCountry(formData.phoneCountryCode, formData.phone),
-            email: formData.email.trim(),
-            analyst_id: formData.analystId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingClient.id)
-          .select()
-          .single();
+      const ownersPayload = owners
+        .filter(o => o.name.trim())
+        .map((o, i) => ({
+          name: o.name.trim(),
+          email: o.email.trim().toLowerCase() || null,
+          phone: composePhoneWithCountry(o.phoneCountryCode, o.phone),
+          sortOrder: i,
+        }));
 
-        if (updateError) {
-          throw updateError;
-        }
-
-        await saveClientOwners(editingClient.id);
-        try {
-          await syncOwnersAsPeople(formData.analystId, editingClient.id);
-        } catch (syncErr: any) {
-          console.error('[ClientManagement] Error syncing owners as people:', syncErr);
-          onToast?.('Organização atualizada, mas houve um problema ao sincronizar gestores na tela de Pessoas.', 'warning');
-        }
-
-        onToast?.('Organização atualizada com sucesso!', 'success');
-      } else {
-        // Create new client
-        const { data, error: insertError } = await supabase
-          .from('clients')
-          .insert({
-            name: formData.name.trim(),
-            phone: composePhoneWithCountry(formData.phoneCountryCode, formData.phone),
-            email: formData.email.trim(),
-            analyst_id: formData.analystId,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          throw insertError;
-        }
-
-        if (data) {
-          await saveClientOwners(data.id);
-          try {
-            await syncOwnersAsPeople(formData.analystId, data.id);
-          } catch (syncErr: any) {
-            console.error('[ClientManagement] Error syncing owners as people:', syncErr);
-            onToast?.(
-              'Organização cadastrada, mas houve um problema ao sincronizar gestores na tela de Pessoas.',
-              'warning',
-            );
-          }
-        }
-
-        onToast?.('Organização cadastrada com sucesso!', 'success');
+      const body: Record<string, unknown> = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: composePhoneWithCountry(formData.phoneCountryCode, formData.phone),
+        cnpj: formData.cnpj.replace(/\D/g, '') ? formData.cnpj : null,
+        address: formData.address.trim() || null,
+        city: formData.city.trim() || null,
+        state: formData.state || null,
+        status: formData.status,
+        plan: formData.plan,
+        ativo: formData.ativo,
+        owners: ownersPayload,
+      };
+      if (currentUser?.role === 'admin') {
+        body.analystId = formData.analystId;
       }
 
-      // Reset form
+      let res;
+      if (editingOrg) {
+        res = await orgApiCall('', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: editingOrg.id, ...body }),
+        });
+      } else {
+        res = await orgApiCall('', { method: 'POST', body: JSON.stringify(body) });
+      }
+
+      if (!res.ok) {
+        onToast?.(`Erro ao salvar: ${res.error}`, 'error');
+        return;
+      }
+
+      onToast?.(editingOrg ? 'Organização atualizada com sucesso!' : 'Organização cadastrada com sucesso!', 'success');
       resetForm();
       setView('list');
-      loadClients();
+      void loadOrgs();
       void refreshCurrentLevel('clients');
-    } catch (err: any) {
-      console.error('[ClientManagement] Error saving client:', err);
-      onToast?.(`Erro ao salvar organização: ${err.message || 'Erro desconhecido'}`, 'error');
+    } catch (err: unknown) {
+      onToast?.(`Erro inesperado: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const saveClientOwners = async (clientId: string) => {
-    const { error: deleteError } = await supabase.from('client_owners').delete().eq('client_id', clientId);
+  // ── Editar ──────────────────────────────────────────────────────────────────
 
-    if (deleteError) {
-      throw new Error(`Erro ao limpar gestores: ${deleteError.message}`);
-    }
-
-    const validOwners = owners.filter(o => o.name.trim());
-    if (validOwners.length > 0) {
-      const { error: insertError } = await supabase.from('client_owners').insert(
-        validOwners.map((o, i) => ({
-          client_id: clientId,
-          name: o.name.trim(),
-          email: o.email.trim().toLowerCase() || null,
-          phone: composePhoneWithCountry(o.phoneCountryCode, o.phone),
-          sort_order: i,
-        })),
-      );
-
-      if (insertError) {
-        throw new Error(`Erro ao salvar gestores: ${insertError.message}`);
-      }
-    }
-  };
-
-  const syncOwnersAsPeople = async (analystId: string, clientId: string) => {
-    const normalizeName = (value: string) => value.trim().toLowerCase();
-    const validOwners = owners.filter(o => o.name.trim());
-    if (validOwners.length === 0) return;
-
-    const { data: clientFarms, error: farmsError } = await supabase
-      .from('farms')
-      .select('id')
-      .eq('client_id', clientId);
-
-    if (farmsError) {
-      throw new Error(`Erro ao buscar fazendas do cliente: ${farmsError.message}`);
-    }
-
-    const farmIds = (clientFarms || []).map(farm => farm.id);
-
-    const { data: existingPeople } = await supabase
-      .from('people')
-      .select('id, full_name, farm_id')
-      .eq('created_by', analystId)
-      .eq('person_type', 'Proprietário');
-
-    const existingRows = (existingPeople || []) as Array<{ id: string; full_name: string; farm_id: string | null }>;
-    const existingPairs = new Set(
-      existingRows.map(person => `${normalizeName(person.full_name)}::${person.farm_id || 'null'}`),
-    );
-
-    // Reaproveita registros antigos sem farm_id e vincula à primeira(s) fazenda(s) faltante(s).
-    if (farmIds.length > 0) {
-      const normalizedOwnerNames = Array.from(new Set(validOwners.map(owner => normalizeName(owner.name))));
-      const orphanUpdates: Array<{ personId: string; farmId: string }> = [];
-
-      normalizedOwnerNames.forEach(ownerName => {
-        const matchingPeople = existingRows.filter(person => normalizeName(person.full_name) === ownerName);
-        const matchingFarmIds = new Set(
-          matchingPeople.map(person => person.farm_id).filter((farmId): farmId is string => Boolean(farmId)),
-        );
-
-        const orphanPeople = matchingPeople.filter(person => !person.farm_id);
-        const missingFarmIds = farmIds.filter(farmId => !matchingFarmIds.has(farmId));
-
-        orphanPeople.forEach((person, index) => {
-          const targetFarmId = missingFarmIds[index];
-          if (!targetFarmId) return;
-          orphanUpdates.push({ personId: person.id, farmId: targetFarmId });
-          matchingFarmIds.add(targetFarmId);
-          existingPairs.add(`${ownerName}::${targetFarmId}`);
-          existingPairs.delete(`${ownerName}::null`);
-        });
-      });
-
-      if (orphanUpdates.length > 0) {
-        const updateResults = await Promise.all(
-          orphanUpdates.map(({ personId, farmId }) =>
-            supabase.from('people').update({ farm_id: farmId }).eq('id', personId),
-          ),
-        );
-
-        const failedUpdate = updateResults.find(result => result.error);
-        if (failedUpdate?.error) {
-          throw new Error(`Erro ao atualizar proprietários sem fazenda: ${failedUpdate.error.message}`);
-        }
-      }
-    }
-
-    const creationPayloads: Array<{
-      full_name: string;
-      person_type: 'Proprietário';
-      email?: string;
-      phone_whatsapp?: string;
-      farm_id?: string | null;
-    }> = [];
-
-    validOwners.forEach(owner => {
-      const normalizedOwnerName = normalizeName(owner.name);
-      const targetFarmIds = farmIds.length > 0 ? farmIds : [null];
-
-      targetFarmIds.forEach(farmId => {
-        const key = `${normalizedOwnerName}::${farmId || 'null'}`;
-        if (existingPairs.has(key)) return;
-        existingPairs.add(key);
-        creationPayloads.push({
-          full_name: owner.name.trim(),
-          person_type: 'Proprietário',
-          email: owner.email.trim().toLowerCase() || undefined,
-          phone_whatsapp: composePhoneWithCountry(owner.phoneCountryCode, owner.phone) || undefined,
-          farm_id: farmId,
-        });
-      });
-    });
-
-    if (creationPayloads.length > 0) {
-      await Promise.all(creationPayloads.map(payload => createPerson(analystId, payload)));
-    }
-  };
-
-  const handleEdit = async (client: Client) => {
-    const clientPhoneParts = splitPhoneForForm(client.phone || '');
-    setEditingClient(client);
+  const handleEdit = async (org: OrgItem) => {
+    const phoneParts = splitPhoneForForm(org.phone || '');
+    setEditingOrg(org);
     setFormData({
-      name: client.name,
-      phone: clientPhoneParts.localPhone,
-      phoneCountryCode: clientPhoneParts.countryCode,
-      email: client.email,
-      analystId: client.analystId,
+      name: org.name,
+      phone: phoneParts.localPhone,
+      phoneCountryCode: phoneParts.countryCode,
+      email: org.email,
+      cnpj: org.cnpj ? formatCNPJ(org.cnpj) : '',
+      address: org.address || '',
+      city: org.city || '',
+      state: org.state || '',
+      status: org.status || 'active',
+      plan: org.plan || 'basic',
+      ativo: org.ativo,
+      analystId: org.analystId,
     });
-    setView('form');
 
-    setLoadingEditingClientFarms(true);
-    setEditingClientFarms([]);
-
+    setDocs([]);
     try {
-      const [{ data: ownersResult }, farmsResult] = await Promise.all([
-        supabase
-          .from('client_owners')
-          .select('name, email, phone, sort_order')
-          .eq('client_id', client.id)
-          .order('sort_order', { ascending: true }),
-        getClientFarms(client.id),
-      ]);
-
-      setOwners(
-        (ownersResult || []).map(o => ({
-          name: o.name || '',
-          email: o.email || '',
-          phone: splitPhoneForForm(o.phone || '').localPhone,
-          phoneCountryCode: splitPhoneForForm(o.phone || '').countryCode,
-        })),
-      );
-      setOwnerErrors(Array((ownersResult || []).length).fill({}));
-      setEditingClientFarms(farmsResult || []);
-    } catch (err) {
-      console.error('[ClientManagement] Error loading client details:', err);
+      const res = await orgApiCall<OrgDetail>(`?id=${org.id}`);
+      if (res.ok && res.data.owners) {
+        setOwners(
+          res.data.owners.map(o => ({
+            id: o.id,
+            name: o.name || '',
+            email: o.email || '',
+            phone: splitPhoneForForm(o.phone || '').localPhone,
+            phoneCountryCode: splitPhoneForForm(o.phone || '').countryCode,
+          })),
+        );
+        setOwnerErrors(Array(res.data.owners.length).fill({}));
+      }
+    } catch {
       setOwners([]);
       setOwnerErrors([]);
-      setEditingClientFarms([]);
-    } finally {
-      setLoadingEditingClientFarms(false);
     }
+
+    // Carregar documentos existentes
+    setDocsLoading(true);
+    try {
+      const docsRes = await orgApiCall<OrgDocument[]>(`?action=documents&organizationId=${org.id}`);
+      if (docsRes.ok) setDocs(docsRes.data);
+    } finally {
+      setDocsLoading(false);
+    }
+
+    setView('form');
   };
 
-  const handleDelete = useCallback(
-    async (clientId: string) => {
+  // ── Desativar (soft delete) ─────────────────────────────────────────────────
+
+  const handleDeactivate = useCallback(
+    async (orgId: string, orgName: string) => {
+      const confirmed = window.confirm(
+        `Desativar a organização "${orgName}"?\n\nA organização ficará inativa mas não será excluída. As fazendas vinculadas permanecem no sistema.`,
+      );
+      if (!confirmed) return;
+
+      setDeactivatingId(orgId);
       try {
-        // 1. Buscar fazendas vinculadas ao cliente
-        const clientFarms = await getClientFarms(clientId);
-
-        // 2. Mostrar confirmação com detalhes
-        const farmCount = clientFarms.length;
-        const farmNames = clientFarms.map(f => f.name).join(', ');
-
-        let confirmMessage = `Tem certeza que deseja excluir esta organização?\n\n`;
-
-        if (farmCount > 0) {
-          confirmMessage += `⚠️ ATENÇÃO: Esta ação irá excluir:\n`;
-          confirmMessage += `• ${farmCount} fazenda${farmCount !== 1 ? 's' : ''}: ${farmNames}\n`;
-          confirmMessage += `• Todos os vínculos e registros associados\n\n`;
-          confirmMessage += `Esta ação NÃO pode ser desfeita!`;
-        } else {
-          confirmMessage += `A organização será removida do sistema.`;
-        }
-
-        if (!window.confirm(confirmMessage)) {
+        const res = await orgApiCall('', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: orgId, action: 'deactivate' }),
+        });
+        if (!res.ok) {
+          onToast?.(`Erro ao desativar: ${res.error}`, 'error');
           return;
         }
-
-        // Iniciar processo de exclusão
-        setDeletingClientId(clientId);
-
-        // 3. Se houver fazendas, excluí-las usando hook otimizado
-        if (farmCount > 0) {
-          await Promise.all(clientFarms.map(farm => deleteFarm(farm.id)));
-        }
-
-        // 4. Excluir o cliente (client_farms será excluído automaticamente por cascata)
-        const { error } = await supabase.from('clients').delete().eq('id', clientId);
-
-        if (error) {
-          throw error;
-        }
-
-        // 5. Mensagem de sucesso
-        if (farmCount > 0) {
-          onToast?.(`Organização e ${farmCount} fazenda${farmCount !== 1 ? 's' : ''} excluídas com sucesso!`, 'success');
-        } else {
-          onToast?.('Organização excluída com sucesso!', 'success');
-        }
-
-        await loadClients();
+        onToast?.('Organização desativada com sucesso.', 'success');
+        void loadOrgs();
         void refreshCurrentLevel('clients');
-        void refreshCurrentLevel('farms');
-      } catch (err: any) {
-        console.error('[ClientManagement] Error deleting client:', err);
-        onToast?.(`Erro ao excluir organização: ${err.message || 'Erro desconhecido'}`, 'error');
+      } catch (err: unknown) {
+        onToast?.(`Erro inesperado: ${err instanceof Error ? err.message : ''}`, 'error');
       } finally {
-        setDeletingClientId(null);
+        setDeactivatingId(null);
       }
     },
-    [getClientFarms, deleteFarm, onToast, loadClients, refreshCurrentLevel],
+    [loadOrgs, onToast, refreshCurrentLevel],
   );
+
+  // ── Resetar form ────────────────────────────────────────────────────────────
 
   const resetForm = () => {
     setFormData({
@@ -626,14 +527,21 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       phone: '',
       phoneCountryCode: DEFAULT_PHONE_COUNTRY_CODE,
       email: '',
+      cnpj: '',
+      address: '',
+      city: '',
+      state: '',
+      status: 'active',
+      plan: 'basic',
+      ativo: true,
       analystId: currentUser?.id || '',
     });
     setFormErrors({});
-    setEditingClient(null);
+    setNameError(null);
+    setEditingOrg(null);
     setOwners([]);
     setOwnerErrors([]);
-    setEditingClientFarms([]);
-    setLoadingEditingClientFarms(false);
+    setDocs([]);
   };
 
   const handleCancel = () => {
@@ -642,51 +550,119 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     window.dispatchEvent(new CustomEvent('clientCancelForm'));
   };
 
-  // Escutar evento de cancelamento da barra superior
+  // ── Eventos da barra superior (App.tsx) ──────────────────────────────────────
+
   useEffect(() => {
     const handleCancelForm = () => {
-      if (view === 'form') {
-        resetForm();
-        setView('list');
-      }
+      if (view === 'form') { resetForm(); setView('list'); }
     };
-
     window.addEventListener('clientCancelForm', handleCancelForm);
-    return () => {
-      window.removeEventListener('clientCancelForm', handleCancelForm);
-    };
+    return () => window.removeEventListener('clientCancelForm', handleCancelForm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // Escutar evento de novo cliente da barra superior
   useEffect(() => {
-    const handleNewClient = () => {
-      resetForm();
-      setView('form');
-    };
-
+    const handleNewClient = () => { resetForm(); setView('form'); };
     window.addEventListener('clientNewClient', handleNewClient);
-    return () => {
-      window.removeEventListener('clientNewClient', handleNewClient);
-    };
+    return () => window.removeEventListener('clientNewClient', handleNewClient);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Memoizar lista filtrada para melhorar performance
-  const filteredClients = useMemo(() => {
-    if (!searchTerm) return clients;
+  // ── Lista filtrada (busca local) ─────────────────────────────────────────────
 
+  const filteredOrgs = useMemo(() => {
+    if (!searchTerm) return orgs;
     const term = searchTerm.toLowerCase();
-    return clients.filter(
-      client =>
-        client.name.toLowerCase().includes(term) ||
-        client.email.toLowerCase().includes(term) ||
-        (client.phone && client.phone.includes(term)),
+    return orgs.filter(
+      o =>
+        o.name.toLowerCase().includes(term) ||
+        o.email.toLowerCase().includes(term) ||
+        (o.phone && o.phone.includes(term)) ||
+        (o.cnpj && o.cnpj.includes(term)),
     );
-  }, [clients, searchTerm]);
+  }, [orgs, searchTerm]);
 
-  // Usar hook customizado otimizado ao invés da função local
-  // const getClientFarms = useFarmOperations().getClientFarms;
+  // ── Documentos ───────────────────────────────────────────────────────────────
+
+  const STORAGE_PREFIX = 'organization-documents';
+
+  const handleDocUpload = async (file: File) => {
+    if (!editingOrg) return;
+    setUploadingDoc(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+      const safeName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+      const path = `${editingOrg.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}.${ext}`;
+
+      await storageUpload(STORAGE_PREFIX, path, file, { contentType: file.type });
+
+      const res = await orgApiCall<OrgDocument>('', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'create-document',
+          organizationId: editingOrg.id,
+          storagePath: path,
+          fileName: path,
+          originalName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          category: 'geral',
+        }),
+      });
+
+      if (res.ok) {
+        setDocs(prev => [...prev, res.data]);
+        onToast?.('Documento enviado com sucesso!', 'success');
+      } else {
+        onToast?.(`Erro ao registrar documento: ${res.error}`, 'error');
+      }
+    } catch (err: unknown) {
+      onToast?.(`Erro no upload: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, 'error');
+    } finally {
+      setUploadingDoc(false);
+      if (docInputRef.current) docInputRef.current.value = '';
+    }
+  };
+
+  const handleDocDelete = async (doc: OrgDocument) => {
+    const confirmed = window.confirm(`Remover o documento "${doc.originalName}"?`);
+    if (!confirmed) return;
+
+    setDeletingDocId(doc.id);
+    try {
+      await storageRemove(STORAGE_PREFIX, [doc.storagePath]);
+      const res = await orgApiCall<{ deleted: boolean }>(`?action=delete-document&documentId=${doc.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setDocs(prev => prev.filter(d => d.id !== doc.id));
+        onToast?.('Documento removido.', 'success');
+      } else {
+        onToast?.(`Erro ao remover: ${res.error}`, 'error');
+      }
+    } catch (err: unknown) {
+      onToast?.(`Erro ao remover: ${err instanceof Error ? err.message : ''}`, 'error');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const handleDocDownload = async (doc: OrgDocument) => {
+    try {
+      const url = await storageGetSignedUrl(STORAGE_PREFIX, doc.storagePath);
+      window.open(url, '_blank');
+    } catch {
+      onToast?.('Não foi possível gerar o link de download.', 'error');
+    }
+  };
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  // ── Guard de acesso ──────────────────────────────────────────────────────────
 
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.qualification !== 'analista')) {
     return (
@@ -700,86 +676,58 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     );
   }
 
+  // ── View: Formulário ─────────────────────────────────────────────────────────
+
   if (view === 'form') {
-    const isViewMode = clientFormReadOnly;
     return (
-      <div className={`h-full overflow-y-auto ${isViewMode ? 'bg-ai-bg' : 'bg-white'}`}>
+      <div className={`h-full overflow-y-auto ${clientFormReadOnly ? 'bg-ai-bg' : 'bg-white'}`}>
         <div className="max-w-4xl mx-auto p-6">
-          <div
-            className={`rounded-lg shadow-lg p-6 ${isViewMode ? 'bg-ai-surface' : 'bg-white border border-ai-border'}`}
-          >
+          <div className={`rounded-lg shadow-lg p-6 ${clientFormReadOnly ? 'bg-ai-surface' : 'bg-white border border-ai-border'}`}>
             <div className="flex items-center justify-end mb-6">
-              <button
-                onClick={handleCancel}
-                className="p-2 hover:bg-ai-surface2 rounded-md transition-colors"
-                title="Cancelar"
-              >
+              <button onClick={handleCancel} className="p-2 hover:bg-ai-surface2 rounded-md transition-colors" title="Cancelar">
                 <X className="w-5 h-5 text-ai-subtext" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <fieldset disabled={clientFormReadOnly} className={clientFormReadOnly ? 'opacity-75' : ''}>
-                {/* Nome da Organização / Grupo Econômico */}
-                <div data-error={formErrors.name ? 'true' : undefined}>
+
+                {/* Nome */}
+                <div className="mb-4" data-error={formErrors.name || nameError ? 'true' : undefined}>
                   <label className="block text-sm font-medium text-ai-text mb-2">
                     Nome da Organização / Grupo Econômico <span className="text-ai-error">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                      formErrors.name ? 'border-ai-error' : 'border-ai-border'
-                    }`}
-                    placeholder="Digite o nome da organização"
-                  />
-                  <p className="mt-1 text-xs text-ai-subtext">Nome da Organização, Agropecuária ou Grupo Econômico</p>
-                  {formErrors.name && <p className="mt-1 text-sm text-ai-error">{formErrors.name}</p>}
-                </div>
-
-                {/* Telefone do Contato Administrativo */}
-                <div data-error={formErrors.phone ? 'true' : undefined}>
-                  <label className="block text-sm font-medium text-ai-text mb-2">
-                    Telefone do Contato Administrativo
-                  </label>
-                  <div className="grid grid-cols-[120px_1fr] gap-2">
-                    <select
-                      value={formData.phoneCountryCode}
-                      onChange={e => {
-                        const nextCode = e.target.value;
-                        setFormData({
-                          ...formData,
-                          phoneCountryCode: nextCode,
-                          phone: formatLocalPhoneByCountry(nextCode, formData.phone),
-                        });
-                      }}
-                      className="w-full px-3 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent text-sm"
-                    >
-                      {PHONE_COUNTRIES.map(country => (
-                        <option key={country.code} value={country.code}>
-                          {country.label}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="relative">
                     <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={e =>
-                        setFormData({
-                          ...formData,
-                          phone: formatLocalPhoneByCountry(formData.phoneCountryCode, e.target.value),
-                        })
-                      }
-                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                      placeholder="(00) 00000-0000"
+                      type="text"
+                      value={formData.name}
+                      onChange={e => {
+                        setFormData({ ...formData, name: e.target.value });
+                        triggerNameCheck(e.target.value);
+                      }}
+                      className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent pr-8 ${
+                        formErrors.name || nameError ? 'border-ai-error' : 'border-ai-border'
+                      }`}
+                      placeholder="Digite o nome da organização"
                     />
+                    {checkingName && (
+                      <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-ai-subtext" />
+                    )}
+                    {!checkingName && formData.name.trim().length >= 3 && !nameError && (
+                      <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                    )}
+                    {!checkingName && nameError && (
+                      <XCircle className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-ai-error" />
+                    )}
                   </div>
-                  {formErrors.phone && <p className="mt-1 text-sm text-ai-error">{formErrors.phone}</p>}
+                  <p className="mt-1 text-xs text-ai-subtext">Nome da Organização, Agropecuária ou Grupo Econômico</p>
+                  {(formErrors.name || nameError) && (
+                    <p className="mt-1 text-sm text-ai-error">{nameError || formErrors.name}</p>
+                  )}
                 </div>
 
-                {/* E-mail do Contato Administrativo */}
-                <div data-error={formErrors.email ? 'true' : undefined}>
+                {/* Email */}
+                <div className="mb-4" data-error={formErrors.email ? 'true' : undefined}>
                   <label className="block text-sm font-medium text-ai-text mb-2">
                     E-mail do Contato Administrativo <span className="text-ai-error">*</span>
                   </label>
@@ -795,17 +743,142 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   {formErrors.email && <p className="mt-1 text-sm text-ai-error">{formErrors.email}</p>}
                 </div>
 
-                {/* Proprietário(s) Gestores */}
-                <div>
+                {/* Telefone */}
+                <div className="mb-4" data-error={formErrors.phone ? 'true' : undefined}>
+                  <label className="block text-sm font-medium text-ai-text mb-2">Telefone do Contato Administrativo</label>
+                  <div className="grid grid-cols-[120px_1fr] gap-2">
+                    <select
+                      value={formData.phoneCountryCode}
+                      onChange={e =>
+                        setFormData({
+                          ...formData,
+                          phoneCountryCode: e.target.value,
+                          phone: formatLocalPhoneByCountry(e.target.value, formData.phone),
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent text-sm"
+                    >
+                      {PHONE_COUNTRIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={e =>
+                        setFormData({ ...formData, phone: formatLocalPhoneByCountry(formData.phoneCountryCode, e.target.value) })
+                      }
+                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                  {formErrors.phone && <p className="mt-1 text-sm text-ai-error">{formErrors.phone}</p>}
+                </div>
+
+                {/* CNPJ */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-ai-text mb-2">CNPJ</label>
+                  <input
+                    type="text"
+                    value={formData.cnpj}
+                    onChange={e => setFormData({ ...formData, cnpj: formatCNPJ(e.target.value) })}
+                    className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
+                  />
+                </div>
+
+                {/* Endereço */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-ai-text mb-2">Endereço</label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+
+                {/* Cidade e Estado */}
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ai-text mb-2">Cidade</label>
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={e => setFormData({ ...formData, city: e.target.value })}
+                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ai-text mb-2">Estado (UF)</label>
+                    <select
+                      value={formData.state}
+                      onChange={e => setFormData({ ...formData, state: e.target.value })}
+                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    >
+                      <option value="">Selecione o estado</option>
+                      {UF_LIST.map(uf => (
+                        <option key={uf} value={uf}>{uf}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Status e Plano */}
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ai-text mb-2">Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={e => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    >
+                      <option value="active">Ativo</option>
+                      <option value="inactive">Inativo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ai-text mb-2">Plano</label>
+                    <select
+                      value={formData.plan}
+                      onChange={e => setFormData({ ...formData, plan: e.target.value })}
+                      className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                    >
+                      <option value="basic">Basic</option>
+                      <option value="pro">Pro</option>
+                      <option value="enterprise">Enterprise</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Toggle Ativo */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-ai-text mb-2">Situação</label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, ativo: !formData.ativo })}
+                    className="flex items-center gap-2 text-sm text-ai-text"
+                  >
+                    {formData.ativo ? (
+                      <ToggleRight className="w-8 h-8 text-ai-accent" />
+                    ) : (
+                      <ToggleLeft className="w-8 h-8 text-ai-subtext" />
+                    )}
+                    <span>{formData.ativo ? 'Organização ativa' : 'Organização inativa'}</span>
+                  </button>
+                </div>
+
+                {/* Proprietários/Sócios */}
+                <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-ai-text">Proprietário(s) Gestores</label>
                     <button
                       type="button"
                       onClick={() => {
-                        setOwners([
-                          ...owners,
-                          { name: '', email: '', phone: '', phoneCountryCode: DEFAULT_PHONE_COUNTRY_CODE },
-                        ]);
+                        setOwners([...owners, { name: '', email: '', phone: '', phoneCountryCode: DEFAULT_PHONE_COUNTRY_CODE }]);
                         setOwnerErrors([...ownerErrors, {}]);
                       }}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-ai-border text-ai-subtext hover:text-ai-text text-xs"
@@ -832,7 +905,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   ) : (
                     <div className="space-y-3">
                       {owners.map((owner, idx) => (
-                        <div key={`owner-${idx}`} className="rounded-lg border border-ai-border bg-ai-surface2 p-3">
+                        <div key={idx} className="rounded-lg border border-ai-border bg-ai-surface2 p-3">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-medium text-ai-subtext">Proprietário {idx + 1}</span>
                             <button
@@ -844,7 +917,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                               className="p-1 rounded text-red-500 hover:bg-red-50"
                               title="Remover proprietário"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -859,71 +932,66 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                               className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
                               placeholder="Nome"
                             />
-                            <input
-                              type="email"
-                              value={owner.email}
-                              onChange={e => {
-                                const next = [...owners];
-                                next[idx] = {
-                                  ...next[idx],
-                                  email: e.target.value.replace(/\s+/g, '').toLowerCase(),
-                                };
-                                setOwners(next);
-                                const nextOwnerErrors = [...ownerErrors];
-                                nextOwnerErrors[idx] = { ...nextOwnerErrors[idx], email: undefined };
-                                setOwnerErrors(nextOwnerErrors);
-                              }}
-                              className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                              placeholder="nome@dominio.com"
-                            />
-                            {ownerErrors[idx]?.email && (
-                              <p className="text-xs text-ai-error">{ownerErrors[idx]?.email}</p>
-                            )}
-                            <div className="grid grid-cols-[96px_1fr] gap-2">
-                              <select
-                                value={owner.phoneCountryCode}
-                                onChange={e => {
-                                  const next = [...owners];
-                                  const nextCode = e.target.value;
-                                  next[idx] = {
-                                    ...next[idx],
-                                    phoneCountryCode: nextCode,
-                                    phone: formatLocalPhoneByCountry(nextCode, next[idx].phone),
-                                  };
-                                  setOwners(next);
-                                  const nextOwnerErrors = [...ownerErrors];
-                                  nextOwnerErrors[idx] = { ...nextOwnerErrors[idx], phone: undefined };
-                                  setOwnerErrors(nextOwnerErrors);
-                                }}
-                                className="w-full px-2 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-xs focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                              >
-                                {PHONE_COUNTRIES.map(country => (
-                                  <option key={country.code} value={country.code}>
-                                    {country.iso} {country.code}
-                                  </option>
-                                ))}
-                              </select>
+                            <div>
                               <input
-                                type="tel"
-                                value={owner.phone}
+                                type="email"
+                                value={owner.email}
                                 onChange={e => {
                                   const next = [...owners];
-                                  next[idx] = {
-                                    ...next[idx],
-                                    phone: formatLocalPhoneByCountry(next[idx].phoneCountryCode, e.target.value),
-                                  };
+                                  next[idx] = { ...next[idx], email: e.target.value.replace(/\s+/g, '').toLowerCase() };
                                   setOwners(next);
-                                  const nextOwnerErrors = [...ownerErrors];
-                                  nextOwnerErrors[idx] = { ...nextOwnerErrors[idx], phone: undefined };
-                                  setOwnerErrors(nextOwnerErrors);
+                                  const errs = [...ownerErrors];
+                                  errs[idx] = { ...errs[idx], email: undefined };
+                                  setOwnerErrors(errs);
                                 }}
                                 className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                                placeholder="(00) 00000-0000"
+                                placeholder="nome@dominio.com"
                               />
+                              {ownerErrors[idx]?.email && (
+                                <p className="text-xs text-ai-error mt-1">{ownerErrors[idx].email}</p>
+                              )}
                             </div>
-                            {ownerErrors[idx]?.phone && (
-                              <p className="text-xs text-ai-error">{ownerErrors[idx]?.phone}</p>
-                            )}
+                            <div>
+                              <div className="grid grid-cols-[96px_1fr] gap-2">
+                                <select
+                                  value={owner.phoneCountryCode}
+                                  onChange={e => {
+                                    const next = [...owners];
+                                    next[idx] = {
+                                      ...next[idx],
+                                      phoneCountryCode: e.target.value,
+                                      phone: formatLocalPhoneByCountry(e.target.value, next[idx].phone),
+                                    };
+                                    setOwners(next);
+                                  }}
+                                  className="w-full px-2 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-xs focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                                >
+                                  {PHONE_COUNTRIES.map(c => (
+                                    <option key={c.code} value={c.code}>{c.iso} {c.code}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="tel"
+                                  value={owner.phone}
+                                  onChange={e => {
+                                    const next = [...owners];
+                                    next[idx] = {
+                                      ...next[idx],
+                                      phone: formatLocalPhoneByCountry(next[idx].phoneCountryCode, e.target.value),
+                                    };
+                                    setOwners(next);
+                                    const errs = [...ownerErrors];
+                                    errs[idx] = { ...errs[idx], phone: undefined };
+                                    setOwnerErrors(errs);
+                                  }}
+                                  className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                                  placeholder="(00) 00000-0000"
+                                />
+                              </div>
+                              {ownerErrors[idx]?.phone && (
+                                <p className="text-xs text-ai-error mt-1">{ownerErrors[idx].phone}</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -931,31 +999,74 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   )}
                 </div>
 
-                {editingClient && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Building2 className="w-4 h-4 text-ai-subtext" />
-                      <label className="block text-sm font-medium text-ai-text">
-                        Fazendas cadastradas para esta organização
-                      </label>
+                {/* Documentos (somente ao editar) */}
+                {editingOrg && (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-ai-text">Documentos</label>
+                      <button
+                        type="button"
+                        onClick={() => docInputRef.current?.click()}
+                        disabled={uploadingDoc}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-ai-border text-ai-subtext hover:text-ai-text text-xs disabled:opacity-50"
+                      >
+                        {uploadingDoc ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5" />
+                        )}
+                        {uploadingDoc ? 'Enviando...' : 'Enviar arquivo'}
+                      </button>
+                      <input
+                        ref={docInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleDocUpload(file);
+                        }}
+                      />
                     </div>
-                    {loadingEditingClientFarms ? (
-                      <div className="border border-ai-border rounded-md p-4 flex items-center gap-2 text-ai-subtext text-sm">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Carregando fazendas...</span>
+                    <p className="text-xs text-ai-subtext mb-3">Contratos, licenças e outros documentos da organização</p>
+                    {docsLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="w-5 h-5 animate-spin text-ai-subtext" />
                       </div>
-                    ) : editingClientFarms.length === 0 ? (
+                    ) : docs.length === 0 ? (
                       <div className="border border-dashed border-ai-border rounded-md p-4 text-center">
-                        <p className="text-xs text-ai-subtext">Nenhuma fazenda cadastrada para esta organização.</p>
+                        <FileText className="w-8 h-8 text-ai-subtext mx-auto mb-2 opacity-50" />
+                        <p className="text-xs text-ai-subtext">Nenhum documento cadastrado.</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {editingClientFarms.map(farm => (
-                          <div key={farm.id} className="rounded-md border border-ai-border bg-ai-surface2 px-3 py-2">
-                            <p className="text-sm font-medium text-ai-text">{farm.name}</p>
-                            <p className="text-xs text-ai-subtext">
-                              {farm.city}, {farm.state || farm.country}
-                            </p>
+                        {docs.map(doc => (
+                          <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-ai-border bg-ai-surface2 px-3 py-2">
+                            <FileText className="w-4 h-4 text-ai-subtext flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-ai-text truncate" title={doc.originalName}>{doc.originalName}</p>
+                              <p className="text-xs text-ai-subtext">{formatFileSize(doc.fileSize)} · {doc.fileType}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleDocDownload(doc)}
+                              className="p-1.5 rounded text-ai-subtext hover:text-ai-accent hover:bg-ai-surface3 transition-colors"
+                              title="Baixar"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDocDelete(doc)}
+                              disabled={deletingDocId === doc.id}
+                              className="p-1.5 rounded text-ai-subtext hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              title="Remover"
+                            >
+                              {deletingDocId === doc.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -963,43 +1074,41 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   </div>
                 )}
 
-                {/* Analista Responsável */}
-                <div
-                  data-error={formErrors.analystId ? 'true' : undefined}
-                  onClick={
-                    currentUser.role !== 'admin'
-                      ? () => onToast?.('Entre em contato com a Inttegra', 'warning')
-                      : undefined
-                  }
-                  className={currentUser.role !== 'admin' ? 'cursor-pointer' : undefined}
-                >
-                  <label className="block text-sm font-medium text-ai-text mb-2">
-                    Analista Responsável <span className="text-ai-error">*</span>
-                  </label>
-                  <select
-                    value={formData.analystId}
-                    onChange={e => setFormData({ ...formData, analystId: e.target.value })}
-                    className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                      formErrors.analystId ? 'border-ai-error' : 'border-ai-border'
-                    }`}
-                    disabled={currentUser.role !== 'admin'} // Apenas admin pode escolher analista
-                  >
-                    <option value="">Selecione um analista</option>
-                    {analysts.map(analyst => (
-                      <option key={analyst.id} value={analyst.id}>
-                        {analyst.name} {analyst.email ? `(${analyst.email})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {formErrors.analystId && <p className="mt-1 text-sm text-ai-error">{formErrors.analystId}</p>}
-                  {currentUser.role !== 'admin' && (
-                    <p className="mt-1 text-xs text-ai-subtext">
-                      Você será automaticamente vinculado como analista responsável
-                    </p>
-                  )}
-                </div>
+                {/* Analistas Secundários (somente ao editar) */}
+                {editingOrg && (
+                  <OrgAnalystsSection
+                    orgId={editingOrg.id}
+                    canManage={currentUser.role === 'admin' || editingOrg.analystId === currentUser.id}
+                    onToast={onToast}
+                  />
+                )}
+
+                {/* Analista Responsável (somente admin) */}
+                {currentUser.role === 'admin' && (
+                  <div className="mb-4" data-error={formErrors.analystId ? 'true' : undefined}>
+                    <label className="block text-sm font-medium text-ai-text mb-2">
+                      Analista Responsável <span className="text-ai-error">*</span>
+                    </label>
+                    <select
+                      value={formData.analystId}
+                      onChange={e => setFormData({ ...formData, analystId: e.target.value })}
+                      className={`w-full px-4 py-2 bg-ai-surface2 border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent ${
+                        formErrors.analystId ? 'border-ai-error' : 'border-ai-border'
+                      }`}
+                    >
+                      <option value="">Selecione um analista</option>
+                      {analysts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} {a.email ? `(${a.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.analystId && <p className="mt-1 text-sm text-ai-error">{formErrors.analystId}</p>}
+                  </div>
+                )}
               </fieldset>
-              {/* Actions */}
+
+              {/* Ações */}
               <div className="flex justify-end space-x-3 pt-4 border-t border-ai-border">
                 <button
                   type="button"
@@ -1010,19 +1119,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving || clientFormReadOnly}
+                  disabled={isSaving || clientFormReadOnly || !!nameError || checkingName}
                   className="px-4 py-2 bg-ai-accent text-white rounded-md hover:bg-ai-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Salvando...</span>
-                    </>
+                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Salvando...</span></>
                   ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>{editingClient ? 'Atualizar' : 'Cadastrar'}</span>
-                    </>
+                    <><Save className="w-4 h-4" /><span>{editingOrg ? 'Atualizar' : 'Cadastrar'}</span></>
                   )}
                 </button>
               </div>
@@ -1033,24 +1136,45 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     );
   }
 
+  // ── View: Lista ──────────────────────────────────────────────────────────────
+
   return (
     <div className="h-full overflow-y-auto bg-ai-bg">
       <div className="max-w-7xl mx-auto p-6">
-        {/* Search */}
-        <div className="mb-6">
-          <div className="relative">
+        {/* Busca e Filtros */}
+        <div className="mb-6 flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-ai-subtext" />
             <input
               type="text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar por nome, email ou telefone..."
+              placeholder="Buscar por nome, email, CNPJ ou telefone..."
               className="w-full pl-10 pr-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
             />
           </div>
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent text-sm"
+          >
+            <option value="">Todos os status</option>
+            <option value="active">Ativas</option>
+            <option value="inactive">Inativas</option>
+          </select>
+          <select
+            value={filterState}
+            onChange={e => setFilterState(e.target.value)}
+            className="px-3 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent text-sm"
+          >
+            <option value="">Todos os estados</option>
+            {UF_LIST.map(uf => (
+              <option key={uf} value={uf}>{uf}</option>
+            ))}
+          </select>
         </div>
 
-        {/* Error Message */}
+        {/* Erro */}
         {error && (
           <div className="mb-6 p-4 bg-ai-error/10 border border-ai-error rounded-md flex items-center space-x-2">
             <AlertCircle className="w-5 h-5 text-ai-error" />
@@ -1064,20 +1188,18 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
             <Loader2 className="w-8 h-8 animate-spin text-ai-accent" />
           </div>
         ) : (
-          /* Clients List */
           <div className="bg-ai-surface rounded-lg shadow-lg overflow-hidden">
-            {filteredClients.length === 0 ? (
+            {filteredOrgs.length === 0 ? (
               <div className="p-12 text-center">
                 <Users className="w-16 h-16 text-ai-subtext mx-auto mb-4" />
                 <p className="text-ai-subtext text-lg">
-                  {searchTerm ? 'Nenhuma organização encontrada' : 'Nenhuma organização cadastrada'}
+                  {searchTerm || filterStatus || filterState
+                    ? 'Nenhuma organização encontrada para os filtros selecionados'
+                    : 'Nenhuma organização cadastrada'}
                 </p>
-                {!searchTerm && (
+                {!searchTerm && !filterStatus && !filterState && (
                   <button
-                    onClick={() => {
-                      resetForm();
-                      setView('form');
-                    }}
+                    onClick={() => { resetForm(); setView('form'); }}
                     className="mt-4 px-4 py-2 bg-ai-accent text-white rounded-md hover:bg-ai-accent/90 transition-colors"
                   >
                     Cadastrar Primeira Organização
@@ -1089,36 +1211,103 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                 <table className="w-full">
                   <thead className="bg-ai-surface2">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Organização
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Contato
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Analista
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Gestores
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Fazendas
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-ai-subtext uppercase tracking-wider">
-                        Ações
-                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Organização</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Contato</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Localização</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Gestores</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Fazendas</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-ai-subtext uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-ai-subtext uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-ai-border">
-                    {filteredClients.map(client => (
-                      <ClientRow
-                        key={client.id}
-                        client={client}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                        deletingClientId={deletingClientId}
-                        getClientFarms={getClientFarms}
-                      />
+                    {filteredOrgs.map(org => (
+                      <tr key={org.id} className={`hover:bg-ai-surface2 transition-colors ${!org.ativo ? 'opacity-60' : ''}`}>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 rounded-full bg-ai-accent/20 flex items-center justify-center mr-3 flex-shrink-0">
+                              <User className="w-5 h-5 text-ai-accent" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-ai-text">{org.name}</div>
+                              {org.cnpj && <div className="text-xs text-ai-subtext">{org.cnpj}</div>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-ai-text space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <Mail className="w-4 h-4 text-ai-subtext flex-shrink-0" />
+                              <span className="truncate max-w-[180px]">{org.email}</span>
+                            </div>
+                            {org.phone && (
+                              <div className="flex items-center space-x-2">
+                                <Phone className="w-4 h-4 text-ai-subtext flex-shrink-0" />
+                                <span>{org.phone}</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {(org.city || org.state) && (
+                            <div className="flex items-center gap-1 text-sm text-ai-text">
+                              <MapPin className="w-4 h-4 text-ai-subtext flex-shrink-0" />
+                              <span>{[org.city, org.state].filter(Boolean).join(' / ')}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-1 text-sm text-ai-text">
+                            <Users className="w-4 h-4 text-ai-subtext" />
+                            <span>{org.ownersCount}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-1 text-sm text-ai-text">
+                            <Building2 className="w-4 h-4 text-ai-subtext" />
+                            <span>{org.farmsCount} fazenda{org.farmsCount !== 1 ? 's' : ''}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium w-fit ${
+                              org.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {org.status === 'active' ? 'Ativo' : 'Inativo'}
+                            </span>
+                            {!org.ativo && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 w-fit">
+                                Desativado
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => handleEdit(org)}
+                              className="p-2 text-ai-accent hover:bg-ai-surface2 rounded-md transition-colors"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            {org.ativo && (
+                              <button
+                                onClick={() => handleDeactivate(org.id, org.name)}
+                                disabled={deactivatingId === org.id}
+                                className="p-2 text-amber-500 hover:bg-amber-50 rounded-md transition-colors disabled:opacity-50"
+                                title="Desativar organização"
+                              >
+                                {deactivatingId === org.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <ToggleRight className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
@@ -1128,265 +1317,6 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
         )}
       </div>
     </div>
-  );
-};
-
-interface ClientRowProps {
-  client: Client & { analyst?: { name: string; email: string } };
-  onEdit: (client: Client) => void;
-  onDelete: (clientId: string) => void;
-  deletingClientId: string | null;
-  getClientFarms: (clientId: string) => Promise<Farm[]>;
-}
-
-const ClientRow: React.FC<ClientRowProps> = ({ client, onEdit, onDelete, deletingClientId, getClientFarms }) => {
-  const [farmsCount, setFarmsCount] = useState<number | null>(null);
-  const [ownersCount, setOwnersCount] = useState<number | null>(null);
-  const [loadingFarms, setLoadingFarms] = useState(false);
-  const [showFarmsModal, setShowFarmsModal] = useState(false);
-  const [clientFarmsList, setClientFarmsList] = useState<Farm[]>([]);
-  const [loadingFarmsList, setLoadingFarmsList] = useState(false);
-
-  useEffect(() => {
-    loadFarmsCount();
-    loadOwnersCount();
-  }, [client.id]);
-
-  const loadOwnersCount = async () => {
-    try {
-      const { count, error } = await supabase
-        .from('client_owners')
-        .select('*', { count: 'exact', head: true })
-        .eq('client_id', client.id);
-      if (!error) setOwnersCount(count ?? 0);
-    } catch {
-      setOwnersCount(0);
-    }
-  };
-
-  const loadFarmsCount = async () => {
-    setLoadingFarms(true);
-    try {
-      // Fonte canônica: farms.client_id
-      const { data, error, count } = await supabase
-        .from('farms')
-        .select('*', { count: 'exact', head: false })
-        .eq('client_id', client.id);
-
-      if (error) {
-        console.error('[ClientRow] Error loading farms count:', error);
-        // Fallback: usar getClientFarms
-        const clientFarms = await getClientFarms(client.id);
-        setFarmsCount(clientFarms.length);
-      } else {
-        // Usar count se disponível, senão usar o tamanho do array
-        setFarmsCount(count !== null ? count : data?.length || 0);
-      }
-    } catch (err) {
-      console.error('[ClientRow] Error loading farms:', err);
-      // Fallback: usar getClientFarms
-      try {
-        const clientFarms = await getClientFarms(client.id);
-        setFarmsCount(clientFarms.length);
-      } catch (fallbackErr) {
-        console.error('[ClientRow] Error in fallback:', fallbackErr);
-        setFarmsCount(0);
-      }
-    } finally {
-      setLoadingFarms(false);
-    }
-  };
-
-  const handleViewFarms = async () => {
-    if ((farmsCount ?? 0) === 0) {
-      return; // Não abrir modal se não houver fazendas
-    }
-
-    setShowFarmsModal(true);
-    setLoadingFarmsList(true);
-    try {
-      const farms = await getClientFarms(client.id);
-      setClientFarmsList(farms);
-    } catch (err) {
-      console.error('[ClientRow] Error loading farms list:', err);
-      setClientFarmsList([]);
-    } finally {
-      setLoadingFarmsList(false);
-    }
-  };
-
-  return (
-    <>
-      <tr className="hover:bg-ai-surface2 transition-colors">
-        <td className="px-6 py-4 whitespace-nowrap">
-          <div className="flex items-center">
-            <div className="w-10 h-10 rounded-full bg-ai-accent/20 flex items-center justify-center mr-3">
-              <User className="w-5 h-5 text-ai-accent" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-ai-text">{client.name}</div>
-            </div>
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-ai-text space-y-1">
-            <div className="flex items-center space-x-2">
-              <Mail className="w-4 h-4 text-ai-subtext" />
-              <span>{client.email}</span>
-            </div>
-            {client.phone && (
-              <div className="flex items-center space-x-2">
-                <Phone className="w-4 h-4 text-ai-subtext" />
-                <span>{client.phone}</span>
-              </div>
-            )}
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-ai-text">{client.analyst?.name || 'N/A'}</div>
-        </td>
-        <td className="px-6 py-4">
-          <div className="flex items-center space-x-1 text-sm text-ai-text">
-            <Users className="w-4 h-4 text-ai-subtext" />
-            <span>{ownersCount ?? 0}</span>
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          {loadingFarms ? (
-            <Loader2 className="w-4 h-4 animate-spin text-ai-accent" />
-          ) : (
-            <button
-              onClick={handleViewFarms}
-              disabled={(farmsCount ?? 0) === 0}
-              className={`flex items-center space-x-1 text-sm text-ai-text ${
-                (farmsCount ?? 0) > 0
-                  ? 'hover:text-ai-accent hover:underline cursor-pointer transition-colors'
-                  : 'cursor-not-allowed opacity-60'
-              }`}
-              title={(farmsCount ?? 0) > 0 ? 'Clique para ver as fazendas' : 'Nenhuma fazenda vinculada'}
-            >
-              <Building2 className="w-4 h-4 text-ai-subtext" />
-              <span>
-                {farmsCount ?? 0} fazenda{farmsCount !== 1 ? 's' : ''}
-              </span>
-            </button>
-          )}
-        </td>
-        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-          <div className="flex items-center justify-end space-x-2">
-            <button
-              onClick={() => onEdit(client)}
-              className="p-2 text-ai-accent hover:bg-ai-surface2 rounded-md transition-colors"
-              title="Editar"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onDelete(client.id)}
-              disabled={deletingClientId === client.id}
-              className="p-2 text-ai-error hover:bg-ai-error/10 rounded-md transition-colors disabled:opacity-50"
-              title="Excluir organização"
-            >
-              {deletingClientId === client.id ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        </td>
-      </tr>
-
-      {/* Modal de Fazendas */}
-      {showFarmsModal && (
-        <tr>
-          <td colSpan={6} className="p-0">
-            <div
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-              onClick={() => setShowFarmsModal(false)}
-            >
-              <div
-                className="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-hidden"
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="p-6 border-b border-ai-border flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold text-ai-text">Fazendas de {client.name}</h3>
-                    <p className="text-sm text-ai-subtext mt-1">
-                      {clientFarmsList.length} fazenda{clientFarmsList.length !== 1 ? 's' : ''} cadastrada
-                      {clientFarmsList.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowFarmsModal(false)}
-                    className="p-2 hover:bg-ai-surface2 rounded-md transition-colors"
-                    title="Fechar"
-                  >
-                    <X className="w-5 h-5 text-ai-subtext" />
-                  </button>
-                </div>
-
-                <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
-                  {loadingFarmsList ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-ai-accent" />
-                    </div>
-                  ) : clientFarmsList.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Building2 className="w-12 h-12 text-ai-subtext mx-auto mb-4" />
-                      <p className="text-ai-subtext">Nenhuma fazenda vinculada a esta organização</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {clientFarmsList.map(farm => (
-                        <div
-                          key={farm.id}
-                          className="border border-ai-border rounded-lg p-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-ai-accent/10 flex items-center justify-center flex-shrink-0">
-                              <Building2 className="w-5 h-5 text-ai-accent" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-ai-text truncate">{farm.name}</h4>
-                              <p className="text-sm text-ai-subtext mt-1">
-                                {farm.city}, {farm.state || farm.country}
-                              </p>
-                              {farm.productionSystem && (
-                                <p className="text-xs text-ai-subtext mt-2">Sistema: {farm.productionSystem}</p>
-                              )}
-                              {farm.totalArea && (
-                                <p className="text-xs text-ai-subtext">
-                                  Área total: {farm.totalArea.toFixed(2).replace('.', ',')} ha
-                                </p>
-                              )}
-                              {farm.propertyValue && (
-                                <p className="text-xs text-ai-subtext">
-                                  Valor: R$ {farm.propertyValue.toLocaleString('pt-BR')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-4 border-t border-ai-border flex justify-end">
-                  <button
-                    onClick={() => setShowFarmsModal(false)}
-                    className="px-4 py-2 bg-ai-accent text-white rounded-md hover:bg-ai-accent/90 transition-colors"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   );
 };
 

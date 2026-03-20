@@ -12,42 +12,6 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-
-    <!-- Detectar fluxo de recovery ANTES do React carregar -->
-    <script>
-      (function () {
-        var pathname = window.location.pathname;
-        if (pathname === '/auth/callback') return;
-
-        var hash = window.location.hash;
-        var search = window.location.search;
-
-        // Fluxo hash (implicit): type=recovery + access_token
-        var hasRecoveryHash =
-          (hash.includes('type=recovery') || hash.includes('type%3Drecovery')) &&
-          (hash.includes('access_token=') || hash.includes('token_hash=') || hash.includes('token='));
-
-        // Fluxo query (recovery com type=recovery)
-        var hasRecoverySearch =
-          (search.includes('type=recovery') || search.includes('type%3Drecovery')) &&
-          (search.includes('code=') || search.includes('token_hash=') || search.includes('token='));
-
-        // Marker explícito de recovery no redirect URL
-        var hasRecoveryMarker = search.indexOf('recovery=1') !== -1;
-
-        // PKCE: ?code=xxx + localStorage indica que usuário pediu recovery no mesmo browser
-        var hasPkceCode = search.indexOf('code=') !== -1;
-        var hasRecoveryFlag = false;
-        try {
-          hasRecoveryFlag = !!localStorage.getItem('password_recovery_email');
-        } catch (e) {}
-        var isPkceRecovery = hasPkceCode && (hasRecoveryFlag || hasRecoveryMarker);
-
-        if ((hasRecoveryHash || hasRecoverySearch || isPkceRecovery || hasRecoveryMarker) && pathname !== '/reset-password') {
-          window.location.replace('/reset-password' + search + hash);
-        }
-      })();
-    </script>
   </head>
 
   <body>

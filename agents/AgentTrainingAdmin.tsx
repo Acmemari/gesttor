@@ -14,7 +14,7 @@ import {
   BookOpen,
   Brain,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { getAuthHeaders } from '../lib/session';
 import { storageUpload, storageGetPublicUrl } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -89,38 +89,27 @@ const AgentTrainingAdmin: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
+      const headers = await getAuthHeaders();
 
-      // Load config
-      const { data: configData, error: configError } = await supabase
-        .from('agent_config')
-        .select('*')
-        .eq('agent_id', 'ask-antonio')
-        .single();
-
-      if (configError) throw configError;
-      setConfig(configData);
+      // Load config from agent_registry (replaces agent_config)
+      const configRes = await fetch('/api/agent-registry', { headers });
+      const configJson = await configRes.json() as { ok: boolean; data?: Array<{ id: string; version: string; name: string; description: string; systemPrompt: string }> };
+      const agentRow = (configJson.data ?? []).find(a => a.id === 'ask-antonio');
+      if (agentRow) {
+        setConfig({ id: agentRow.id, agent_id: agentRow.id, name: agentRow.name, system_prompt: agentRow.systemPrompt, context_instructions: '', is_enabled: true });
+      }
 
       // Load documents
-      const { data: docsData, error: docsError } = await supabase
-        .from('agent_training_documents')
-        .select('*')
-        .eq('agent_id', 'ask-antonio')
-        .order('created_at', { ascending: false });
-
-      if (docsError) throw docsError;
-      setDocuments(docsData || []);
+      const docsRes = await fetch('/api/agent-training?type=document&agentId=ask-antonio', { headers });
+      const docsJson = await docsRes.json() as { ok: boolean; data?: Array<{ id: string; agentId: string; title: string; content: string; fileType: string | null; createdAt: string }> };
+      setDocuments((docsJson.data ?? []).map(d => ({ id: d.id, agent_id: d.agentId, title: d.title, content: d.content, file_type: d.fileType ?? '', created_at: d.createdAt })));
 
       // Load images
-      const { data: imagesData, error: imagesError } = await supabase
-        .from('agent_training_images')
-        .select('*')
-        .eq('agent_id', 'ask-antonio')
-        .order('created_at', { ascending: false });
-
-      if (imagesError) throw imagesError;
-      setImages(imagesData || []);
-    } catch (error: any) {
-      console.error('Error loading data:', error);
+      const imgsRes = await fetch('/api/agent-training?type=image&agentId=ask-antonio', { headers });
+      const imgsJson = await imgsRes.json() as { ok: boolean; data?: Array<{ id: string; agentId: string; title: string; description: string | null; imageUrl: string; createdAt: string }> };
+      setImages((imgsJson.data ?? []).map(i => ({ id: i.id, agent_id: i.agentId, title: i.title, description: i.description ?? '', image_url: i.imageUrl, created_at: i.createdAt })));
+    } catch (err: unknown) {
+      console.error('Error loading data:', err);
       showToast('Erro ao carregar dados', 'error');
     } finally {
       setIsLoading(false);
@@ -132,22 +121,18 @@ const AgentTrainingAdmin: React.FC = () => {
 
     try {
       setIsSaving(true);
-
-      const { error } = await supabase
-        .from('agent_config')
-        .update({
-          system_prompt: config.system_prompt,
-          context_instructions: config.context_instructions,
-          is_enabled: config.is_enabled,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', config.id);
-
-      if (error) throw error;
-
+      // agent_registry doesn't have version here; use 'v1' as default
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/agent-registry?id=${encodeURIComponent(config.id)}&version=v1`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ systemPrompt: config.system_prompt }),
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao salvar');
       showToast('Configuração salva com sucesso!', 'success');
-    } catch (error: any) {
-      console.error('Error saving config:', error);
+    } catch (err: unknown) {
+      console.error('Error saving config:', err);
       showToast('Erro ao salvar configuração', 'error');
     } finally {
       setIsSaving(false);
@@ -163,15 +148,14 @@ const AgentTrainingAdmin: React.FC = () => {
       reader.onload = async event => {
         const content = event.target?.result as string;
 
-        const { error } = await supabase.from('agent_training_documents').insert({
-          agent_id: 'ask-antonio',
-          title: file.name,
-          content: content,
-          file_type: file.type,
-          metadata: { size: file.size },
+        const headers = await getAuthHeaders();
+        const res = await fetch('/api/agent-training?type=document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ agentId: 'ask-antonio', title: file.name, content, fileType: file.type, metadata: { size: file.size } }),
         });
-
-        if (error) throw error;
+        const json = await res.json() as { ok: boolean; error?: string };
+        if (!json.ok) throw new Error(json.error ?? 'Erro ao inserir documento');
 
         showToast('Documento adicionado com sucesso!', 'success');
         loadData();
@@ -201,15 +185,14 @@ const AgentTrainingAdmin: React.FC = () => {
       const publicUrl = storageGetPublicUrl('public', filePath);
 
       // Save to database
-      const { error: dbError } = await supabase.from('agent_training_images').insert({
-        agent_id: 'ask-antonio',
-        title: file.name,
-        description: '',
-        image_url: publicUrl,
-        metadata: { size: file.size },
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/agent-training?type=image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ agentId: 'ask-antonio', title: file.name, description: '', imageUrl: publicUrl, metadata: { size: file.size } }),
       });
-
-      if (dbError) throw dbError;
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao inserir imagem');
 
       showToast('Imagem adicionada com sucesso!', 'success');
       loadData();
@@ -225,14 +208,14 @@ const AgentTrainingAdmin: React.FC = () => {
     if (!confirm('Tem certeza que deseja deletar este documento?')) return;
 
     try {
-      const { error } = await supabase.from('agent_training_documents').delete().eq('id', id);
-
-      if (error) throw error;
-
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/agent-training?type=document&id=${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao deletar');
       showToast('Documento deletado', 'success');
       loadData();
-    } catch (error: any) {
-      console.error('Error deleting document:', error);
+    } catch (err: unknown) {
+      console.error('Error deleting document:', err);
       showToast('Erro ao deletar documento', 'error');
     }
   };
@@ -241,14 +224,14 @@ const AgentTrainingAdmin: React.FC = () => {
     if (!confirm('Tem certeza que deseja deletar esta imagem?')) return;
 
     try {
-      const { error } = await supabase.from('agent_training_images').delete().eq('id', id);
-
-      if (error) throw error;
-
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/agent-training?type=image&id=${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao deletar');
       showToast('Imagem deletada', 'success');
       loadData();
-    } catch (error: any) {
-      console.error('Error deleting image:', error);
+    } catch (err: unknown) {
+      console.error('Error deleting image:', err);
       showToast('Erro ao deletar imagem', 'error');
     }
   };

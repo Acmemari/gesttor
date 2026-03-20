@@ -1,10 +1,22 @@
 import { useCallback } from 'react';
-import { supabase } from '../supabase';
 import { Farm } from '../../types';
 import { mapFarmsFromDatabase } from '../utils/farmMapper';
 import { logger } from '../logger';
+import { getAuthHeaders } from '../session';
 
 const log = logger.withContext({ component: 'useFarmOperations' });
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = await getAuthHeaders();
+  return fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+}
 
 /**
  * Hook customizado para operações com fazendas
@@ -12,22 +24,22 @@ const log = logger.withContext({ component: 'useFarmOperations' });
  */
 export function useFarmOperations() {
   /**
-   * Busca fazendas vinculadas a um cliente específico
+   * Busca fazendas vinculadas a uma organização (anteriormente cliente)
    */
   const getClientFarms = useCallback(async (clientId: string): Promise<Farm[]> => {
     try {
-      const { data, error } = await supabase
-        .from('farms')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('name', { ascending: true });
+      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(clientId)}`);
 
-      if (error) {
-        log.error('Error loading farms by client_id', new Error(error.message));
+      if (!res.ok) {
+        log.error('Error loading farms by organizationId', new Error(`HTTP ${res.status}`));
         return [];
       }
 
-      return data ? mapFarmsFromDatabase(data) : [];
+      const json = await res.json();
+      if (!json.ok) return [];
+
+      const data: Array<Record<string, unknown>> = json.data ?? [];
+      return data.length > 0 ? mapFarmsFromDatabase(data) : [];
     } catch (err: unknown) {
       log.error('Exception loading client farms', err instanceof Error ? err : new Error(String(err)));
       return [];
@@ -35,18 +47,16 @@ export function useFarmOperations() {
   }, []);
 
   /**
-   * Deleta uma fazenda e todos os seus vínculos
+   * Deleta (soft delete) uma fazenda
    */
   const deleteFarm = useCallback(async (farmId: string): Promise<boolean> => {
     try {
-      // Deletar vínculos analyst_farms primeiro. client_farms tem FK para farms com CASCADE.
-      await supabase.from('analyst_farms').delete().eq('farm_id', farmId);
+      const res = await apiFetch(`/api/farms?id=${encodeURIComponent(farmId)}`, {
+        method: 'DELETE',
+      });
 
-      // Deletar fazenda (client_farms cascade se configurado; senão, orphan rows não afetam fonte canônica)
-      const { error } = await supabase.from('farms').delete().eq('id', farmId);
-
-      if (error) {
-        log.error('Error deleting farm', new Error(error.message));
+      if (!res.ok) {
+        log.error('Error deleting farm', new Error(`HTTP ${res.status}`));
         return false;
       }
 
@@ -66,21 +76,21 @@ export function useFarmOperations() {
   }, []);
 
   /**
-   * Conta fazendas vinculadas a um cliente
+   * Conta fazendas vinculadas a uma organização
    */
   const countClientFarms = useCallback(async (clientId: string): Promise<number> => {
     try {
-      const { count, error } = await supabase
-        .from('farms')
-        .select('*', { count: 'exact', head: true })
-        .eq('client_id', clientId);
+      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(clientId)}`);
 
-      if (error) {
-        log.error('Error counting farms', new Error(error.message));
+      if (!res.ok) {
+        log.error('Error counting farms', new Error(`HTTP ${res.status}`));
         return 0;
       }
 
-      return count || 0;
+      const json = await res.json();
+      if (!json.ok) return 0;
+
+      return (json.data ?? []).length;
     } catch (err: unknown) {
       log.error('Exception counting farms', err instanceof Error ? err : new Error(String(err)));
       return 0;

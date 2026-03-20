@@ -1,8 +1,8 @@
-import { supabase } from './supabase';
 import { CattleScenario, CattleCalculatorInputs, CalculationResults, ComparatorResult } from '../types';
 import { sanitizeText } from './inputSanitizer';
 import { logger } from './logger';
 import { normalizeCattleCalculatorInputs } from './cattleInputs';
+import { getAuthHeaders } from './session';
 
 const log = logger.withContext({ component: 'scenarios' });
 
@@ -15,6 +15,18 @@ function validateUUID(id: string, fieldName: string): void {
   }
 }
 
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = await getAuthHeaders();
+  return fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+}
+
 export interface ScenarioFilters {
   clientId?: string | null;
   farmId?: string | null;
@@ -25,62 +37,34 @@ export interface ScenarioFilters {
  */
 export const getSavedScenarios = async (userId: string, filters?: ScenarioFilters): Promise<CattleScenario[]> => {
   try {
-    let query = supabase.from('cattle_scenarios').select('*').order('created_at', { ascending: false });
+    const params = new URLSearchParams({ userId });
+    if (filters?.clientId) params.set('orgId', filters.clientId);
+    if (filters?.farmId) params.set('farmId', filters.farmId);
 
-    // Se tiver filtro por cliente, buscar por client_id OU user_id (para itens legados sem client_id)
-    if (filters?.clientId) {
-      query = query.or(`client_id.eq.${filters.clientId},and(client_id.is.null,user_id.eq.${userId})`);
-    }
+    const res = await apiFetch(`/api/cattle-scenarios?${params}`);
+    if (!res.ok) return [];
 
-    if (filters?.farmId) {
-      query = query.eq('farm_id', filters.farmId);
-    }
+    const json = await res.json();
+    if (!json.ok) return [];
 
-    // Se não tiver filtros de cliente/fazenda, filtrar por user_id
-    if (!filters?.clientId && !filters?.farmId) {
-      query = query.eq('user_id', userId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      log.error('Error fetching scenarios', new Error(error.message));
-
-      if (error.message?.includes('schema cache') || error.code === '42P01') {
-        log.warn('Table cattle_scenarios does not exist yet');
-        // Return empty array if table doesn't exist - feature not yet available
-        return [];
-      }
-
-      // For other errors, throw
-      throw new Error(error.message || 'Erro ao carregar cenários salvos');
-    }
-
-    // Handle case where data is null or undefined
-    if (!data) {
-      return [];
-    }
-
-    // Map and validate the data
+    const data: Array<Record<string, unknown>> = json.data ?? [];
     return data
       .map(scenario => {
-        // Validate that required fields exist
-        if (!scenario.id || !scenario.user_id || !scenario.name || !scenario.inputs) {
+        if (!scenario.id || !scenario.userId || !scenario.name || !scenario.inputs) {
           log.warn('Invalid scenario data found, skipping');
           return null;
         }
-
         return {
-          id: scenario.id,
-          user_id: scenario.user_id,
-          client_id: scenario.client_id,
-          farm_id: scenario.farm_id,
-          farm_name: scenario.farm_name,
-          name: scenario.name,
+          id: scenario.id as string,
+          user_id: scenario.userId as string,
+          client_id: (scenario.organizationId as string | null) ?? null,
+          farm_id: (scenario.farmId as string | null) ?? null,
+          farm_name: (scenario.farmName as string | null) ?? null,
+          name: scenario.name as string,
           inputs: scenario.inputs as CattleCalculatorInputs,
           results: scenario.results ? (scenario.results as CalculationResults) : undefined,
-          created_at: scenario.created_at,
-          updated_at: scenario.updated_at || scenario.created_at,
+          created_at: scenario.createdAt as string,
+          updated_at: (scenario.updatedAt as string) || (scenario.createdAt as string),
         } as CattleScenario;
       })
       .filter((scenario): scenario is CattleScenario => scenario !== null);
@@ -93,21 +77,16 @@ export const getSavedScenarios = async (userId: string, filters?: ScenarioFilter
 
 /**
  * Check if user has reached the limit of saved scenarios.
- * Counts only calculator scenarios (excludes comparator/report types that have results.type).
  */
 export const checkScenarioLimit = async (userId: string): Promise<boolean> => {
-  const { count, error } = await supabase
-    .from('cattle_scenarios')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .or('results.is.null,results->>type.is.null');
-
-  if (error) {
-    log.error('Error checking scenario limit', new Error(error.message));
+  try {
+    const res = await apiFetch(`/api/cattle-scenarios?userId=${encodeURIComponent(userId)}&countOnly=true`);
+    if (!res.ok) return false;
+    const json = await res.json();
+    return (json.data?.count ?? 0) >= MAX_SCENARIOS;
+  } catch {
     return false;
   }
-
-  return (count || 0) >= MAX_SCENARIOS;
 };
 
 const FIELD_LABELS: Record<keyof CattleCalculatorInputs, string> = {
@@ -191,38 +170,44 @@ export const saveReportPdf = async (
     throw new Error('Tipo de relatório inválido');
   }
 
-  const { data, error } = await supabase
-    .from('cattle_scenarios')
-    .insert({
-      user_id: userId,
-      client_id: options?.clientId || null,
-      farm_id: options?.farmId || null,
-      farm_name: options?.farmName || null,
+  const res = await apiFetch('/api/cattle-scenarios', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId,
+      organizationId: options?.clientId || null,
+      farmId: options?.farmId || null,
+      farmName: options?.farmName || null,
       name: sanitizedName,
       inputs: {},
       results: {
         type: reportType,
         pdf_base64: pdfBase64,
       },
-    })
-    .select()
-    .single();
+    }),
+  });
 
-  if (error) {
-    log.error('Error saving report PDF', new Error(error.message));
-    throw new Error(error.message || 'Erro ao salvar relatório.');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Erro ao salvar relatório.');
   }
 
+  const json = await res.json();
+  const data = json.data;
   return {
     ...data,
+    user_id: data.userId,
+    client_id: data.organizationId ?? null,
+    farm_id: data.farmId ?? null,
+    farm_name: data.farmName ?? null,
+    created_at: data.createdAt,
+    updated_at: data.updatedAt || data.createdAt,
     inputs: data.inputs as CattleCalculatorInputs,
     results: data.results as CalculationResults | undefined,
   };
 };
 
 /**
- * Save a comparator report (PDF + 3 scenarios) - does NOT create individual scenario records.
- * Inserts a single row with type 'comparator_pdf' in results.
+ * Save a comparator report (PDF + 3 scenarios)
  */
 export const saveComparatorReport = async (
   userId: string,
@@ -258,27 +243,34 @@ export const saveComparatorReport = async (
     throw new Error('IDs dos cenários inválidos (esperado A, B ou A, B, C)');
   }
 
-  const { data, error } = await supabase
-    .from('cattle_scenarios')
-    .insert({
-      user_id: userId,
-      client_id: options?.clientId || null,
-      farm_id: options?.farmId || null,
-      farm_name: options?.farmName || null,
+  const res = await apiFetch('/api/cattle-scenarios', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId,
+      organizationId: options?.clientId || null,
+      farmId: options?.farmId || null,
+      farmName: options?.farmName || null,
       name: sanitizedName,
       inputs: {},
       results: comparatorResult,
-    })
-    .select()
-    .single();
+    }),
+  });
 
-  if (error) {
-    log.error('Error saving comparator report', new Error(error.message));
-    throw new Error(error.message || 'Erro ao salvar comparativo.');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Erro ao salvar comparativo.');
   }
 
+  const json = await res.json();
+  const data = json.data;
   return {
     ...data,
+    user_id: data.userId,
+    client_id: data.organizationId ?? null,
+    farm_id: data.farmId ?? null,
+    farm_name: data.farmName ?? null,
+    created_at: data.createdAt,
+    updated_at: data.updatedAt || data.createdAt,
     inputs: (data.inputs || {}) as CattleCalculatorInputs,
     results: data.results as CalculationResults | undefined,
   };
@@ -294,10 +286,8 @@ export const saveScenario = async (
   results?: CalculationResults,
   options?: SaveScenarioOptions,
 ): Promise<CattleScenario> => {
-  // Validar IDs
   validateUUID(userId, 'ID do usuário');
 
-  // Sanitizar e validar dados
   const sanitizedName = sanitizeText(name);
   const normalizedInputs = normalizeCattleCalculatorInputs(inputs);
   validateScenarioData(sanitizedName, normalizedInputs);
@@ -308,44 +298,34 @@ export const saveScenario = async (
     throw new Error(`Você já possui ${MAX_SCENARIOS} cenários salvos. Exclua um para salvar outro.`);
   }
 
-  const { data, error } = await supabase
-    .from('cattle_scenarios')
-    .insert({
-      user_id: userId,
-      client_id: options?.clientId || null,
-      farm_id: options?.farmId || null,
-      farm_name: options?.farmName || null,
+  const res = await apiFetch('/api/cattle-scenarios', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId,
+      organizationId: options?.clientId || null,
+      farmId: options?.farmId || null,
+      farmName: options?.farmName || null,
       name: sanitizedName,
       inputs: normalizedInputs,
       results,
-    })
-    .select()
-    .single();
+    }),
+  });
 
-  if (error) {
-    log.error('Error saving scenario', new Error(error.message));
-
-    // Check if table doesn't exist
-    if (error.message?.includes('schema cache') || error.code === '42P01') {
-      throw new Error(
-        'Funcionalidade de salvar cenários ainda não está disponível. A tabela precisa ser criada no banco de dados.',
-      );
-    }
-
-    // Check for RLS policy violation
-    if (error.code === '42501' || error.message?.includes('policy')) {
-      throw new Error('Erro de permissão ao salvar cenário. Verifique suas credenciais.');
-    }
-
-    // Include the actual error message for debugging
-    throw new Error(error.message || 'Erro ao salvar cenário');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Erro ao salvar cenário');
   }
 
+  const json = await res.json();
+  const data = json.data;
   return {
     ...data,
-    client_id: data.client_id,
-    farm_id: data.farm_id,
-    farm_name: data.farm_name,
+    user_id: data.userId,
+    client_id: data.organizationId ?? null,
+    farm_id: data.farmId ?? null,
+    farm_name: data.farmName ?? null,
+    created_at: data.createdAt,
+    updated_at: data.updatedAt || data.createdAt,
     inputs: data.inputs as CattleCalculatorInputs,
     results: data.results as CalculationResults | undefined,
   };
@@ -363,32 +343,35 @@ export const updateScenario = async (
     results?: CalculationResults;
   },
 ): Promise<CattleScenario> => {
-  // Validar IDs
   validateUUID(scenarioId, 'ID do cenário');
   validateUUID(userId, 'ID do usuário');
 
-  // Validate updates
   if (updates.name) updates.name = sanitizeText(updates.name);
   if (updates.inputs) {
     updates.inputs = normalizeCattleCalculatorInputs(updates.inputs);
   }
   validateScenarioData(updates.name, updates.inputs);
 
-  const { data, error } = await supabase
-    .from('cattle_scenarios')
-    .update(updates)
-    .eq('id', scenarioId)
-    .eq('user_id', userId)
-    .select()
-    .single();
+  const res = await apiFetch(`/api/cattle-scenarios?id=${encodeURIComponent(scenarioId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ userId, ...updates }),
+  });
 
-  if (error) {
-    log.error('Error updating scenario', new Error(error.message));
+  if (!res.ok) {
+    log.error('Error updating scenario', new Error(`HTTP ${res.status}`));
     throw new Error('Erro ao atualizar cenário');
   }
 
+  const json = await res.json();
+  const data = json.data;
   return {
     ...data,
+    user_id: data.userId,
+    client_id: data.organizationId ?? null,
+    farm_id: data.farmId ?? null,
+    farm_name: data.farmName ?? null,
+    created_at: data.createdAt,
+    updated_at: data.updatedAt || data.createdAt,
     inputs: data.inputs as CattleCalculatorInputs,
     results: data.results as CalculationResults | undefined,
   };
@@ -401,10 +384,13 @@ export const deleteScenario = async (scenarioId: string, userId: string): Promis
   validateUUID(scenarioId, 'ID do cenário');
   validateUUID(userId, 'ID do usuário');
 
-  const { error } = await supabase.from('cattle_scenarios').delete().eq('id', scenarioId).eq('user_id', userId);
+  const res = await apiFetch(
+    `/api/cattle-scenarios?id=${encodeURIComponent(scenarioId)}&userId=${encodeURIComponent(userId)}`,
+    { method: 'DELETE' },
+  );
 
-  if (error) {
-    log.error('Error deleting scenario', new Error(error.message));
+  if (!res.ok) {
+    log.error('Error deleting scenario', new Error(`HTTP ${res.status}`));
     throw new Error('Erro ao excluir cenário');
   }
 };
@@ -416,23 +402,27 @@ export const getScenario = async (scenarioId: string, userId: string): Promise<C
   validateUUID(scenarioId, 'ID do cenário');
   validateUUID(userId, 'ID do usuário');
 
-  const { data, error } = await supabase
-    .from('cattle_scenarios')
-    .select('*')
-    .eq('id', scenarioId)
-    .eq('user_id', userId)
-    .single();
+  const res = await apiFetch(
+    `/api/cattle-scenarios?id=${encodeURIComponent(scenarioId)}&userId=${encodeURIComponent(userId)}`,
+  );
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null; // Not found
-    }
-    log.error('Error fetching scenario', new Error(error.message));
+  if (!res.ok) {
+    log.error('Error fetching scenario', new Error(`HTTP ${res.status}`));
     throw new Error('Erro ao carregar cenário');
   }
 
+  const json = await res.json();
+  const data = json.data;
+  if (!data) return null;
+
   return {
     ...data,
+    user_id: data.userId,
+    client_id: data.organizationId ?? null,
+    farm_id: data.farmId ?? null,
+    farm_name: data.farmName ?? null,
+    created_at: data.createdAt,
+    updated_at: data.updatedAt || data.createdAt,
     inputs: data.inputs as CattleCalculatorInputs,
     results: data.results as CalculationResults | undefined,
   };

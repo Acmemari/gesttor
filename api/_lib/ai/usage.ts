@@ -1,12 +1,13 @@
-import { supabaseAdmin } from '../supabaseAdmin.js';
+import { db, planLimits, tokenBudgets, tokenLedger } from '../../../src/DB/index.js';
+import { eq, and, sql } from 'drizzle-orm';
 import type { PlanId, TokenReservation } from './types.js';
 
-interface PlanLimitsRow {
+interface PlanLimitsResult {
   monthly_token_limit: number;
   monthly_cost_limit_usd: number;
 }
 
-interface TokenBudgetRow {
+interface TokenBudgetResult {
   id: string;
   tokens_used: number;
   tokens_reserved: number;
@@ -26,7 +27,6 @@ function toUsd(value: number): number {
 }
 
 export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number {
-  // Conservative placeholder rates per 1K tokens (USD). Adjust per real contracts.
   const ratesPer1k: Record<string, { input: number; output: number }> = {
     'gemini-2.0-flash': { input: 0.00035, output: 0.00105 },
     'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
@@ -36,15 +36,24 @@ export function estimateCostUsd(model: string, inputTokens: number, outputTokens
   return toUsd((inputTokens / 1000) * rate.input + (outputTokens / 1000) * rate.output);
 }
 
-async function loadPlanLimits(plan: PlanId): Promise<PlanLimitsRow> {
-  const { data, error } = await supabaseAdmin
-    .from('plan_limits')
-    .select('monthly_token_limit, monthly_cost_limit_usd')
-    .eq('plan_id', plan)
-    .single();
+async function loadPlanLimits(plan: PlanId): Promise<PlanLimitsResult> {
+  const [data] = await db
+    .select({
+      monthly_token_limit: planLimits.monthlyTokenLimit,
+      monthly_cost_limit_usd: planLimits.monthlyCostLimitUsd,
+    })
+    .from(planLimits)
+    .where(eq(planLimits.planId, plan))
+    .limit(1);
 
-  if (error || !data) {
-    throw new Error(`Failed to load plan limits for plan "${plan}": ${error?.message ?? 'not found'}`);
+  if (!data) {
+    console.warn(`[usage] plan_limits not found for "${plan}", using hardcoded defaults`);
+    const defaults: Record<string, PlanLimitsResult> = {
+      basic:      { monthly_token_limit: 500_000,    monthly_cost_limit_usd: 0.75  },
+      pro:        { monthly_token_limit: 2_000_000,  monthly_cost_limit_usd: 3.00  },
+      enterprise: { monthly_token_limit: 10_000_000, monthly_cost_limit_usd: 15.00 },
+    };
+    return defaults[plan] ?? defaults['basic'];
   }
 
   return {
@@ -53,17 +62,17 @@ async function loadPlanLimits(plan: PlanId): Promise<PlanLimitsRow> {
   };
 }
 
-async function getOrCreateBudget(orgId: string, period: string): Promise<TokenBudgetRow> {
-  const { data: existing, error: selectError } = await supabaseAdmin
-    .from('token_budgets')
-    .select('id, tokens_used, tokens_reserved, cost_used_usd')
-    .eq('org_id', orgId)
-    .eq('period', period)
-    .maybeSingle();
-
-  if (selectError) {
-    throw new Error(`Failed to load token budget: ${selectError.message}`);
-  }
+async function getOrCreateBudget(orgId: string, period: string): Promise<TokenBudgetResult> {
+  const [existing] = await db
+    .select({
+      id: tokenBudgets.id,
+      tokens_used: tokenBudgets.tokensUsed,
+      tokens_reserved: tokenBudgets.tokensReserved,
+      cost_used_usd: tokenBudgets.costUsedUsd,
+    })
+    .from(tokenBudgets)
+    .where(and(eq(tokenBudgets.orgId, orgId), eq(tokenBudgets.period, period)))
+    .limit(1);
 
   if (existing) {
     return {
@@ -74,20 +83,24 @@ async function getOrCreateBudget(orgId: string, period: string): Promise<TokenBu
     };
   }
 
-  const { data: created, error: insertError } = await supabaseAdmin
-    .from('token_budgets')
-    .insert({
-      org_id: orgId,
+  const [created] = await db
+    .insert(tokenBudgets)
+    .values({
+      orgId,
       period,
-      tokens_used: 0,
-      tokens_reserved: 0,
-      cost_used_usd: 0,
+      tokensUsed: '0',
+      tokensReserved: '0',
+      costUsedUsd: '0',
     })
-    .select('id, tokens_used, tokens_reserved, cost_used_usd')
-    .single();
+    .returning({
+      id: tokenBudgets.id,
+      tokens_used: tokenBudgets.tokensUsed,
+      tokens_reserved: tokenBudgets.tokensReserved,
+      cost_used_usd: tokenBudgets.costUsedUsd,
+    });
 
-  if (insertError || !created) {
-    throw new Error(`Failed to create token budget: ${insertError?.message ?? 'unknown error'}`);
+  if (!created) {
+    throw new Error('Failed to create token budget');
   }
 
   return {
@@ -106,23 +119,19 @@ export async function reserveTokens(args: {
 }): Promise<TokenReservation> {
   const estimatedTokens = Math.max(0, Math.floor(args.estimatedTokens));
   const period = getCurrentPeriod();
-  const [planLimits, budget] = await Promise.all([loadPlanLimits(args.plan), getOrCreateBudget(args.orgId, period)]);
+  const [planLimitsData, budget] = await Promise.all([loadPlanLimits(args.plan), getOrCreateBudget(args.orgId, period)]);
 
   const projectedTokens = budget.tokens_used + budget.tokens_reserved + estimatedTokens;
-  if (projectedTokens > planLimits.monthly_token_limit) {
+  if (projectedTokens > planLimitsData.monthly_token_limit) {
     throw new Error('TOKEN_BUDGET_EXCEEDED');
   }
 
-  const { error: updateError } = await supabaseAdmin
-    .from('token_budgets')
-    .update({
-      tokens_reserved: budget.tokens_reserved + estimatedTokens,
+  await db
+    .update(tokenBudgets)
+    .set({
+      tokensReserved: String(budget.tokens_reserved + estimatedTokens),
     })
-    .eq('id', budget.id);
-
-  if (updateError) {
-    throw new Error(`Failed to reserve tokens: ${updateError.message}`);
-  }
+    .where(eq(tokenBudgets.id, budget.id));
 
   const reservationId = crypto.randomUUID();
   const reservation: TokenReservation = {
@@ -135,12 +144,12 @@ export async function reserveTokens(args: {
   };
   reservations.set(reservationId, reservation);
 
-  await supabaseAdmin.from('token_ledger').insert({
-    org_id: args.orgId,
-    user_id: args.userId,
+  await db.insert(tokenLedger).values({
+    orgId: args.orgId,
+    userId: args.userId,
     action: 'reserve',
-    tokens: estimatedTokens,
-    cost_usd: 0,
+    tokens: String(estimatedTokens),
+    costUsd: '0',
     metadata: { reservation_id: reservationId, period },
   });
 
@@ -165,26 +174,22 @@ export async function commitUsage(args: {
   const budget = await getOrCreateBudget(reservation.orgId, reservation.period);
   const nextReserved = Math.max(0, budget.tokens_reserved - reservation.reservedTokens);
 
-  const { error: updateError } = await supabaseAdmin
-    .from('token_budgets')
-    .update({
-      tokens_reserved: nextReserved,
-      tokens_used: budget.tokens_used + totalTokens,
-      cost_used_usd: toUsd(Number(budget.cost_used_usd) + costUsd),
+  await db
+    .update(tokenBudgets)
+    .set({
+      tokensReserved: String(nextReserved),
+      tokensUsed: String(budget.tokens_used + totalTokens),
+      costUsedUsd: String(toUsd(Number(budget.cost_used_usd) + costUsd)),
     })
-    .eq('id', budget.id);
+    .where(eq(tokenBudgets.id, budget.id));
 
-  if (updateError) {
-    throw new Error(`Failed to commit token usage: ${updateError.message}`);
-  }
-
-  await supabaseAdmin.from('token_ledger').insert({
-    org_id: reservation.orgId,
-    user_id: reservation.userId,
-    agent_run_id: args.agentRunId ?? null,
+  await db.insert(tokenLedger).values({
+    orgId: reservation.orgId,
+    userId: reservation.userId,
+    agentRunId: args.agentRunId ?? null,
     action: 'commit',
-    tokens: totalTokens,
-    cost_usd: costUsd,
+    tokens: String(totalTokens),
+    costUsd: String(costUsd),
     metadata: {
       reservation_id: args.reservationId,
       model: args.model,
@@ -204,21 +209,17 @@ export async function releaseReservation(reservationId: string): Promise<void> {
   const budget = await getOrCreateBudget(reservation.orgId, reservation.period);
   const nextReserved = Math.max(0, budget.tokens_reserved - reservation.reservedTokens);
 
-  const { error: updateError } = await supabaseAdmin
-    .from('token_budgets')
-    .update({ tokens_reserved: nextReserved })
-    .eq('id', budget.id);
+  await db
+    .update(tokenBudgets)
+    .set({ tokensReserved: String(nextReserved) })
+    .where(eq(tokenBudgets.id, budget.id));
 
-  if (updateError) {
-    throw new Error(`Failed to release reservation: ${updateError.message}`);
-  }
-
-  await supabaseAdmin.from('token_ledger').insert({
-    org_id: reservation.orgId,
-    user_id: reservation.userId,
+  await db.insert(tokenLedger).values({
+    orgId: reservation.orgId,
+    userId: reservation.userId,
     action: 'release',
-    tokens: reservation.reservedTokens,
-    cost_usd: 0,
+    tokens: String(reservation.reservedTokens),
+    costUsd: '0',
     metadata: {
       reservation_id: reservationId,
       period: reservation.period,

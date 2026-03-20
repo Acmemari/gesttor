@@ -1,7 +1,8 @@
-﻿import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import type { AIProvider } from './_lib/ai/types.js';
-import { getSupabaseAdmin, supabaseAdmin } from './_lib/supabaseAdmin.js';
+import { eq } from 'drizzle-orm';
+import { db, userProfiles } from '../src/DB/index.js';
 import { getAgentManifest } from './_lib/agents/registry.js';
 import { runHelloAgent } from './_lib/agents/hello/handler.js';
 import { runFeedbackAgent } from './_lib/agents/feedback/handler.js';
@@ -12,6 +13,7 @@ import { checkAndIncrementRateLimit } from './_lib/ai/rate-limit.js';
 import { commitUsage, releaseReservation, reserveTokens, estimateCostUsd } from './_lib/ai/usage.js';
 import { logAgentRun } from './_lib/ai/logging.js';
 import type { AIProviderName, PlanId } from './_lib/ai/types.js';
+import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 
 export const maxDuration = 60; // Allow long-running LLM calls on Vercel
 
@@ -40,14 +42,6 @@ function setCors(res: VercelResponse): void {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-function getBearerToken(req: VercelRequest): string | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-  const value = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-  const match = value.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
-
 function normalizePlan(plan: string | null | undefined): PlanId {
   if (plan === 'pro' || plan === 'enterprise') return plan;
   return 'basic';
@@ -61,31 +55,27 @@ type UserContext = {
 };
 
 async function authenticateAndLoadContext(req: VercelRequest): Promise<UserContext> {
-  const token = getBearerToken(req);
-  if (!token) throw new Error('AUTH_MISSING_TOKEN');
-
-  const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
-  if (authError || !userData?.user) {
-    console.error('[agents-run] Auth failure:', authError?.message || 'No user');
-    throw new Error(`AUTH_INVALID_TOKEN:${authError?.message || 'Token is invalid or expired'}`);
+  const userId = await getAuthUserIdFromRequest(req);
+  if (!userId) {
+    throw new Error('AUTH_MISSING_OR_INVALID_TOKEN');
   }
+  const [profile] = await db
+    .select({ plan: userProfiles.plan })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, userId))
+    .limit(1);
 
-  const userId = userData.user.id;
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('user_profiles')
-    .select('organization_id, plan')
-    .eq('id', userId)
-    .single();
-
-  if (profileError) {
+  if (!profile) {
     throw new Error('AUTH_PROFILE_NOT_FOUND');
   }
 
+  // organization_id foi removido de user_profiles na migração para Neon.
+  // orgId = userId até a Fase 2 resolver o vínculo via tabela organizations.
   return {
     userId,
-    orgId: profile?.organization_id || userId,
+    orgId: userId,
     plan: normalizePlan(profile?.plan),
-    hasOrg: !!profile?.organization_id,
+    hasOrg: false,
   };
 }
 
@@ -95,6 +85,7 @@ function mapErrorToStatus(errorCode: string): number {
   if (errorCode === 'TOKEN_BUDGET_EXCEEDED') return 402;
   if (errorCode.startsWith('INPUT_') || errorCode.startsWith('AGENT_')) return 400;
   if (errorCode.startsWith('FEEDBACK_AGENT_OUTPUT_INVALID')) return 400;
+  if (errorCode === 'TIMEOUT' || errorCode.includes('TIMEOUT')) return 504;
   return 500;
 }
 
@@ -124,7 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     ctx = await authenticateAndLoadContext(req);
 
-    const manifest = await getAgentManifest(parsedBody.data.agentId, parsedBody.data.version, getSupabaseAdmin());
+    const manifest = await getAgentManifest(parsedBody.data.agentId, parsedBody.data.version);
     if (!manifest) {
       return res.status(404).json({
         error: 'Agent manifest not found.',
@@ -154,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    let reservationId: string | null = null;
+    reservationId = null;
     if (ctx.hasOrg) {
       const reservation = await reserveTokens({
         orgId: ctx.orgId,
@@ -220,6 +211,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       model: modelUsed,
     };
 
+    let costUsd = 0;
     if (ctx.hasOrg && reservationId) {
       try {
         const commit = await commitUsage({
@@ -228,29 +220,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           actualOutputTokens: usage.outputTokens,
           model: modelUsed,
         });
-
-        await logAgentRun({
-          org_id: ctx.orgId,
-          user_id: ctx.userId,
-          agent_id: manifest.id,
-          agent_version: manifest.version,
-          provider: providerUsed,
-          model: modelUsed,
-          input_tokens: usage.inputTokens,
-          output_tokens: usage.outputTokens,
-          total_tokens: usage.totalTokens,
-          estimated_cost_usd: commit.costUsd,
-          latency_ms: latencyMs || Math.max(1, Date.now() - startedAt),
-          status: 'success',
-          error_code: null,
-          metadata: {
-            route_candidates: routes.map(r => `${r.provider}:${r.model}`),
-          },
-        });
+        costUsd = commit.costUsd;
       } catch (err) {
-        console.error('[agents-run] Failed to commit usage or log agent run:', err);
+        console.error('[agents-run] Failed to commit usage:', err);
       }
       reservationId = null;
+    }
+
+    try {
+      await logAgentRun({
+        org_id: ctx.orgId,
+        user_id: ctx.userId,
+        agent_id: manifest.id,
+        agent_version: manifest.version,
+        provider: providerUsed,
+        model: modelUsed,
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens,
+        total_tokens: usage.totalTokens,
+        estimated_cost_usd: costUsd,
+        latency_ms: latencyMs || Math.max(1, Date.now() - startedAt),
+        status: 'success',
+        error_code: null,
+        metadata: {
+          route_candidates: routes.map(r => `${r.provider}:${r.model}`),
+        },
+      });
+    } catch (err) {
+      console.error('[agents-run] Failed to log agent run:', err);
     }
 
     return res.status(200).json({
@@ -279,8 +276,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (errorCode === 'AGENT_EXECUTION_FAILED') {
       const isConfigError = rawMessage.includes('not configured') || rawMessage.includes('AI_NO_PROVIDERS');
       clientError = isConfigError
-        ? 'Servi├ºo de IA n├úo configurado no servidor. Contate o suporte.'
-        : 'Problema tempor├írio com o provedor de IA. Tente novamente em instantes.';
+        ? 'Serviço de IA não configurado no servidor. Contate o suporte.'
+        : 'Problema temporário com o provedor de IA. Tente novamente em instantes.';
       console.error('[agents-run] AGENT_EXECUTION_FAILED:', rawMessage);
     }
 

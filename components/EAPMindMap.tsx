@@ -38,11 +38,11 @@ import {
   type ProjectPayload,
   type ProjectRow,
 } from '../lib/projects';
-import { deleteDelivery, fetchDeliveriesByProject, type DeliveryRow } from '../lib/deliveries';
-import { fetchInitiativesByDelivery, fetchTasksByInitiative, ensureDefaultMilestone } from '../lib/initiatives';
+import { createDelivery, deleteDelivery, fetchDeliveriesByProject, updateDelivery, type DeliveryRow } from '../lib/deliveries';
+import { createInitiative, createTask, deleteInitiative, deleteTask, ensureDefaultMilestone, fetchInitiativesByDelivery, fetchTasksByInitiative, updateTask } from '../lib/initiatives';
+import * as initiativesApi from '../lib/api/initiativesClient';
 import { fetchPeople, type Person } from '../lib/people';
 import { sanitizeText } from '../lib/inputSanitizer';
-import { supabase } from '../lib/supabase';
 
 import '@xyflow/react/dist/style.css';
 
@@ -308,11 +308,8 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           '';
         let participantIds: string[] = [];
         try {
-          const { data: rows } = await supabase
-            .from('initiative_participants')
-            .select('person_id')
-            .eq('initiative_id', i.id);
-          participantIds = (rows || []).map(r => r.person_id);
+          const result = await initiativesApi.listParticipants(i.id);
+          participantIds = result.ok ? result.data : [];
         } catch {
           participantIds = [];
         }
@@ -366,12 +363,10 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           await deleteDelivery(rawId);
           toast('Entrega removida.', 'success');
         } else if (level === 'activity') {
-          const { error } = await supabase.from('initiatives').delete().eq('id', rawId);
-          if (error) throw new Error(error.message);
+          await deleteInitiative(rawId);
           toast('Atividade removida.', 'success');
         } else if (level === 'task') {
-          const { error } = await supabase.from('initiative_tasks').delete().eq('id', rawId);
-          if (error) throw new Error(error.message);
+          await deleteTask(rawId);
           toast('Tarefa removida.', 'success');
         }
         await loadTree();
@@ -472,16 +467,10 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     try {
       if (editingNodeId) {
         const rawId = getRawIdFromNodeId(editingNodeId);
-        const { error } = await supabase.from('deliveries').update(payload).eq('id', rawId);
-        if (error) throw new Error(error.message);
+        await updateDelivery(rawId, payload);
         toast('Entrega atualizada.', 'success');
       } else {
-        const { error } = await supabase.from('deliveries').insert({
-          created_by: effectiveUserId,
-          sort_order: 0,
-          ...payload,
-        });
-        if (error) throw new Error(error.message);
+        await createDelivery(effectiveUserId, payload);
         toast('Entrega criada.', 'success');
       }
       await loadTree();
@@ -534,63 +523,36 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     try {
       if (editingNodeId) {
         const rawId = getRawIdFromNodeId(editingNodeId);
-        const { error } = await supabase
-          .from('initiatives')
-          .update({
-            name: sanitizeText(name),
-            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-            start_date: activityForm.start_date || null,
-            end_date: activityForm.end_date || null,
-            status: activityForm.status || 'Não Iniciado',
-            leader: leaderName,
-            internal_leader: internalLeaderName,
-          })
-          .eq('id', rawId);
-        if (error) throw new Error(error.message);
-        const { error: delErr } = await supabase
-          .from('initiative_participants')
-          .delete()
-          .eq('initiative_id', rawId);
-        if (delErr) throw new Error(delErr.message);
-        const participantRows = activityForm.participant_ids
-          .filter(pid => pid)
-          .map(personId => ({ initiative_id: rawId, person_id: personId }));
-        if (participantRows.length > 0) {
-          const { error: partErr } = await supabase
-            .from('initiative_participants')
-            .insert(participantRows);
-          if (partErr) throw new Error(partErr.message);
-        }
+        const result = await initiativesApi.updateInitiative(rawId, {
+          name: sanitizeText(name),
+          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+          start_date: activityForm.start_date || null,
+          end_date: activityForm.end_date || null,
+          status: activityForm.status || 'Não Iniciado',
+          leader: leaderName,
+          internal_leader: internalLeaderName,
+        });
+        if (!result.ok) throw new Error(result.error);
+        await initiativesApi.replaceParticipants(rawId, activityForm.participant_ids.filter(pid => !!pid));
         toast('Atividade atualizada.', 'success');
       } else {
-        const { data: inserted, error } = await supabase
-          .from('initiatives')
-          .insert({
-            created_by: effectiveUserId,
-            name: sanitizeText(name),
-            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-            start_date: activityForm.start_date || null,
-            end_date: activityForm.end_date || null,
-            status: activityForm.status || 'Não Iniciado',
-            leader: leaderName,
-            internal_leader: internalLeaderName,
-            delivery_id: deliveryId,
-            client_id: selectedClientId || null,
-            farm_id: selectedFarmId || null,
-            sort_order: 0,
-          })
-          .select('id')
-          .single();
-        if (error) throw new Error(error.message);
-        const newId = inserted?.id;
-        if (newId && activityForm.participant_ids.length > 0) {
-          const participantRows = activityForm.participant_ids
-            .filter(pid => pid)
-            .map(personId => ({ initiative_id: newId, person_id: personId }));
-          const { error: partErr } = await supabase
-            .from('initiative_participants')
-            .insert(participantRows);
-          if (partErr) throw new Error(partErr.message);
+        const row = await createInitiative(effectiveUserId, {
+          delivery_id: deliveryId,
+          name: sanitizeText(name),
+          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+          start_date: activityForm.start_date || null,
+          end_date: activityForm.end_date || null,
+          status: activityForm.status || 'Não Iniciado',
+          leader: leaderName ?? undefined,
+          internal_leader: internalLeaderName ?? undefined,
+          organization_id: selectedClientId || null,
+          farm_id: selectedFarmId || null,
+          team: [],
+          milestones: [],
+        });
+        const validParticipants = activityForm.participant_ids.filter(pid => !!pid);
+        if (validParticipants.length > 0) {
+          await initiativesApi.replaceParticipants(row.id, validParticipants);
         }
         toast('Atividade criada.', 'success');
       }
@@ -645,39 +607,29 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     try {
       if (editingNodeId) {
         const rawId = getRawIdFromNodeId(editingNodeId);
-        const { error } = await supabase
-          .from('initiative_tasks')
-          .update({
-            title: sanitizeText(title),
-            description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
-            responsible_person_id: taskForm.responsible_person_id,
-            activity_date: activityDate,
-            duration_days: durationDays,
-            due_date: dueDate,
-            completed: taskForm.completed,
-            completed_at: taskForm.completed ? new Date().toISOString() : null,
-            kanban_status: taskForm.kanban_status,
-          })
-          .eq('id', rawId);
-        if (error) throw new Error(error.message);
-        toast('Tarefa atualizada.', 'success');
-      } else {
-        const milestoneId = await ensureDefaultMilestone(initiativeId);
-        const { error } = await supabase.from('initiative_tasks').insert({
-          milestone_id: milestoneId,
+        await updateTask(rawId, {
           title: sanitizeText(title),
           description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
           responsible_person_id: taskForm.responsible_person_id,
           activity_date: activityDate,
           duration_days: durationDays,
           due_date: dueDate,
-          completed: taskForm.completed,
-          completed_at: taskForm.completed ? new Date().toISOString() : null,
-          sort_order: 0,
-          kanban_status: taskForm.kanban_status,
-          kanban_order: 0,
+          kanban_status: taskForm.completed ? 'Concluído' : taskForm.kanban_status,
         });
-        if (error) throw new Error(error.message);
+        toast('Tarefa atualizada.', 'success');
+      } else {
+        const milestoneId = await ensureDefaultMilestone(initiativeId);
+        await createTask(milestoneId, {
+          title: sanitizeText(title),
+          description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
+          responsible_person_id: taskForm.responsible_person_id,
+          activity_date: activityDate,
+          duration_days: durationDays,
+          due_date: dueDate,
+          kanban_status: taskForm.completed ? 'Concluído' : taskForm.kanban_status,
+          kanban_order: 0,
+          sort_order: 0,
+        });
         toast('Tarefa criada.', 'success');
       }
       await loadTree();

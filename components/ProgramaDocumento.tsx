@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw, Plus, Trash2, FolderOpen, Package, Layers, CheckSquare } from 'lucide-react';
 import { loadFullEAPTree, type WBSNode } from '../lib/eapTree';
 import { createProject, updateProject, deleteProject, type ProjectPayload, type ProjectRow } from '../lib/projects';
-import { deleteDelivery } from '../lib/deliveries';
-import { ensureDefaultMilestone, type InitiativeTaskRow, type KanbanStatus } from '../lib/initiatives';
+import { createDelivery, deleteDelivery, updateDelivery } from '../lib/deliveries';
+import { createTask, deleteTask, updateTask, ensureDefaultMilestone, deleteInitiative, type InitiativeTaskRow, type KanbanStatus } from '../lib/initiatives';
 import { fetchPeople, type Person } from '../lib/people';
 import { sanitizeText } from '../lib/inputSanitizer';
-import { supabase } from '../lib/supabase';
+import * as initiativesApi from '../lib/api/initiativesClient';
+import * as deliveriesApi from '../lib/api/deliveriesClient';
 import { InlineText, InlineTextarea, InlineDate, InlineSelect, InlineNumber } from './eap/InlineField';
 import { getCurrentIsoDate } from './eap';
 
@@ -199,8 +200,8 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
       scheduleSave(`delivery-${deliveryId}`, async () => {
         const payload: Record<string, unknown> = { [field]: value };
         if (field === 'end_date') payload.due_date = value;
-        const { error } = await supabase.from('deliveries').update(payload).eq('id', deliveryId);
-        if (error) throw new Error(error.message);
+        const r = await deliveriesApi.updateDelivery(deliveryId, payload);
+        if (!r.ok) throw new Error(r.error);
       });
       setTree(prev =>
         prev.map(prog => ({
@@ -228,8 +229,8 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
           leaderVal = person ? person.preferred_name?.trim() || person.full_name : value;
         }
         const payload: Record<string, unknown> = field === 'leader_id' ? { leader: leaderVal } : { [field]: value };
-        const { error } = await supabase.from('initiatives').update(payload).eq('id', initiativeId);
-        if (error) throw new Error(error.message);
+        const r = await initiativesApi.updateInitiative(initiativeId, payload as Parameters<typeof initiativesApi.updateInitiative>[1]);
+        if (!r.ok) throw new Error(r.error);
       });
       setTree(prev =>
         prev.map(prog => ({
@@ -282,8 +283,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
           const actDate = task.activity_date || task.due_date;
           if (actDate) payload.due_date = addDaysIso(actDate, Math.max(1, Number(value) || 1) - 1);
         }
-        const { error } = await supabase.from('initiative_tasks').update(payload).eq('id', taskId);
-        if (error) throw new Error(error.message);
+        await updateTask(taskId, payload as Parameters<typeof updateTask>[1]);
       });
       setTree(prev =>
         prev.map(prog => ({
@@ -325,14 +325,11 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     }
     setSaving(true);
     try {
-      const { error } = await supabase.from('deliveries').insert({
-        created_by: effectiveUserId,
+      await createDelivery(effectiveUserId, {
         project_id: selectedProgramId,
-        client_id: selectedClientId || null,
+        organization_id: selectedClientId || null,
         name: 'Nova Entrega',
-        sort_order: selectedProgram?.children.length ?? 0,
       });
-      if (error) throw new Error(error.message);
       await loadTree();
       toast('Entrega adicionada.', 'success');
     } catch (err) {
@@ -346,16 +343,14 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     async (deliveryId: string) => {
       setSaving(true);
       try {
-        const { error } = await supabase.from('initiatives').insert({
-          created_by: effectiveUserId,
+        const r = await initiativesApi.createInitiative({
           delivery_id: deliveryId,
-          client_id: selectedClientId || null,
+          organization_id: selectedClientId || null,
           farm_id: selectedFarmId || null,
           name: 'Nova Atividade',
           status: 'Não Iniciado',
-          sort_order: 0,
         });
-        if (error) throw new Error(error.message);
+        if (!r.ok) throw new Error(r.error);
         await loadTree();
         toast('Atividade adicionada.', 'success');
       } catch (err) {
@@ -372,14 +367,13 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
       setSaving(true);
       try {
         const milestoneId = await ensureDefaultMilestone(initiativeId);
-        const { error } = await supabase.from('initiative_tasks').insert({
+        await createTask({
           milestone_id: milestoneId,
           title: 'Nova Tarefa',
           kanban_status: 'A Fazer',
           sort_order: 0,
           kanban_order: 0,
         });
-        if (error) throw new Error(error.message);
         await loadTree();
         toast('Tarefa adicionada.', 'success');
       } catch (err) {
@@ -414,8 +408,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         .find(c => c.data.rawId === id);
       if (!act || !window.confirm(`Excluir "${act.data.initiative?.name || 'Atividade'}"?`)) return;
       try {
-        const { error } = await supabase.from('initiatives').delete().eq('id', id);
-        if (error) throw new Error(error.message);
+        await deleteInitiative(id);
         await loadTree();
         toast('Atividade removida.', 'success');
       } catch (err) {
@@ -434,8 +427,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         .find(c => c.data.rawId === id);
       if (!t || !window.confirm(`Excluir "${t.data.task?.title || 'Tarefa'}"?`)) return;
       try {
-        const { error } = await supabase.from('initiative_tasks').delete().eq('id', id);
-        if (error) throw new Error(error.message);
+        await deleteTask(id);
         await loadTree();
         toast('Tarefa removida.', 'success');
       } catch (err) {

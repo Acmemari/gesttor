@@ -3,7 +3,6 @@ import DateInputBR from '../components/DateInputBR';
 import { Copy, RefreshCcw, Wand2, MessageSquareText, Sparkles } from 'lucide-react';
 import type { FeedbackInput, FeedbackOutput } from '../api/_lib/agents/feedback/manifest';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { useFarm } from '../contexts/FarmContext';
 import { fetchPeople, type Person } from '../lib/people';
 import { saveFeedback } from '../lib/feedbacks';
@@ -90,7 +89,7 @@ const fieldClass =
   'w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2 text-sm text-ai-text outline-none focus:ring-2 focus:ring-ai-accent/30';
 
 const FeedbackAgent: React.FC<FeedbackAgentProps> = ({ onToast }) => {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const { selectedFarm } = useFarm();
   const [form, setForm] = useState<FeedbackInput>(INITIAL_FORM);
   const [result, setResult] = useState<FeedbackOutput | null>(null);
@@ -156,11 +155,7 @@ const FeedbackAgent: React.FC<FeedbackAgentProps> = ({ onToast }) => {
     }
     setGenDamagesLoading(true);
     try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
+      const token = await getAccessToken();
 
       if (!token) throw new Error('Sessão expirada.');
 
@@ -206,19 +201,11 @@ const FeedbackAgent: React.FC<FeedbackAgentProps> = ({ onToast }) => {
     abortRef.current = controller;
 
     try {
-      // Use getUser() instead of getSession() to ensure we have a fresh/validated session
-      const {
-        data: { user: authUser },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !authUser) {
+      if (!user?.id) {
         throw new Error('Faça login para usar o assistente de feedback.');
       }
 
-      // getSession is still needed to get the access_token string easily if it's already refreshed
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
+      const token = await getAccessToken();
 
       if (!token) {
         throw new Error('Não foi possível obter um token de acesso válido.');

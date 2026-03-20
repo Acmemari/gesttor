@@ -3,8 +3,8 @@ import { useClient } from '../contexts/ClientContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
 import { Farm, Client } from '../types';
-import { supabase } from '../lib/supabase';
 import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
+import { getAuthHeaders } from '../lib/session';
 import type { AgilePlanningReportData, HerdCompositionRow } from '../lib/agilePlanningReportTypes';
 import { generateAgilePlanningReportPDF, generateAgilePlanningReportPDFAsBase64 } from '../lib/generateAgilePlanningReportPDF';
 import { saveReportPdf } from '../lib/scenarios';
@@ -1846,34 +1846,28 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
               return;
             }
 
-            let query = supabase.from('clients').select('*');
+            const headers = await getAuthHeaders();
+            const res = await fetch('/api/organizations?limit=100', { headers });
+            const json = await res.json() as { ok: boolean; data?: Array<{ id: string; name: string; phone?: string | null; email?: string | null; analystId?: string | null; createdAt?: string; updatedAt?: string }>; error?: string };
 
-            // Analista vê apenas seus clientes; admin vê todos
-            if (user.qualification === 'analista' && user.role !== 'admin') {
-              query = query.eq('analyst_id', user.id);
-            }
-
-            query = query.order('name', { ascending: true });
-            const { data, error } = await query;
-
-            if (error) {
-              console.error('[AgilePlanning] Error loading clients:', error);
+            if (!json.ok) {
+              console.error('[AgilePlanning] Error loading organizations:', json.error);
               onToast?.('Erro ao carregar organizações. Tente novamente.', 'error');
               return;
             }
 
-            if (data && Array.isArray(data)) {
-              // Mapeamento com validação de dados
+            const data = json.data ?? [];
+            if (data.length > 0) {
               const mappedClients: Client[] = data
-                .filter(client => client?.id && client?.name) // Validação básica
-                .map(client => ({
-                  id: client.id,
-                  name: client.name,
-                  phone: client.phone || '',
-                  email: client.email || '',
-                  analystId: client.analyst_id || null,
-                  createdAt: client.created_at || new Date().toISOString(),
-                  updatedAt: client.updated_at || new Date().toISOString(),
+                .filter(o => o?.id && o?.name)
+                .map(o => ({
+                  id: o.id,
+                  name: o.name,
+                  phone: o.phone || '',
+                  email: o.email || '',
+                  analystId: o.analystId || null,
+                  createdAt: o.createdAt || new Date().toISOString(),
+                  updatedAt: o.updatedAt || new Date().toISOString(),
                 }));
 
               setClients(mappedClients);

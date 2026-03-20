@@ -7,7 +7,7 @@
  *   delete          → deletes one or more objects from B2
  *
  * Security:
- *   - Requires valid Supabase JWT in Authorization: Bearer <token>
+ *   - Requires valid Bearer token in Authorization header
  *   - expiresIn is capped at PRESIGN_MAX_EXPIRES (1 hour)
  *   - key/keys are validated against an allowlist of path prefixes
  */
@@ -18,7 +18,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 
 let _client: S3Client | null = null;
 
@@ -59,9 +59,12 @@ const PRESIGN_MAX_EXPIRES = 3600;
 const ALLOWED_KEY_PREFIXES = [
   'people-photos/',
   'client-documents/',
+  'organization-documents/',
   'support-ticket-attachments/',
   'milestone-evidence/',
+  'farm-maps/',
   'public/',
+  'knowledge-docs/',
 ];
 
 /**
@@ -76,39 +79,17 @@ function isValidKey(key: string): boolean {
   return ALLOWED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
-/**
- * Validates the Supabase JWT from the Authorization header.
- * Returns the user id on success, null on failure.
- */
-async function getAuthUserId(req: VercelRequest): Promise<string | null> {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-  const match = (Array.isArray(authHeader) ? authHeader[0] : authHeader).match(/^Bearer\s+(.+)$/i);
-  const token = match?.[1]?.trim();
-  if (!token) return null;
-
-  const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseKey) return null;
-
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-    });
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) return null;
-    return data.user.id;
-  } catch {
-    return null;
-  }
-}
-
 /** Allowed origins for CORS. Env var extends project defaults. */
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
   'http://127.0.0.1:5173',
+  'https://gesttor.ai',
+  'https://www.gesttor.ai',
   'https://pecuaria.ai',
   'https://www.pecuaria.ai',
 ] as const;
@@ -147,9 +128,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Require authenticated user for all actions
-  const userId = await getAuthUserId(req);
+  const userId = await getAuthUserIdFromRequest(req);
   if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized: valid Supabase session required' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const { action, key, keys, contentType, expiresIn } = req.body ?? {};

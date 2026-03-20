@@ -76,13 +76,6 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, record] of rateLimitMap) {
-    if (now > record.resetAt) rateLimitMap.delete(ip);
-  }
-}, RATE_LIMIT_WINDOW_MS * 2);
-
 /* ─── Constants ─── */
 const PREFERRED_MODEL = 'gemini-2.0-flash';
 

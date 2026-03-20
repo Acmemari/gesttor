@@ -2,12 +2,16 @@
  * Evidências de entrega para marcos de iniciativas
  * - Comentários (notes)
  * - Anexos: imagem, vídeo, planilha, documento
+ *
+ * Todas as operações de banco passam pelo /api/evidence.
+ * Upload/download de arquivos usa diretamente o B2 via lib/storage.
  */
-import { supabase } from './supabase';
 import { storageUpload, storageGetSignedUrl, storageRemove } from './storage';
+import { getAuthHeaders } from './session';
 
 const STORAGE_PREFIX = 'milestone-evidence';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const API_BASE = '/api/evidence';
 
 export type EvidenceFileType = 'image' | 'video' | 'document' | 'spreadsheet';
 
@@ -69,97 +73,69 @@ function generateStoragePath(milestoneId: string, originalName: string): string 
   return `${milestoneId}/${timestamp}_${randomId}_${safeName}.${ext}`;
 }
 
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(url, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...headers, ...(init?.headers ?? {}) },
+  });
+  const json = await res.json() as { ok: boolean; data?: T; error?: string };
+  if (!json.ok) throw new Error(json.error || `Erro na requisição (${res.status})`);
+  return json.data as T;
+}
+
 /**
  * Busca ou cria a evidência para um marco, e retorna com os arquivos
  */
 export async function fetchOrCreateEvidence(milestoneId: string): Promise<MilestoneEvidenceWithFiles> {
   if (!milestoneId) throw new Error('ID do marco é obrigatório.');
 
-  const { data: existing, error: selErr } = await supabase
-    .from('milestone_evidence')
-    .select('*')
-    .eq('milestone_id', milestoneId)
-    .maybeSingle();
+  const rows = await apiFetch<MilestoneEvidenceWithFiles[]>(
+    `${API_BASE}?milestoneId=${encodeURIComponent(milestoneId)}`,
+  );
 
-  if (selErr) throw new Error(selErr.message || 'Erro ao buscar evidências');
+  if (rows.length > 0) return rows[0];
 
-  if (existing) {
-    const { data: files, error: filesErr } = await supabase
-      .from('milestone_evidence_files')
-      .select('*')
-      .eq('evidence_id', existing.id)
-      .order('created_at', { ascending: false });
+  // Criar evidência vazia
+  const created = await apiFetch<MilestoneEvidenceWithFiles>(API_BASE, {
+    method: 'POST',
+    body: JSON.stringify({ milestone_id: milestoneId, notes: null }),
+  });
 
-    if (filesErr) throw new Error(filesErr.message || 'Erro ao carregar arquivos');
-
-    return {
-      ...existing,
-      files: (files || []) as MilestoneEvidenceFileRow[],
-    } as MilestoneEvidenceWithFiles;
-  }
-
-  // Criar evidência vazia (ou refetch se outra sessão criou em paralelo - 409)
-  const { data: created, error: insErr } = await supabase
-    .from('milestone_evidence')
-    .insert({ milestone_id: milestoneId, notes: null })
-    .select()
-    .single();
-
-  if (insErr) {
-    // 409/23505: outra sessão criou em paralelo; buscar a existente
-    if (insErr.code === '23505') {
-      const { data: existing, error: selErr2 } = await supabase
-        .from('milestone_evidence')
-        .select('*')
-        .eq('milestone_id', milestoneId)
-        .maybeSingle();
-      if (!selErr2 && existing) {
-        const { data: files } = await supabase
-          .from('milestone_evidence_files')
-          .select('*')
-          .eq('evidence_id', existing.id)
-          .order('created_at', { ascending: false });
-        return { ...existing, files: (files || []) as MilestoneEvidenceFileRow[] } as MilestoneEvidenceWithFiles;
-      }
-    }
-    throw new Error(insErr.message || 'Erro ao criar evidência');
-  }
-  if (!created) throw new Error('Falha ao criar evidência');
-
-  return {
-    ...created,
-    files: [],
-  } as MilestoneEvidenceWithFiles;
+  return { ...created, files: created.files ?? [] };
 }
 
 /**
- * Atualiza as notas/comentários da evidência (append ou replace)
+ * Atualiza as notas/comentários da evidência
  */
 export async function updateEvidenceNotes(evidenceId: string, notes: string): Promise<void> {
-  const { error } = await supabase
-    .from('milestone_evidence')
-    .update({ notes: notes.trim() || null })
-    .eq('id', evidenceId);
-
-  if (error) throw error;
+  await apiFetch(`${API_BASE}?id=${encodeURIComponent(evidenceId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes: notes.trim() || null }),
+  });
 }
 
 /**
  * Faz append de um comentário às notas existentes
  */
 export async function appendComment(evidenceId: string, newComment: string): Promise<void> {
-  const { data: ev } = await supabase.from('milestone_evidence').select('notes').eq('id', evidenceId).single();
-
-  const current = ev?.notes?.trim() || '';
+  // Buscar notas atuais
+  const current = await apiFetch<MilestoneEvidenceRow>(
+    `${API_BASE}?evidenceId=${encodeURIComponent(evidenceId)}`,
+  );
+  const existing = current.notes?.trim() || '';
   const timestamp = new Date().toLocaleString('pt-BR');
-  const separator = current ? '\n\n---\n\n' : '';
-  const appended = `${current}${separator}[${timestamp}] ${newComment.trim()}`;
+  const separator = existing ? '\n\n---\n\n' : '';
+  const appended = `${existing}${separator}[${timestamp}] ${newComment.trim()}`;
 
-  await updateEvidenceNotes(evidenceId, appended);
+  await apiFetch(`${API_BASE}?id=${encodeURIComponent(evidenceId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes: appended }),
+  });
 }
 
 /**
- * Faz upload de um arquivo e registra em milestone_evidence_files
+ * Faz upload de um arquivo para B2 e registra em milestone_evidence_files via API
  */
 export async function uploadEvidenceFile(
   evidenceId: string,
@@ -173,50 +149,57 @@ export async function uploadEvidenceFile(
   const fileType = inferFileType(file.type, file.name);
   const storagePath = generateStoragePath(milestoneId, file.name);
 
+  // 1. Upload para B2
   await storageUpload(STORAGE_PREFIX, storagePath, file, { contentType: file.type });
 
-  const { data: row, error: dbErr } = await supabase
-    .from('milestone_evidence_files')
-    .insert({
-      evidence_id: evidenceId,
-      file_name: file.name,
-      storage_path: storagePath,
-      file_type: fileType,
-      file_size: file.size,
-    })
-    .select()
-    .single();
+  // 2. Registrar no banco via API (POST com milestone_id + file)
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        milestone_id: milestoneId,
+        file: {
+          file_name: file.name,
+          storage_path: storagePath,
+          file_type: fileType,
+          file_size: file.size,
+        },
+      }),
+    });
+    const json = await res.json() as { ok: boolean; data?: MilestoneEvidenceWithFiles; error?: string };
+    if (!json.ok) throw new Error(json.error || 'Erro ao registrar arquivo');
 
-  if (dbErr) {
+    // A API retorna a evidência com os files; encontrar o arquivo recém-adicionado
+    const evidenceRow = json.data;
+    const addedFile = evidenceRow?.files?.find(f => f.storage_path === storagePath);
+    if (!addedFile) throw new Error('Arquivo registrado mas não encontrado na resposta');
+    return addedFile as MilestoneEvidenceFileRow;
+  } catch (err) {
+    // Rollback B2 se registro no banco falhou
     await storageRemove(STORAGE_PREFIX, [storagePath]);
-    throw new Error(`Erro ao registrar arquivo: ${dbErr.message}`);
+    throw err;
   }
-
-  return row as MilestoneEvidenceFileRow;
 }
 
 /**
- * Gera URL assinada para download/exibição do arquivo
+ * Gera URL assinada para download/exibição do arquivo (B2)
  */
 export async function getSignedUrl(storagePath: string, expiresIn = 3600): Promise<string> {
   return storageGetSignedUrl(STORAGE_PREFIX, storagePath, expiresIn);
 }
 
 /**
- * Remove um arquivo de evidência
+ * Remove um arquivo de evidência: deleta do banco via API (que retorna storage_path) e remove do B2
  */
 export async function deleteEvidenceFile(fileId: string): Promise<void> {
-  const { data: file } = await supabase
-    .from('milestone_evidence_files')
-    .select('storage_path')
-    .eq('id', fileId)
-    .single();
+  if (!fileId) throw new Error('ID do arquivo é obrigatório.');
 
-  if (!file) throw new Error('Arquivo não encontrado');
+  const result = await apiFetch<{ deleted: boolean; storage_path: string }>(
+    `${API_BASE}?fileId=${encodeURIComponent(fileId)}`,
+    { method: 'DELETE' },
+  );
 
-  const { error: delDb } = await supabase.from('milestone_evidence_files').delete().eq('id', fileId);
-
-  if (delDb) throw delDb;
-
-  await storageRemove(STORAGE_PREFIX, [file.storage_path]);
+  await storageRemove(STORAGE_PREFIX, [result.storage_path]);
 }

@@ -98,22 +98,22 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const passwordLengthValid = isSignup ? password === '' || password.length >= 6 : true;
 
   return (
-    <div className="w-full min-h-screen bg-ai-bg text-ai-text font-sans overflow-y-auto">
-      <div className="w-full max-w-md mx-auto px-4 py-6 sm:py-8 pb-12">
+    <div className="w-full min-h-screen bg-[#f5f5f5] text-ai-text font-sans overflow-y-auto flex items-center justify-center">
+      <div className="w-full max-w-md mx-auto px-4 py-3 sm:py-4">
         {/* Logo Section */}
-        <div className="flex flex-col items-center mb-6 sm:mb-8">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Gesttor</h1>
-          <p className="text-ai-subtext text-xs sm:text-sm mt-1 sm:mt-2">Calculadora de resultados para a pecuária</p>
-          <p className="text-ai-subtext text-xs sm:text-sm mt-1">@ntonio_chaker_</p>
-          <p className="text-ai-subtext text-xs sm:text-sm mt-0.5">antonio@inttegra.com</p>
-          <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5 font-medium tracking-wide">v{APP_VERSION} SaaS</p>
+        <div className="flex flex-col items-center mb-3 sm:mb-4">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight">Gesttor</h1>
+          <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">Calculadora de resultados para a pecuária</p>
+          <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">@ntonio_chaker_</p>
+          <p className="text-ai-subtext text-[10px] sm:text-xs">antonio@inttegra.com</p>
+          <p className="text-ai-subtext text-[9px] sm:text-[10px] font-medium tracking-wide">v{APP_VERSION} SaaS</p>
         </div>
 
         {/* Login/Signup Card */}
-        <div className="bg-white rounded-xl sm:rounded-2xl border border-ai-border shadow-sm p-4 sm:p-6 md:p-8">
-          <div className="mb-4 sm:mb-6">
-            <h2 className="text-base sm:text-lg font-semibold">{isSignup ? 'Criar nova conta' : 'Acesse sua conta'}</h2>
-            <p className="text-[10px] sm:text-xs text-ai-subtext mt-1">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <div className="mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-gray-900">{isSignup ? 'Criar nova conta' : 'Acesse sua conta'}</h2>
+            <p className="text-[11px] sm:text-xs text-gray-500 mt-1">
               {isSignup
                 ? 'Preencha os dados abaixo para começar.'
                 : 'Entre com suas credenciais de usuário ou administrador.'}
@@ -121,7 +121,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
           </div>
 
           {/* Toggle between Login and Signup */}
-          <div className="mb-4 flex gap-1.5 sm:gap-2 p-1 bg-ai-surface rounded-lg">
+          <div className="mb-3 flex p-0.5 bg-gray-100 rounded-lg">
             <button
               type="button"
               onClick={() => {
@@ -133,8 +133,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 setPhone('');
                 setOrganizationName('');
               }}
-              className={`flex-1 py-2 px-3 sm:px-4 rounded-md text-[10px] sm:text-xs font-medium transition-colors ${
-                !isSignup ? 'bg-ai-text text-white' : 'text-ai-subtext hover:text-ai-text'
+              className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
+                !isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Entrar
@@ -147,28 +147,28 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 setPassword('');
                 setConfirmPassword('');
               }}
-              className={`flex-1 py-2 px-3 sm:px-4 rounded-md text-[10px] sm:text-xs font-medium transition-colors ${
-                isSignup ? 'bg-ai-text text-white' : 'text-ai-subtext hover:text-ai-text'
+              className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
+                isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Cadastrar
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {isSignup && (
               <div>
-                <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">Nome Completo</label>
+                <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">Nome Completo</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                    <User size={14} className="sm:w-4 sm:h-4" />
+                  <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                    <User size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </div>
                   <input
                     type="text"
                     required={isSignup}
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border border-ai-border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text focus:border-ai-text transition-all outline-none"
+                    className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
                     placeholder="Seu nome completo"
                   />
                 </div>
@@ -176,10 +176,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
             )}
 
             <div>
-              <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">E-mail</label>
+              <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">E-mail</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                  <Mail size={14} className="sm:w-4 sm:h-4" />
+                <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <Mail size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
                 <input
                   type="email"
@@ -189,7 +189,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                     setEmail(e.target.value);
                     if (loginError) setLoginError('');
                   }}
-                  className="block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border border-ai-border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text focus:border-ai-text transition-all outline-none"
+                  className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-blue-50/60 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
                   placeholder="exemplo@gesttor.com"
                 />
               </div>
@@ -197,14 +197,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
 
             {isSignup && (
               <div>
-                <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">
+                <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">
                   Telefone / WhatsApp
                   {phone && !validatePhone(phone) && <span className="text-rose-500 ml-1">(formato inválido)</span>}
                   {phone && validatePhone(phone) && <span className="text-green-600 ml-1">✓</span>}
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                    <Phone size={14} className="sm:w-4 sm:h-4" />
+                  <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                    <Phone size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </div>
                   <input
                     type="tel"
@@ -214,7 +214,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                       const formatted = formatPhone(e.target.value);
                       setPhone(formatted);
                     }}
-                    className={`block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text transition-all outline-none ${
+                    className={`block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 transition-all outline-none ${
                       phone && !validatePhone(phone)
                         ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                         : phone && validatePhone(phone)
@@ -229,15 +229,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
             )}
 
             <div>
-              <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">
+              <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">
                 Senha
                 {isSignup && password && !passwordLengthValid && (
                   <span className="text-rose-500 ml-1">(mínimo 6 caracteres)</span>
                 )}
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                  <Lock size={14} className="sm:w-4 sm:h-4" />
+                <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <Lock size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
                 <input
                   type="password"
@@ -247,10 +247,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                     setPassword(e.target.value);
                     if (loginError) setLoginError('');
                   }}
-                  className={`block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text focus:border-ai-text transition-all outline-none ${
+                  className={`block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-500 transition-all outline-none ${
                     isSignup && password && !passwordLengthValid
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
-                      : 'border-ai-border'
+                      : 'border-gray-200 focus:border-gray-500'
                   }`}
                   placeholder={isSignup ? 'Mínimo 6 caracteres' : '••••••••'}
                   minLength={isSignup ? 6 : undefined}
@@ -261,7 +261,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
             {isSignup && (
               <>
                 <div>
-                  <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">
+                  <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">
                     Confirmar Senha
                     {confirmPassword && !passwordsMatch && (
                       <span className="text-rose-500 ml-1">(senhas não coincidem)</span>
@@ -269,20 +269,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                     {confirmPassword && passwordsMatch && password && <span className="text-green-600 ml-1">✓</span>}
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                      <Lock size={14} className="sm:w-4 sm:h-4" />
+                    <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <Lock size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </div>
                     <input
                       type="password"
                       required={isSignup}
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className={`block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text transition-all outline-none ${
+                      className={`block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 transition-all outline-none ${
                         confirmPassword && !passwordsMatch
                           ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                           : confirmPassword && passwordsMatch
                             ? 'border-green-300 focus:border-green-500 focus:ring-green-500'
-                            : 'border-ai-border focus:border-ai-text'
+                            : 'border-gray-200 focus:border-gray-400'
                       }`}
                       placeholder="Digite a senha novamente"
                     />
@@ -290,18 +290,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">
-                    Nome da Organização/Fazenda <span className="text-ai-subtext font-normal">(opcional)</span>
+                  <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">
+                    Nome da Organização/Fazenda <span className="text-gray-400 font-normal">(opcional)</span>
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
-                      <Building2 size={14} className="sm:w-4 sm:h-4" />
+                    <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <Building2 size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </div>
                     <input
                       type="text"
                       value={organizationName}
                       onChange={e => setOrganizationName(e.target.value)}
-                      className="block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border border-ai-border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text focus:border-ai-text transition-all outline-none"
+                      className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
                       placeholder="Ex: Fazenda Santa Rita"
                     />
                   </div>
@@ -317,32 +317,32 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 (isSignup &&
                   (!passwordsMatch || !passwordLengthValid || !name.trim() || !phone.trim() || !validatePhone(phone)))
               }
-              className="w-full flex items-center justify-center py-2.5 sm:py-3 px-4 bg-ai-text text-white rounded-lg hover:bg-black transition-colors font-medium text-xs sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center py-2.5 px-4 bg-zinc-900 text-white rounded-lg hover:bg-black transition-colors font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
-                <Loader2 size={16} className="sm:w-[18px] sm:h-[18px] animate-spin" />
+                <Loader2 size={18} className="animate-spin" />
               ) : (
                 <>
                   <span>{isSignup ? 'Cadastrar' : 'Entrar'}</span>
-                  <ArrowRight size={14} className="sm:w-4 sm:h-4 ml-2" />
+                  <ArrowRight size={16} className="ml-2" />
                 </>
               )}
             </button>
 
-            {/* MENSAGEM DE ERRO - SIMPLES E DIRETO */}
+            {/* MENSAGEM DE ERRO */}
             {loginError && (
-              <p className="text-red-600 text-center text-sm font-medium bg-red-50 border border-red-200 rounded-lg py-3 px-4">
+              <div className="text-red-600 text-center text-xs font-medium bg-red-50 border border-red-200 rounded-lg py-2.5 px-3">
                 {loginError}
-              </p>
+              </div>
             )}
 
             {/* Link Esqueci minha senha - apenas no modo login */}
             {!isSignup && onForgotPassword && (
-              <div className="text-center mt-2">
+              <div className="text-center mt-1.5">
                 <button
                   type="button"
                   onClick={onForgotPassword}
-                  className="text-[10px] sm:text-xs text-ai-subtext hover:text-ai-text font-medium transition-colors"
+                  className="text-[11px] sm:text-xs text-gray-400 hover:text-gray-700 font-medium transition-colors"
                 >
                   Esqueci minha senha
                 </button>
@@ -353,24 +353,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
           {!isSignup && (
             <>
               {/* OAuth Divider */}
-              <div className="relative my-4 sm:my-6">
+              <div className="relative my-3 sm:my-4">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-ai-border"></div>
+                  <div className="w-full border-t border-gray-200"></div>
                 </div>
-                <div className="relative flex justify-center text-[10px] sm:text-xs">
-                  <span className="px-2 bg-white text-ai-subtext">ou continue com</span>
+                <div className="relative flex justify-center text-xs sm:text-sm">
+                  <span className="px-3 bg-white text-gray-400">ou continue com</span>
                 </div>
               </div>
 
-              {/* OAuth Buttons */}
-              <div className="space-y-2 relative group">
-                <div title="Função desabilitada temporariamente" className="w-full">
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 px-4 bg-white border border-ai-border rounded-lg opacity-90 cursor-not-allowed font-medium text-xs sm:text-sm text-ai-text"
-                  >
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24">
+              {/* Google Button — visually present but functionally disabled */}
+              <div title="Função desabilitada temporariamente" className="w-full">
+                <button
+                  type="button"
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-lg cursor-not-allowed font-medium text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-80"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -390,25 +389,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                   </svg>
                   <span>Continuar com Google</span>
                 </button>
-                </div>
               </div>
             </>
           )}
         </div>
 
         {/* Footer Hints */}
-        <div className="mt-6 sm:mt-8 text-center text-[9px] sm:text-[10px] text-ai-subtext space-y-1">
+        <div className="mt-3 sm:mt-4 text-center text-[11px] sm:text-xs text-gray-400">
           {isSignup ? (
             <p>
               Já tem uma conta?{' '}
-              <button onClick={() => setIsSignup(false)} className="text-ai-text font-medium hover:underline">
+              <button onClick={() => setIsSignup(false)} className="text-gray-700 font-medium hover:underline">
                 Faça login
               </button>
             </p>
           ) : (
             <p>
               Não tem uma conta?{' '}
-              <button onClick={() => setIsSignup(true)} className="text-ai-text font-medium hover:underline">
+              <button onClick={() => setIsSignup(true)} className="text-gray-700 font-medium hover:underline">
                 Cadastre-se
               </button>
             </p>

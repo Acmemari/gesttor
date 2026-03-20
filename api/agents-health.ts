@@ -31,22 +31,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let overallOk = true;
 
   try {
-    // 1. Supabase env vars (read directly — no imports that could crash)
-    const supabaseUrl = trimOrNull(process.env.SUPABASE_URL) ?? trimOrNull(process.env.VITE_SUPABASE_URL);
-    const serviceRoleKey = trimOrNull(process.env.SUPABASE_SERVICE_ROLE_KEY);
+    // 1. Database (Neon) env var
+    const databaseUrl = trimOrNull(process.env.DATABASE_URL);
 
-    checks.supabase_url = {
-      ok: !!supabaseUrl,
-      message: supabaseUrl
-        ? `ok (source: ${process.env.SUPABASE_URL ? 'SUPABASE_URL' : 'VITE_SUPABASE_URL'})`
-        : 'SUPABASE_URL and VITE_SUPABASE_URL are both missing',
-    };
-    checks.supabase_service_role = {
-      ok: !!serviceRoleKey,
-      message: serviceRoleKey ? 'ok' : 'SUPABASE_SERVICE_ROLE_KEY is missing',
+    checks.database_url = {
+      ok: !!databaseUrl,
+      message: databaseUrl ? 'ok' : 'DATABASE_URL is missing',
     };
 
-    if (!checks.supabase_url.ok || !checks.supabase_service_role.ok) {
+    if (!checks.database_url.ok) {
       overallOk = false;
     }
 
@@ -83,27 +76,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: webhookUrl ? 'ok' : 'N8N_WEBHOOK_URL not configured (chat will not work)',
     };
 
-    // 5. DB tables (only if Supabase is configured)
-    if (supabaseUrl && serviceRoleKey) {
+    // 5. DB Connectivity & Tables (via Drizzle)
+    if (databaseUrl) {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const client = createClient(supabaseUrl, serviceRoleKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
-        const { data, error } = await client.from('plan_limits').select('plan_id').limit(1);
+        const { db } = await import('../src/DB/index.js');
+        const { planLimits } = await import('../src/DB/schema.js');
+        
+        // Verify connectivity, table existence, AND seed data
+        const data = await db.select().from(planLimits).limit(1);
+        const hasSeeds = Array.isArray(data) && data.length > 0;
 
-        checks.plan_limits = {
-          ok: !error && Array.isArray(data) && data.length > 0,
-          message: error ? `DB error: ${error.message}` : 'ok',
+        checks.plan_limits_table = {
+          ok: hasSeeds,
+          message: hasSeeds
+            ? 'ok (Drizzle/Neon, seed data present)'
+            : 'WARN: table exists but has no rows — run: npx tsx scripts/seed-ai-tables.ts',
         };
-        if (!checks.plan_limits.ok) overallOk = false;
+        if (!hasSeeds) overallOk = false;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        checks.plan_limits = { ok: false, message: `Failed: ${msg}` };
+        checks.plan_limits_table = { ok: false, message: `DB error: ${msg}` };
         overallOk = false;
       }
     } else {
-      checks.plan_limits = { ok: false, message: 'Skipped (Supabase not configured)' };
+      checks.plan_limits_table = { ok: false, message: 'Skipped (DATABASE_URL not configured)' };
       overallOk = false;
     }
   } catch (err) {

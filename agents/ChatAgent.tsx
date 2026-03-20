@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, User, Bot, Loader2, Eraser, Paperclip, X, FileText } from 'lucide-react';
 import { ChatMessage } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { PLANS } from '../constants';
 
 const ChatAgent: React.FC = () => {
   const { user } = useAuth();
@@ -32,31 +30,10 @@ const ChatAgent: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Check if agent is enabled
+  // agent_config table not in new schema — agent always enabled
   useEffect(() => {
-    const checkAgentStatus = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('agent_config')
-          .select('is_enabled')
-          .eq('agent_id', 'ask-antonio')
-          .single();
-
-        if (error) {
-          console.error('Error checking agent status:', error);
-          setIsAgentEnabled(true); // Fallback to enabled on error
-        } else {
-          setIsAgentEnabled(data?.is_enabled || false);
-        }
-      } catch (error) {
-        console.error('Error checking agent status:', error);
-        setIsAgentEnabled(true); // Fallback to enabled on error
-      } finally {
-        setIsCheckingAgent(false);
-      }
-    };
-
-    checkAgentStatus();
+    setIsAgentEnabled(true);
+    setIsCheckingAgent(false);
   }, []);
 
   // Load chat history on mount
@@ -69,79 +46,12 @@ const ChatAgent: React.FC = () => {
   }, [user]);
 
   const loadChatHistory = async () => {
-    if (!user) return;
-
-    try {
-      setIsLoadingHistory(true);
-      const userPlan = PLANS.find(p => p.id === user.plan) || PLANS[0];
-      const historyDays = userPlan.limits.historyDays;
-
-      // Calculate date limit
-      const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - historyDays);
-
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('created_at', limitDate.toISOString())
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error loading chat history:', error);
-        setIsLoadingHistory(false);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        const loadedMessages: ChatMessage[] = data.map(msg => ({
-          id: msg.id,
-          role: msg.role as 'user' | 'model',
-          text: msg.text,
-          timestamp: new Date(msg.created_at),
-        }));
-
-        // Add welcome message if no messages or if oldest message is recent
-        const hasWelcome = loadedMessages.some(m => m.id === 'welcome');
-        if (!hasWelcome) {
-          setMessages([
-            {
-              id: 'welcome',
-              role: 'model',
-              text: 'Olá, companheiro. Aqui é o Antonio. Vamos falar de gestão? O que não se mede, não se gerencia. \n\nSe tiver algum relatório ou manual técnico, pode anexar aqui que eu analiso.',
-              timestamp: new Date(),
-            },
-            ...loadedMessages,
-          ]);
-        } else {
-          setMessages(loadedMessages);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading chat history:', error);
-    } finally {
-      setIsLoadingHistory(false);
-    }
+    // chat_messages table not in new schema — history not persisted
+    setIsLoadingHistory(false);
   };
 
-  const saveMessage = async (message: ChatMessage, attachmentName?: string, attachmentMimeType?: string) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase.from('chat_messages').insert({
-        user_id: user.id,
-        role: message.role,
-        text: message.text,
-        attachment_name: attachmentName || null,
-        attachment_mime_type: attachmentMimeType || null,
-      });
-
-      if (error) {
-        console.error('Error saving message:', error);
-      }
-    } catch (error) {
-      console.error('Error saving message:', error);
-    }
+  const saveMessage = async (_message: ChatMessage, _attachmentName?: string, _attachmentMimeType?: string) => {
+    // chat_messages table not in new schema — messages not persisted
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,100 +97,8 @@ const ChatAgent: React.FC = () => {
     // Admins têm acesso ilimitado
     if (user.role === 'admin') return { canSend: true };
 
-    const userPlan = PLANS.find(p => p.id === user.plan) || PLANS[0];
-
-    // Verificar se o plano tem chat ilimitado
-    const hasUnlimitedChat = userPlan.features.some(f => f.toLowerCase().includes('chat ilimitado'));
-
-    if (hasUnlimitedChat) {
-      return { canSend: true }; // Chat ilimitado para Pro e Enterprise
-    }
-
-    // Verificar cache (últimas 30 segundos)
-    const now = Date.now();
-    if (limitCheckCache.current && now - limitCheckCache.current.timestamp < CACHE_DURATION) {
-      return { canSend: limitCheckCache.current.result };
-    }
-
-    // Para plano Basic, contar mensagens do dia com retry
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const MAX_RETRIES = 2;
-    let lastError: any = null;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const { count, error } = await supabase
-          .from('chat_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('role', 'user') // Contar apenas mensagens do usuário
-          .gte('created_at', today.toISOString());
-
-        if (error) {
-          lastError = error;
-
-          // Se for erro de conexão/rede, tentar novamente
-          if (
-            attempt < MAX_RETRIES &&
-            (error.message?.includes('Failed to fetch') ||
-              error.message?.includes('network') ||
-              error.code === 'PGRST301' ||
-              error.message?.includes('connection'))
-          ) {
-            console.warn(
-              `Erro de conexão ao verificar limite (tentativa ${attempt + 1}/${MAX_RETRIES + 1}), tentando novamente...`,
-            );
-            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1))); // Backoff exponencial
-            continue;
-          }
-
-          // Em caso de erro persistente, usar fallback permissivo (permitir envio)
-          console.warn('Erro ao verificar limite de mensagens, permitindo envio como fallback:', error.message);
-          const result = { canSend: true, reason: 'Erro de conexão - limite não verificado' };
-          limitCheckCache.current = { result: true, timestamp: now };
-          return result;
-        }
-
-        // Sucesso na verificação
-        const MESSAGES_LIMIT_BASIC = 10;
-        const canSend = (count || 0) < MESSAGES_LIMIT_BASIC;
-
-        // Atualizar cache
-        limitCheckCache.current = { result: canSend, timestamp: now };
-
-        if (!canSend) {
-          return {
-            canSend: false,
-            reason: `Limite atingido: ${count || 0}/${MESSAGES_LIMIT_BASIC} mensagens hoje`,
-          };
-        }
-
-        return { canSend: true };
-      } catch (error: any) {
-        lastError = error;
-        if (attempt < MAX_RETRIES) {
-          console.warn(
-            `Exceção ao verificar limite (tentativa ${attempt + 1}/${MAX_RETRIES + 1}), tentando novamente...`,
-          );
-          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-          continue;
-        }
-
-        // Em caso de exceção, usar fallback permissivo
-        console.warn('Exceção ao verificar limite de mensagens, permitindo envio como fallback:', error);
-        const result = { canSend: true, reason: 'Erro temporário - limite não verificado' };
-        limitCheckCache.current = { result: true, timestamp: now };
-        return result;
-      }
-    }
-
-    // Se chegou aqui, todas as tentativas falharam - fallback permissivo
-    console.warn('Falha em todas as tentativas de verificar limite, permitindo envio');
-    const result = { canSend: true, reason: 'Erro de conexão - limite não verificado' };
-    limitCheckCache.current = { result: true, timestamp: now };
-    return result;
+    // chat_messages table not in new schema — rate limiting disabled
+    return { canSend: true };
   };
 
   const handleSend = async () => {
@@ -412,17 +230,7 @@ const ChatAgent: React.FC = () => {
   const handleClear = async () => {
     if (!user) return;
 
-    // Delete all messages from database
-    try {
-      const { error } = await supabase.from('chat_messages').delete().eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error clearing chat history:', error);
-      }
-    } catch (error) {
-      console.error('Error clearing chat history:', error);
-    }
-
+    // chat_messages table not in new schema — only clears in-memory messages
     setMessages([
       {
         id: 'welcome',

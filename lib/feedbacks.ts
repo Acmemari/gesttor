@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getAuthHeaders } from './session';
 
 export interface SaveFeedbackInput {
   createdBy: string;
@@ -47,50 +47,91 @@ export interface SavedFeedback {
   updated_at: string;
 }
 
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = await getAuthHeaders();
+  return fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+}
+
+function mapRow(row: Record<string, unknown>): SavedFeedback {
+  return {
+    id: row.id as string,
+    created_by: row.createdBy as string,
+    recipient_person_id: (row.recipientPersonId as string | null) ?? null,
+    recipient_name: row.recipientName as string,
+    recipient_email: (row.recipientEmail as string | null) ?? null,
+    context: row.context as string,
+    feedback_type: row.feedbackType as string,
+    objective: row.objective as string,
+    what_happened: (row.whatHappened as string | null) ?? null,
+    event_date: (row.eventDate as string | null) ?? null,
+    event_moment: (row.eventMoment as string | null) ?? null,
+    damages: (row.damages as string | null) ?? null,
+    tone: row.tone as string,
+    format: row.format as string,
+    structure: row.structure as string,
+    length_preference: row.lengthPreference as string,
+    generated_feedback: row.generatedFeedback as string,
+    generated_structure: row.generatedStructure as string,
+    tips: (row.tips as string[]) || [],
+    farm_id: (row.farmId as string | null) ?? null,
+    created_at: row.createdAt as string,
+    updated_at: (row.updatedAt as string) || (row.createdAt as string),
+  };
+}
+
 export async function saveFeedback(input: SaveFeedbackInput): Promise<SavedFeedback> {
   const recipientName = (input.recipientName || '').trim();
   if (recipientName.length < 2) {
     throw new Error('Destinatário inválido.');
   }
 
-  const { data, error } = await supabase
-    .from('saved_feedbacks')
-    .insert({
-      created_by: input.createdBy,
-      recipient_person_id: input.recipientPersonId || null,
-      recipient_name: recipientName,
-      recipient_email: input.recipientEmail?.trim().toLowerCase() || null,
+  const res = await apiFetch('/api/saved-feedbacks', {
+    method: 'POST',
+    body: JSON.stringify({
+      createdBy: input.createdBy,
+      recipientPersonId: input.recipientPersonId ?? null,
+      recipientName,
+      recipientEmail: input.recipientEmail?.trim().toLowerCase() ?? null,
       context: input.context,
-      feedback_type: input.feedbackType,
+      feedbackType: input.feedbackType,
       objective: input.objective,
-      what_happened: input.whatHappened || null,
-      event_date: input.eventDate || null,
-      event_moment: input.eventMoment || null,
-      damages: input.damages || null,
+      whatHappened: input.whatHappened ?? null,
+      eventDate: input.eventDate ?? null,
+      eventMoment: input.eventMoment ?? null,
+      damages: input.damages ?? null,
       tone: input.tone,
       format: input.format,
       structure: input.structure,
-      length_preference: input.lengthPreference,
-      generated_feedback: input.generatedFeedback,
-      generated_structure: input.generatedStructure,
-      tips: input.tips || [],
-      farm_id: input.farmId || null,
-    })
-    .select('*')
-    .single();
+      lengthPreference: input.lengthPreference,
+      generatedFeedback: input.generatedFeedback,
+      generatedStructure: input.generatedStructure,
+      tips: input.tips ?? [],
+      farmId: input.farmId ?? null,
+    }),
+  });
 
-  if (error) {
-    throw new Error(error.message || 'Erro ao salvar feedback.');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Erro ao salvar feedback.');
   }
-  return data as SavedFeedback;
+
+  const json = await res.json();
+  return mapRow(json.data);
 }
 
 export async function getSavedFeedbacks(): Promise<SavedFeedback[]> {
-  const { data, error } = await supabase.from('saved_feedbacks').select('*').order('created_at', { ascending: false });
+  const res = await apiFetch('/api/saved-feedbacks');
+  if (!res.ok) return [];
 
-  if (error) {
-    if (error.code === '42P01') return [];
-    throw new Error(error.message || 'Erro ao carregar feedbacks salvos.');
-  }
-  return (data || []) as SavedFeedback[];
+  const json = await res.json();
+  if (!json.ok) return [];
+
+  return (json.data ?? []).map(mapRow);
 }

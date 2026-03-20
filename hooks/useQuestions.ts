@@ -4,10 +4,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Question } from '../components/questionnaire/types';
 import { QuestionMeta } from '../lib/questionnaireResults';
-import { createQuestionnaireError, ERROR_CODES } from '../lib/errorHandler';
+import { getQuestions } from '../lib/questions';
 
 // Cache global para evitar múltiplas chamadas
 let questionsCache: Question[] | null = null;
@@ -69,47 +68,11 @@ export const useQuestions = () => {
 };
 
 async function loadQuestions(): Promise<void> {
-  try {
-    const { data, error } = await supabase
-      .from('questionnaire_questions')
-      .select('*')
-      .order('perg_number', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      throw createQuestionnaireError(
-        ERROR_CODES.FETCH_QUESTIONS_ERROR,
-        error.message,
-        'Erro ao carregar perguntas do questionário',
-      );
-    }
-
-    // Mapear para formato Question
-    questionsCache = (data || []).map((row: any) => ({
-      id: row.id,
-      category: row.category,
-      group: row.group,
-      question: row.question,
-      positiveAnswer: row.positive_answer,
-      applicableTypes: row.applicable_types || [],
-    }));
-
-    // Criar mapa de metadados
-    questionsMapCache = new Map();
-    (data || []).forEach((row: any) => {
-      const id = row.id == null ? '' : String(row.id).trim().toLowerCase();
-      const positiveAnswer = row.positive_answer === 'Não' ? 'Não' : 'Sim';
-      questionsMapCache!.set(id, {
-        id,
-        category: String(row.category ?? ''),
-        group: String(row.group ?? ''),
-        positiveAnswer,
-      });
-    });
-  } catch (e) {
-    console.error('Erro ao carregar perguntas:', e);
-    throw e;
-  }
+  const data = await getQuestions();
+  questionsCache = data;
+  questionsMapCache = new Map<string, QuestionMeta>(
+    data.map(q => [q.id, { id: q.id, category: q.category, group: q.group, positiveAnswer: q.positiveAnswer }]),
+  );
 }
 
 /**

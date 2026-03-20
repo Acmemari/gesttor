@@ -1,8 +1,12 @@
-import { supabase } from './supabase';
-import { logger } from './logger';
+/**
+ * Camada de compatibilidade: mapeia o modelo antigo (Supabase 'people')
+ * para o novo modelo (Neon/Drizzle 'pessoas' + sub-tabelas).
+ *
+ * Os componentes legados (FeedbackAgent, InitiativesActivities, EAPMindMap,
+ * ProgramaWorkbench, etc.) continuam importando daqui sem alteração.
+ */
+import { listPessoasByFarm, checkPermsByEmail } from './api/pessoasClient';
 import { storageUpload, storageGetPublicUrl } from './storage';
-
-const log = logger.withContext({ component: 'people' });
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -48,11 +52,6 @@ export type PersonFormData = Omit<Person, 'id' | 'created_by' | 'created_at' | '
 
 export interface FetchPeopleFilters {
   farmId?: string;
-  /**
-   * Quando true, busca por farm_id sem filtrar por created_by.
-   * Usado por analistas/clientes que precisam ver registros da fazenda
-   * independentemente de quem criou cada pessoa.
-   */
   sharedScope?: boolean;
 }
 
@@ -69,166 +68,49 @@ export function peopleFilteredForLiderInterno(people: Person[]): Person[] {
   return people.filter(p => !CONSULTING_ROLES.includes(p.person_type as (typeof CONSULTING_ROLES)[number]));
 }
 
-// ─── Validação ──────────────────────────────────────────────────────────────
-
-const MAX_NAME_LENGTH = 300;
-const MAX_TEXT_LENGTH = 2000;
-
-function validateUserId(userId: string): void {
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
-    throw new Error('ID do usuário é obrigatório.');
-  }
-}
-
-function validatePersonId(id: string): void {
-  if (!id || typeof id !== 'string' || !id.trim()) {
-    throw new Error('ID da pessoa é obrigatório.');
-  }
-}
-
 // ─── Funções ────────────────────────────────────────────────────────────────
 
-export async function fetchPeople(userId: string, filters?: FetchPeopleFilters): Promise<Person[]> {
-  validateUserId(userId);
+export async function fetchPeople(_userId: string, filters?: FetchPeopleFilters): Promise<Person[]> {
+  const farmId = filters?.farmId?.trim();
+  if (!farmId) return [];
 
-  // No sharedScope (fazenda selecionada), busca por farm_id sem filtrar por created_by.
-  // A policy RLS garante que apenas usuários com acesso à fazenda (analyst_farms ou client_id)
-  // recebam os dados. Fallback para created_by quando não há fazenda selecionada.
-  if (filters?.sharedScope && filters.farmId?.trim()) {
-    const { data, error } = await supabase
-      .from('people')
-      .select('*')
-      .eq('farm_id', filters.farmId)
-      .order('full_name', { ascending: true });
-    if (error) {
-      log.error('fetchPeople (sharedScope) failed', new Error(error.message));
-      throw error;
-    }
-    return (data || []) as Person[];
-  }
-
-  let q = supabase.from('people').select('*').eq('created_by', userId).order('full_name', { ascending: true });
-
-  if (filters?.farmId?.trim()) {
-    q = q.eq('farm_id', filters.farmId);
-  }
-
-  const { data, error } = await q;
-  if (error) {
-    log.error('fetchPeople failed', new Error(error.message));
-    throw error;
-  }
-  return (data || []) as Person[];
+  const rows = await listPessoasByFarm(farmId);
+  return rows.map(r => ({
+    id: r.id,
+    created_by: '',
+    full_name: r.full_name,
+    preferred_name: r.preferred_name,
+    person_type: r.person_type,
+    job_role: r.job_role,
+    phone_whatsapp: r.phone_whatsapp,
+    email: r.email,
+    location_farm: null,
+    location_city_uf: r.location_city_uf,
+    base: null,
+    photo_url: r.photo_url,
+    main_activities: null,
+    farm_id: r.farm_id,
+    assume_tarefas_fazenda: r.assume_tarefas_fazenda,
+    pode_alterar_semana_fechada: r.pode_alterar_semana_fechada,
+    pode_apagar_semana: r.pode_apagar_semana,
+    created_at: '',
+    updated_at: '',
+  }));
 }
 
-export async function createPerson(userId: string, payload: Partial<PersonFormData>): Promise<Person> {
-  validateUserId(userId);
+export { checkPermsByEmail };
 
-  const fullName = (payload.full_name || '').trim();
-  if (!fullName) throw new Error('Nome completo é obrigatório.');
-  if (fullName.length > MAX_NAME_LENGTH) throw new Error(`Nome muito longo (máx ${MAX_NAME_LENGTH} caracteres).`);
-
-  const { data, error } = await supabase
-    .from('people')
-    .insert({
-      created_by: userId,
-      full_name: fullName,
-      preferred_name: payload.preferred_name?.trim() || null,
-      person_type: payload.person_type || 'Colaborador Fazenda',
-      job_role: payload.job_role?.trim() || null,
-      phone_whatsapp: payload.phone_whatsapp?.trim() || null,
-      email: payload.email?.trim().toLowerCase() || null,
-      location_farm: payload.location_farm?.trim() || null,
-      location_city_uf: payload.location_city_uf?.trim() || null,
-      base: payload.base?.trim() || null,
-      photo_url: payload.photo_url || null,
-      main_activities: payload.main_activities?.trim()?.slice(0, MAX_TEXT_LENGTH) || null,
-      farm_id: payload.farm_id || null,
-      assume_tarefas_fazenda: payload.assume_tarefas_fazenda ?? false,
-      pode_alterar_semana_fechada: payload.pode_alterar_semana_fechada ?? false,
-      pode_apagar_semana: payload.pode_apagar_semana ?? false,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    log.error('createPerson failed', new Error(error.message));
-    throw new Error(error.message || 'Erro ao cadastrar pessoa.');
-  }
-  if (!data) throw new Error('Pessoa não retornada após criação.');
-  return data as Person;
-}
-
-export async function updatePerson(id: string, payload: Partial<PersonFormData>): Promise<Person> {
-  validatePersonId(id);
-
-  if (payload.full_name !== undefined) {
-    const fullName = (payload.full_name || '').trim();
-    if (!fullName) throw new Error('Nome completo é obrigatório.');
-    if (fullName.length > MAX_NAME_LENGTH) throw new Error(`Nome muito longo (máx ${MAX_NAME_LENGTH} caracteres).`);
-  }
-
-  const { data, error } = await supabase
-    .from('people')
-    .update({
-      ...(payload.full_name !== undefined && { full_name: payload.full_name.trim() }),
-      ...(payload.preferred_name !== undefined && { preferred_name: payload.preferred_name?.trim() || null }),
-      ...(payload.person_type !== undefined && { person_type: payload.person_type }),
-      ...(payload.job_role !== undefined && { job_role: payload.job_role?.trim() || null }),
-      ...(payload.phone_whatsapp !== undefined && { phone_whatsapp: payload.phone_whatsapp?.trim() || null }),
-      ...(payload.email !== undefined && { email: payload.email?.trim().toLowerCase() || null }),
-      ...(payload.location_farm !== undefined && { location_farm: payload.location_farm?.trim() || null }),
-      ...(payload.location_city_uf !== undefined && { location_city_uf: payload.location_city_uf?.trim() || null }),
-      ...(payload.base !== undefined && { base: payload.base?.trim() || null }),
-      ...(payload.photo_url !== undefined && { photo_url: payload.photo_url || null }),
-      ...(payload.main_activities !== undefined && {
-        main_activities: payload.main_activities?.trim()?.slice(0, MAX_TEXT_LENGTH) || null,
-      }),
-      ...(payload.farm_id !== undefined && { farm_id: payload.farm_id || null }),
-      ...(payload.assume_tarefas_fazenda !== undefined && { assume_tarefas_fazenda: payload.assume_tarefas_fazenda }),
-      ...(payload.pode_alterar_semana_fechada !== undefined && { pode_alterar_semana_fechada: payload.pode_alterar_semana_fechada }),
-      ...(payload.pode_apagar_semana !== undefined && { pode_apagar_semana: payload.pode_apagar_semana }),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    log.error('updatePerson failed', new Error(error.message));
-    throw new Error(error.message || 'Erro ao atualizar pessoa.');
-  }
-  if (!data) throw new Error('Pessoa não retornada após atualização.');
-  return data as Person;
-}
-
-export async function deletePerson(id: string): Promise<void> {
-  validatePersonId(id);
-  const { error } = await supabase.from('people').delete().eq('id', id);
-  if (error) {
-    log.error('deletePerson failed', new Error(error.message));
-    throw new Error(error.message || 'Erro ao excluir pessoa.');
-  }
-}
+// ─── Upload de foto (mantido) ──────────────────────────────────────────────
 
 const STORAGE_PREFIX = 'people-photos';
-const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 
-export async function uploadPersonPhoto(userId: string, personId: string, file: File): Promise<string> {
-  validateUserId(userId);
-  validatePersonId(personId);
-
-  if (file.size > MAX_PHOTO_SIZE) {
-    throw new Error('A foto deve ter no máximo 5 MB.');
-  }
-
+export async function uploadPersonPhoto(_userId: string, personId: string, file: File): Promise<string> {
+  if (file.size > MAX_PHOTO_SIZE) throw new Error('A foto deve ter no máximo 5 MB.');
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  if (!allowedTypes.includes(file.type)) {
-    throw new Error('Formato de imagem não suportado. Use JPEG, PNG, WebP ou GIF.');
-  }
-
+  if (!allowedTypes.includes(file.type)) throw new Error('Formato de imagem não suportado. Use JPEG, PNG, WebP ou GIF.');
   const ext = file.name.split('.').pop() || 'jpg';
-  const path = `${userId}/${personId}-${Date.now()}.${ext}`;
+  const path = `pessoas/${personId}-${Date.now()}.${ext}`;
   await storageUpload(STORAGE_PREFIX, path, file, { contentType: file.type, upsert: true });
-
   return storageGetPublicUrl(STORAGE_PREFIX, path);
 }

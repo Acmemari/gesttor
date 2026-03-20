@@ -1,5 +1,8 @@
-import { supabase } from './supabase';
-import { sanitizeText } from './inputSanitizer';
+/**
+ * Lib cliente de entregas — usa o backend Drizzle via /api/deliveries.
+ * Mantém assinaturas compatíveis com o código legado.
+ */
+import * as deliveriesApi from './api/deliveriesClient';
 
 export interface DeliveryStakeholderRow {
   name: string;
@@ -9,14 +12,17 @@ export interface DeliveryStakeholderRow {
 export interface DeliveryRow {
   id: string;
   created_by: string;
+  organization_id: string | null;
+  /** @deprecated use organization_id */
   client_id: string | null;
-  project_id: string | null;
+  project_id: string;
   name: string;
   description: string | null;
   transformations_achievements: string | null;
   start_date: string | null;
   end_date: string | null;
   due_date: string | null;
+  percent: number;
   stakeholder_matrix: DeliveryStakeholderRow[];
   sort_order: number;
   created_at: string;
@@ -25,181 +31,94 @@ export interface DeliveryRow {
 
 export interface DeliveryPayload {
   name: string;
-  description?: string;
+  description?: string | null;
+  project_id: string;
+  organization_id?: string | null;
+  /** @deprecated use organization_id */
   client_id?: string | null;
-  project_id?: string | null;
+  transformations_achievements?: string | null;
+  due_date?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  stakeholder_matrix?: DeliveryStakeholderRow[];
+}
+
+function unwrap<T>(result: { ok: true; data: T } | { ok: false; error: string }, fallback: string): T {
+  if (!result.ok) throw new Error((result as { ok: false; error: string }).error || fallback);
+  return (result as { ok: true; data: T }).data;
+}
+
+function mapRow(r: deliveriesApi.DeliveryRow): DeliveryRow {
+  return {
+    ...r,
+    client_id: r.organization_id,
+    project_id: r.project_id,
+    stakeholder_matrix: (r.stakeholder_matrix ?? []) as DeliveryStakeholderRow[],
+  };
+}
+
+export async function fetchDeliveriesByProject(projectId: string): Promise<DeliveryRow[]> {
+  if (!projectId?.trim()) throw new Error('ID do projeto é obrigatório.');
+  const result = await deliveriesApi.listDeliveries(projectId);
+  return unwrap(result, 'Erro ao carregar entregas.').map(mapRow);
+}
+
+export async function fetchDeliveriesByProjects(projectIds: string[]): Promise<DeliveryRow[]> {
+  if (!projectIds?.length) return [];
+  const results = await Promise.all(projectIds.map(id => deliveriesApi.listDeliveries(id)));
+  return results.flatMap((r, i) => unwrap(r, `Erro ao carregar entregas do projeto ${projectIds[i]}.`).map(mapRow));
+}
+
+export async function createDelivery(_createdBy: string, payload: DeliveryPayload): Promise<DeliveryRow> {
+  if (!payload.name?.trim()) throw new Error('Nome da entrega é obrigatório.');
+  const result = await deliveriesApi.createDelivery({
+    project_id: payload.project_id,
+    name: payload.name.trim(),
+    description: payload.description ?? null,
+    organization_id: payload.organization_id ?? payload.client_id ?? null,
+    transformations_achievements: payload.transformations_achievements ?? null,
+    due_date: payload.due_date ?? null,
+    start_date: payload.start_date ?? null,
+    end_date: payload.end_date ?? null,
+    stakeholder_matrix: payload.stakeholder_matrix ?? [],
+  });
+  return mapRow(unwrap(result, 'Erro ao criar entrega.'));
+}
+
+export async function updateDelivery(deliveryId: string, payload: Partial<DeliveryPayload>): Promise<DeliveryRow> {
+  if (!deliveryId?.trim()) throw new Error('ID da entrega é obrigatório.');
+  const result = await deliveriesApi.updateDelivery(deliveryId, {
+    name: payload.name,
+    description: payload.description,
+    organization_id: payload.organization_id ?? payload.client_id,
+    transformations_achievements: payload.transformations_achievements,
+    due_date: payload.due_date,
+    start_date: payload.start_date,
+    end_date: payload.end_date,
+    stakeholder_matrix: payload.stakeholder_matrix,
+  });
+  return mapRow(unwrap(result, 'Erro ao atualizar entrega.'));
 }
 
 export interface FetchDeliveriesFilters {
   clientId?: string;
+  farmId?: string;
 }
 
-const MAX_NAME_LENGTH = 300;
-const MAX_DESCRIPTION_LENGTH = 5000;
-const MAX_STAKEHOLDER_ROWS = 50;
-
-function normalizeStakeholderMatrix(raw: unknown): DeliveryStakeholderRow[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .slice(0, MAX_STAKEHOLDER_ROWS)
-    .map(row => {
-      if (row && typeof row === 'object' && 'name' in row && 'activity' in row) {
-        return {
-          name: String((row as { name: unknown }).name ?? '').trim(),
-          activity: String((row as { activity: unknown }).activity ?? '').trim(),
-        };
-      }
-      return { name: '', activity: '' };
-    })
-    .filter(r => r.name !== '' || r.activity !== '');
-}
-
-function mapDeliveryRow(data: any): DeliveryRow {
-  return {
-    ...data,
-    client_id: data.client_id ?? null,
-    project_id: data.project_id ?? null,
-    transformations_achievements: data.transformations_achievements ?? null,
-    start_date: data.start_date ?? null,
-    end_date: data.end_date ?? null,
-    due_date: data.due_date ?? null,
-    stakeholder_matrix: normalizeStakeholderMatrix(data.stakeholder_matrix),
-    sort_order: Number.isFinite(data.sort_order) ? Number(data.sort_order) : 0,
-  } as DeliveryRow;
-}
-
-function mapDeliveryError(error: unknown, fallbackMessage: string): Error {
-  const message =
-    typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message?: unknown }).message || '')
-      : '';
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? String((error as { code?: unknown }).code || '')
-      : '';
-
-  const normalized = `${code} ${message}`.toLowerCase();
-  if (
-    normalized.includes('42p01') ||
-    (normalized.includes('relation') && normalized.includes('deliveries') && normalized.includes('does not exist'))
-  ) {
-    return new Error('Tabela de entregas não encontrada. Aplique as migrations do banco (db push) e tente novamente.');
-  }
-
-  if (message.trim()) {
-    return new Error(message);
-  }
-
-  return new Error(fallbackMessage);
-}
-
-function validateUserId(userId: string): void {
-  if (!userId?.trim()) {
-    throw new Error('ID do usuário é obrigatório.');
-  }
-}
-
-function validateDeliveryId(id: string): void {
-  if (!id?.trim()) {
-    throw new Error('ID da entrega é obrigatório.');
-  }
-}
-
-function validatePayload(payload: DeliveryPayload): void {
-  const name = payload.name?.trim() || '';
-  if (!name) {
-    throw new Error('O nome da entrega é obrigatório.');
-  }
-  if (name.length > MAX_NAME_LENGTH) {
-    throw new Error(`O nome da entrega é muito longo (máx ${MAX_NAME_LENGTH} caracteres).`);
-  }
-  if ((payload.description || '').length > MAX_DESCRIPTION_LENGTH) {
-    throw new Error(`A descrição é muito longa (máx ${MAX_DESCRIPTION_LENGTH} caracteres).`);
-  }
-}
-
+/**
+ * Busca todas as entregas acessíveis ao usuário, opcionalmente filtradas por clientId.
+ * Carrega os projetos do usuário e busca entregas de cada projeto.
+ */
 export async function fetchDeliveries(createdBy: string, filters?: FetchDeliveriesFilters): Promise<DeliveryRow[]> {
-  validateUserId(createdBy);
-  let q = supabase
-    .from('deliveries')
-    .select('*')
-    .eq('created_by', createdBy)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true });
-
-  if (filters?.clientId?.trim()) {
-    q = q.eq('client_id', filters.clientId);
-  }
-
-  const { data, error } = await q;
-  if (error) throw mapDeliveryError(error, 'Erro ao carregar entregas.');
-  return (data || []).map(mapDeliveryRow);
-}
-
-export async function fetchDeliveriesByProject(projectId: string): Promise<DeliveryRow[]> {
-  validateDeliveryId(projectId);
-  const { data, error } = await supabase
-    .from('deliveries')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true });
-  if (error) throw mapDeliveryError(error, 'Erro ao carregar entregas do projeto.');
-  return (data || []).map(mapDeliveryRow);
-}
-
-export async function fetchDeliveriesByProjects(projectIds: string[]): Promise<DeliveryRow[]> {
-  if (!projectIds || projectIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('deliveries')
-    .select('*')
-    .in('project_id', projectIds)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true });
-  if (error) throw mapDeliveryError(error, 'Erro ao carregar entregas dos projetos lote.');
-  return (data || []).map(mapDeliveryRow);
-}
-
-export async function createDelivery(createdBy: string, payload: DeliveryPayload): Promise<DeliveryRow> {
-  validateUserId(createdBy);
-  validatePayload(payload);
-
-  const { data, error } = await supabase
-    .from('deliveries')
-    .insert({
-      created_by: createdBy,
-      name: sanitizeText(payload.name),
-      description: payload.description?.trim() ? sanitizeText(payload.description) : null,
-      client_id: payload.client_id || null,
-      project_id: payload.project_id || null,
-    })
-    .select('*')
-    .single();
-  if (error || !data) throw mapDeliveryError(error, 'Erro ao criar entrega.');
-  return mapDeliveryRow(data);
-}
-
-export async function updateDelivery(deliveryId: string, payload: DeliveryPayload): Promise<DeliveryRow> {
-  validateDeliveryId(deliveryId);
-  validatePayload(payload);
-
-  const { data, error } = await supabase
-    .from('deliveries')
-    .update({
-      name: sanitizeText(payload.name),
-      description: payload.description?.trim() ? sanitizeText(payload.description) : null,
-      client_id: payload.client_id ?? undefined,
-      project_id: payload.project_id ?? undefined,
-    })
-    .eq('id', deliveryId)
-    .select('*')
-    .single();
-  if (error || !data) throw mapDeliveryError(error, 'Erro ao atualizar entrega.');
-  return mapDeliveryRow(data);
+  const { fetchProjects } = await import('./projects');
+  const projectFilters = filters?.clientId ? { clientId: filters.clientId } : undefined;
+  const projects = await fetchProjects(createdBy, projectFilters);
+  if (!projects.length) return [];
+  return fetchDeliveriesByProjects(projects.map(p => p.id));
 }
 
 export async function deleteDelivery(deliveryId: string): Promise<void> {
-  validateDeliveryId(deliveryId);
-  const { error } = await supabase.from('deliveries').delete().eq('id', deliveryId);
-  if (error) throw mapDeliveryError(error, 'Erro ao excluir entrega.');
+  if (!deliveryId?.trim()) throw new Error('ID da entrega é obrigatório.');
+  const result = await deliveriesApi.deleteDelivery(deliveryId);
+  unwrap(result, 'Erro ao excluir entrega.');
 }

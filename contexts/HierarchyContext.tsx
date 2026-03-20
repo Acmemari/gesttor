@@ -1,9 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { Client, Farm, User } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
+import {
+  fetchAnalysts,
+  fetchClients,
+  fetchFarms,
+  validateHierarchy as validateHierarchyApi,
+} from '../lib/api/hierarchyClient';
 import { sanitizeUUID, sanitizeId, sanitizeFarmIdAsUUID } from '../lib/uuid';
 
 const PAGE_SIZE = 50;
@@ -11,7 +14,6 @@ const HIERARCHY_STORAGE_KEY_V1 = 'hierarchySelection.v1';
 const DEBUG_HIERARCHY = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
 const VALIDATE_RETRIES = 3;
 const VALIDATE_RETRY_DELAY_MS = 500;
-const REALTIME_DEBOUNCE_MS = 300;
 
 function getHierarchyStorageKey(userId: string): string {
   return `hierarchySelection.v2.${userId}`;
@@ -149,7 +151,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
     if (modernRaw) {
       const modern = JSON.parse(modernRaw);
       return {
-        analystId: sanitizeUUID(typeof modern?.analystId === 'string' ? modern.analystId : null),
+        analystId: sanitizeId(typeof modern?.analystId === 'string' ? modern.analystId : null),
         clientId: sanitizeUUID(typeof modern?.clientId === 'string' ? modern.clientId : null),
         farmId: sanitizeFarmIdAsUUID(typeof modern?.farmId === 'string' ? modern.farmId : null),
       };
@@ -163,7 +165,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw);
       const migrated = {
-        analystId: sanitizeUUID(typeof legacy?.analystId === 'string' ? legacy.analystId : null),
+        analystId: sanitizeId(typeof legacy?.analystId === 'string' ? legacy.analystId : null),
         clientId: sanitizeUUID(typeof legacy?.clientId === 'string' ? legacy.clientId : null),
         farmId: sanitizeFarmIdAsUUID(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
       };
@@ -175,7 +177,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
     // ignore invalid legacy storage
   }
 
-  const analystId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedAnalystId')));
+  const analystId = sanitizeId(parseLegacyId(localStorage.getItem('selectedAnalystId')));
   const clientId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
   const farmId = sanitizeFarmIdAsUUID(
     localStorage.getItem('selectedFarmId') || parseLegacyId(localStorage.getItem('selectedFarm')),
@@ -274,46 +276,6 @@ function hierarchyReducer(state: HierarchyState, action: HierarchyAction): Hiera
     default:
       return state;
   }
-}
-
-interface AnalystRow {
-  id: string;
-  name: string;
-  email: string;
-  role?: string;
-  qualification?: string;
-}
-
-interface ClientRow {
-  id: string;
-  name: string;
-  phone?: string;
-  email: string;
-  analyst_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-function mapAnalystRow(row: AnalystRow): User {
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    role: (row.role as 'admin' | 'client') || 'client',
-    qualification: (row.qualification as User['qualification']) || 'visitante',
-  };
-}
-
-function mapClientRow(row: ClientRow): Client {
-  return {
-    id: row.id,
-    name: row.name,
-    phone: row.phone || '',
-    email: row.email,
-    analystId: row.analyst_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
 }
 
 export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -458,20 +420,18 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       dispatch({ type: 'SET_ERROR', payload: { level: 'analysts', value: null } });
 
       try {
-        const { data, error } = await supabase.rpc('get_analysts_for_admin', {
-          p_offset: offset,
-          p_limit: PAGE_SIZE,
-          p_search: search || null,
+        const { data: mapped, hasMore: hasMoreData } = await fetchAnalysts({
+          offset,
+          limit: PAGE_SIZE,
+          search: search || undefined,
+          signal: controller.signal,
         });
-        if (error) throw error;
-
-        const mapped = (data || []).map(mapAnalystRow);
         dispatch({
           type: 'SET_ANALYSTS',
           payload: {
             data: mapped,
             append,
-            hasMore: mapped.length === PAGE_SIZE,
+            hasMore: hasMoreData,
           },
         });
         paginationRef.current.analystsOffset = append ? offset + mapped.length : mapped.length;
@@ -543,33 +503,20 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       dispatch({ type: 'SET_LOADING', payload: { level: 'clients', value: true } });
       dispatch({ type: 'SET_ERROR', payload: { level: 'clients', value: null } });
 
+      if (!isClientUser && !effectiveAnalystId) {
+        dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
+        return;
+      }
+
       try {
-        let query = supabase
-          .from('clients')
-          .select('*')
-          .order('name', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1)
-          .abortSignal(controller.signal);
-
-        if (isClientUser && user.clientId) {
-          // Filtra diretamente pelo id do cliente vinculado ao perfil
-          query = query.eq('id', user.clientId);
-        } else if (effectiveAnalystId) {
-          query = query.eq('analyst_id', effectiveAnalystId);
-        } else {
-          // Estado inválido — sem analista e sem clientId; aborta silenciosamente
-          dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
-          return;
-        }
-
-        if (search) {
-          query = query.ilike('name', `%${search}%`);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        const mapped = (data || []).map(mapClientRow);
+        const { data: mapped, hasMore: hasMoreData } = await fetchClients({
+          analystId: isClientUser && user.clientId ? null : effectiveAnalystId ?? undefined,
+          clientId: isClientUser && user.clientId ? user.clientId : null,
+          offset,
+          limit: PAGE_SIZE,
+          search: search || undefined,
+          signal: controller.signal,
+        });
         if (DEBUG_HIERARCHY) {
           console.debug('[HierarchyContext] loadClients end ok', { count: mapped.length });
         }
@@ -578,7 +525,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           payload: {
             data: mapped,
             append,
-            hasMore: mapped.length === PAGE_SIZE,
+            hasMore: hasMoreData,
           },
         });
         paginationRef.current.clientsOffset = append ? offset + mapped.length : mapped.length;
@@ -648,22 +595,14 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       dispatch({ type: 'SET_ERROR', payload: { level: 'farms', value: null } });
 
       try {
-        let query = supabase
-          .from('farms')
-          .select('*')
-          .eq('client_id', selectedClientId)
-          .order('name', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1)
-          .abortSignal(controller.signal);
-
-        if (search) {
-          query = query.ilike('name', `%${search}%`);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        const mapped = mapFarmsFromDatabase(data || []);
+        const { data: mapped, hasMore: hasMoreData } = await fetchFarms({
+          clientId: selectedClientId,
+          offset,
+          limit: PAGE_SIZE,
+          search: search || undefined,
+          includeInactive: true,
+          signal: controller.signal,
+        });
         if (DEBUG_HIERARCHY) {
           console.debug('[HierarchyContext] loadFarms end ok', { count: mapped.length });
         }
@@ -672,7 +611,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           payload: {
             data: mapped,
             append,
-            hasMore: mapped.length === PAGE_SIZE,
+            hasMore: hasMoreData,
           },
         });
         paginationRef.current.farmsOffset = append ? offset + mapped.length : mapped.length;
@@ -791,7 +730,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const timer = window.setTimeout(() => {
       const runValidation = async () => {
         const current = stateRef.current;
-        const sanitizedAnalystId = sanitizeUUID(effectiveAnalystId);
+        const sanitizedAnalystId = sanitizeId(effectiveAnalystId);
         const sanitizedClientId = sanitizeUUID(current.clientId);
         const sanitizedFarmId = sanitizeId(current.farmId);
         if (!sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
@@ -816,17 +755,18 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         for (let attempt = 0; attempt < VALIDATE_RETRIES; attempt++) {
           if (abortController.signal.aborted) return;
 
-          const result = await supabase.rpc(
-            'validate_hierarchy',
-            {
-              p_analyst_id: sanitizedAnalystId,
-              p_client_id: sanitizedClientId,
-              p_farm_id: sanitizedFarmId,
-            },
-            { signal: abortController.signal },
-          );
-          data = result.data;
-          error = result.error;
+          try {
+            const result = await validateHierarchyApi({
+              analystId: sanitizedAnalystId,
+              clientId: sanitizedClientId,
+              farmId: sanitizedFarmId,
+              signal: abortController.signal,
+            });
+            data = [result];
+            error = null;
+          } catch (e: unknown) {
+            error = { message: e instanceof Error ? e.message : String(e) };
+          }
 
           if (!error) break;
 
@@ -936,61 +876,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     state.farmId,
   ]);
 
-  useEffect(() => {
-    if (!sessionReady || !user || !isProfileReady) return;
-    const shouldSubscribeClients = Boolean(effectiveAnalystId);
-    const shouldSubscribeFarms = Boolean(state.clientId);
-    if (!shouldSubscribeClients && !shouldSubscribeFarms) return;
-
-    let channelRef: RealtimeChannel | null = null;
-    let cancelled = false;
-
-    const timer = window.setTimeout(() => {
-      if (cancelled) return;
-      const analystIdVal = effectiveAnalystId || 'none';
-      const clientIdVal = state.clientId || 'none';
-      const channelName = `hierarchy-sync-${user.id}-${analystIdVal}-${clientIdVal}`;
-      let channel = supabase.channel(channelName);
-      if (shouldSubscribeClients) {
-        channel = channel.on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'clients',
-            filter: `analyst_id=eq.${effectiveAnalystId}`,
-          },
-          () => {
-            void loadClientsRef.current?.({ append: false, search: paginationRef.current.clientsSearch });
-          },
-        );
-      }
-      if (shouldSubscribeFarms && state.clientId) {
-        channel = channel.on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'farms',
-            filter: `client_id=eq.${state.clientId}`,
-          },
-          () => {
-            void loadFarmsRef.current?.({ append: false, search: paginationRef.current.farmsSearch });
-          },
-        );
-      }
-
-      channelRef = channel.subscribe();
-    }, REALTIME_DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      if (channelRef) {
-        void supabase.removeChannel(channelRef);
-      }
-    };
-  }, [sessionReady, effectiveAnalystId, isProfileReady, state.clientId, user?.id]);
+  // Realtime subscription removida: dados vêm via API Drizzle.
+  // Use refreshCurrentLevel para atualizar manualmente.
 
   const setSelectedAnalyst = useCallback((analyst: User | null) => {
     dispatch({ type: 'SELECT_ANALYST_ID', payload: analyst?.id || null });

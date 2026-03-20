@@ -28,7 +28,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useClient } from '../contexts/ClientContext';
 import { Client, ClientDocument, DocumentCategory, DocumentFileType } from '../types';
-import { supabase } from '../lib/supabase';
+import { getAuthHeaders } from '../lib/session';
 import {
   uploadDocument,
   listDocuments,
@@ -83,27 +83,21 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
     if (!user) return;
 
     try {
-      let query = supabase.from('clients').select('*');
-
-      // Se for analista, mostrar apenas seus clientes
-      if (user.qualification === 'analista' && user.role !== 'admin') {
-        query = query.eq('analyst_id', user.id);
-      }
-
-      const { data, error } = await query.order('name');
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/organizations?limit=100', { headers });
+      const json = await res.json() as { ok: boolean; data?: Array<{ id: string; name: string; phone?: string | null; email?: string | null; analystId?: string | null; createdAt?: string; updatedAt?: string }>; error?: string };
+      if (!json.ok) throw new Error(json.error || 'Erro ao carregar organizações');
 
       setClients(
-        data?.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          email: c.email,
-          analystId: c.analyst_id,
-          createdAt: c.created_at,
-          updatedAt: c.updated_at,
-        })) || [],
+        (json.data ?? []).map(o => ({
+          id: o.id,
+          name: o.name,
+          phone: o.phone || '',
+          email: o.email || '',
+          analystId: o.analystId || null,
+          createdAt: o.createdAt || '',
+          updatedAt: o.updatedAt || '',
+        })),
       );
     } catch (err: any) {
       console.error('[loadClients]', err);

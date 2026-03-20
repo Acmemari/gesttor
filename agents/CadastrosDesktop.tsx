@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Users, UserCircle, ClipboardList, TrendingUp } from 'lucide-react';
+import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase } from 'lucide-react';
 
 interface CadastroCardProps {
   title: React.ReactNode;
@@ -41,7 +41,10 @@ interface CadastrosDesktopProps {
   onSelectFazendas: () => void;
   onSelectClientes?: () => void;
   onSelectPessoas: () => void;
+  onSelectPerfisConfig?: () => void;
+  onSelectEmpAss?: () => void;
   showClientes?: boolean;
+  showEmpAss?: boolean;
 }
 
 const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
@@ -49,7 +52,10 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
   onSelectFazendas,
   onSelectClientes,
   onSelectPessoas,
+  onSelectPerfisConfig,
+  onSelectEmpAss,
   showClientes = false,
+  showEmpAss = false,
 }) => {
   const cards = [
     ...(showClientes && onSelectClientes
@@ -89,6 +95,28 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       icon: <UserCircle size={24} />,
       onClick: onSelectPessoas,
     },
+    ...(onSelectPerfisConfig
+      ? [
+          {
+            id: 'perfis-config',
+            title: <CadastroTitle entity="Perfis e Cargos" />,
+            description: 'Configure os perfis (Proprietário, Gerente, Vaqueiro…) e cargos/funções disponíveis para associação com pessoas.',
+            icon: <Settings2 size={24} />,
+            onClick: onSelectPerfisConfig,
+          },
+        ]
+      : []),
+    ...(showEmpAss && onSelectEmpAss
+      ? [
+          {
+            id: 'emp-ass',
+            title: <CadastroTitle entity="Empresas de Assessoria" />,
+            description: 'Cadastre e gerencie empresas de assessoria que utilizam o sistema.',
+            icon: <Briefcase size={24} />,
+            onClick: onSelectEmpAss,
+          },
+        ]
+      : []),
   ];
 
   return (

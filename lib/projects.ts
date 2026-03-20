@@ -1,5 +1,5 @@
-import { supabase } from './supabase';
 import { sanitizeText } from './inputSanitizer';
+import * as projectsApi from './api/projectsClient';
 
 export interface ProjectStakeholderRow {
   name: string;
@@ -44,53 +44,6 @@ const MAX_NAME_LENGTH = 300;
 const MAX_TRANSFORMATIONS_LENGTH = 10000;
 const MAX_STAKEHOLDER_ROWS = 50;
 
-function normalizeStakeholderMatrix(raw: unknown): ProjectStakeholderRow[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .slice(0, MAX_STAKEHOLDER_ROWS)
-    .map(row => {
-      if (row && typeof row === 'object' && 'name' in row && 'activity' in row) {
-        return {
-          name: String((row as { name: unknown }).name ?? '').trim(),
-          activity: String((row as { activity: unknown }).activity ?? '').trim(),
-        };
-      }
-      return { name: '', activity: '' };
-    })
-    .filter(r => r.name !== '' || r.activity !== '');
-}
-
-function mapProjectRow(data: Record<string, unknown>): ProjectRow {
-  return {
-    ...data,
-    success_evidence: Array.isArray(data.success_evidence)
-      ? data.success_evidence.filter((s: unknown): s is string => typeof s === 'string')
-      : [],
-    stakeholder_matrix: normalizeStakeholderMatrix(data.stakeholder_matrix),
-    sort_order: Number.isFinite(data.sort_order) ? Number(data.sort_order) : 0,
-  } as ProjectRow;
-}
-
-async function getNextProjectSortOrder(createdBy: string, clientId?: string | null): Promise<number> {
-  let q = supabase
-    .from('projects')
-    .select('sort_order')
-    .eq('created_by', createdBy)
-    .order('sort_order', { ascending: false, nullsFirst: false })
-    .limit(1);
-
-  if (clientId === null) {
-    q = q.is('client_id', null);
-  } else if (typeof clientId === 'string' && clientId.trim()) {
-    q = q.eq('client_id', clientId);
-  }
-
-  const { data, error } = await q;
-  if (error) throw new Error(error.message || 'Erro ao calcular ordem do projeto.');
-  const currentMax = Number(data?.[0]?.sort_order);
-  return Number.isFinite(currentMax) ? currentMax + 1 : 0;
-}
-
 function validateUserId(userId: string): void {
   if (!userId?.trim()) throw new Error('ID do usuário é obrigatório.');
 }
@@ -129,66 +82,24 @@ function validatePayload(payload: ProjectPayload): void {
 }
 
 export async function fetchProjects(createdBy: string, filters?: FetchProjectsFilters): Promise<ProjectRow[]> {
-  // No clientMode, cliente lê projetos da própria organização/fazenda sem filtro por created_by.
-  // Usa RPC readonly para incluir fallback de dados legados (projects.client_id nulo).
-  if (filters?.clientMode && filters.clientId?.trim()) {
-    const rawFarmId = filters.farmId?.trim();
-    const p_farm_id = rawFarmId && rawFarmId.length > 0 ? rawFarmId : null;
-    const { data, error } = await supabase.rpc('client_list_projects_by_farm', {
-      p_client_id: filters.clientId,
-      p_farm_id,
-    });
-    if (error) throw new Error(error.message || 'Erro ao carregar projetos.');
-    return (data || []).map(mapProjectRow);
-  }
-
   validateUserId(createdBy);
-  let q = supabase
-    .from('projects')
-    .select('*')
-    .eq('created_by', createdBy)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true });
-
-  if (filters?.clientId?.trim()) {
-    q = q.eq('client_id', filters.clientId);
-  }
-
-  const { data, error } = await q;
-  if (error) throw new Error(error.message || 'Erro ao carregar projetos.');
-  return (data || []).map(mapProjectRow);
+  return projectsApi.fetchProjects(createdBy, filters);
 }
 
 export async function createProject(createdBy: string, payload: ProjectPayload): Promise<ProjectRow> {
   validateUserId(createdBy);
   validatePayload(payload);
-  const nextSortOrder = await getNextProjectSortOrder(createdBy, payload.client_id ?? null);
   const stakeholder = Array.isArray(payload.stakeholder_matrix)
     ? payload.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS)
     : [];
   const successEvidence = Array.isArray(payload.success_evidence)
     ? payload.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim())
     : [];
-  const { data, error } = await supabase
-    .from('projects')
-    .insert({
-      created_by: createdBy,
-      client_id: payload.client_id || null,
-      name: sanitizeText(payload.name),
-      description: payload.description?.trim() ? sanitizeText(payload.description) : null,
-      transformations_achievements: payload.transformations_achievements?.trim()
-        ? sanitizeText(payload.transformations_achievements)
-        : null,
-      success_evidence: successEvidence,
-      start_date: payload.start_date?.trim() || null,
-      end_date: payload.end_date?.trim() || null,
-      sort_order: nextSortOrder,
-      stakeholder_matrix: stakeholder,
-    })
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(error?.message || 'Erro ao criar projeto.');
-  return mapProjectRow(data);
+  return projectsApi.createProject(createdBy, {
+    ...payload,
+    stakeholder_matrix: stakeholder,
+    success_evidence: successEvidence,
+  });
 }
 
 export async function updateProject(projectId: string, payload: ProjectPayload): Promise<ProjectRow> {
@@ -196,33 +107,18 @@ export async function updateProject(projectId: string, payload: ProjectPayload):
   validatePayload(payload);
   const stakeholder = Array.isArray(payload.stakeholder_matrix)
     ? payload.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS)
-    : [];
+    : undefined;
   const successEvidence = Array.isArray(payload.success_evidence)
     ? payload.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim())
-    : [];
-  const { data, error } = await supabase
-    .from('projects')
-    .update({
-      name: sanitizeText(payload.name),
-      description: payload.description?.trim() ? sanitizeText(payload.description) : null,
-      transformations_achievements: payload.transformations_achievements?.trim()
-        ? sanitizeText(payload.transformations_achievements)
-        : null,
-      success_evidence: successEvidence,
-      start_date: payload.start_date?.trim() || null,
-      end_date: payload.end_date?.trim() || null,
-      stakeholder_matrix: stakeholder,
-      client_id: payload.client_id ?? undefined,
-    })
-    .eq('id', projectId)
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(error?.message || 'Erro ao atualizar projeto.');
-  return mapProjectRow(data);
+    : undefined;
+  return projectsApi.updateProject(projectId, {
+    ...payload,
+    stakeholder_matrix: stakeholder,
+    success_evidence: successEvidence,
+  });
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
   validateProjectId(projectId);
-  const { error } = await supabase.from('projects').delete().eq('id', projectId);
-  if (error) throw new Error(error.message || 'Erro ao excluir projeto.');
+  return projectsApi.deleteProject(projectId);
 }

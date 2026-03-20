@@ -33,7 +33,7 @@ interface InttegraSidebarProps {
   user: User | null;
   onLogout: () => void;
   onSettingsClick?: () => void;
-  onSwitchToPecuaria: () => void;
+  onSwitchToGesttor: () => void;
   onViewChange?: (view: string) => void;
 }
 
@@ -179,7 +179,7 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
   user,
   onLogout,
   onSettingsClick,
-  onSwitchToPecuaria,
+  onSwitchToGesttor,
   onViewChange,
 }) => {
   const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(false);
@@ -242,7 +242,7 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                 className="h-8 w-8 object-contain"
               />
               <button
-                onClick={onSwitchToPecuaria}
+                onClick={onSwitchToGesttor}
                 className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded transition-colors hover:opacity-90"
                 style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_TEXT }}
                 title="Voltar para Gesttor"
@@ -260,7 +260,7 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
               />
               <div className="flex items-center gap-1">
                 <button
-                  onClick={onSwitchToPecuaria}
+                  onClick={onSwitchToGesttor}
                   className="p-1.5 rounded transition-colors hover:opacity-90"
                   style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_TEXT }}
                   title="Voltar para Gesttor"
@@ -434,11 +434,9 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                   <p className="text-xs font-bold truncate" style={{ color: INTEGRA_TEXT }}>
                     {user.name}
                   </p>
-                  {user.role === 'admin' && (
-                    <p className="text-[10px] truncate capitalize" style={{ color: INTEGRA_PLACEHOLDER }}>
-                      Administrador
-                    </p>
-                  )}
+                  <p className="text-[10px] truncate capitalize" style={{ color: INTEGRA_PLACEHOLDER }}>
+                    {user.role === 'admin' ? 'Administrador' : user.qualification}
+                  </p>
                   <p
                     className="text-[9px] font-bold uppercase tracking-wide mt-1"
                     style={{ color: INTEGRA_PLACEHOLDER }}

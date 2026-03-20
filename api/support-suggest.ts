@@ -3,7 +3,7 @@ import { completeWithFallback } from './_lib/ai/providers/index.js';
 
 const PREFERRED_MODEL = 'gemini-2.0-flash';
 
-const SYSTEM_PROMPT = `Você é um assistente de suporte técnico proativo do sistema Pecuária.AI.
+const SYSTEM_PROMPT = `Você é um assistente de suporte técnico proativo do sistema Gesttor.
 Seu papel é ajudar o usuário a detalhar melhor o problema ou sugestão antes de abrir o chamado.
 
 REGRAS:
@@ -29,7 +29,15 @@ function buildUserPrompt(body: {
   return parts.join('\n');
 }
 
+function setCors(res: VercelResponse): void {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setCors(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }

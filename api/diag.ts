@@ -16,13 +16,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     results.env = String((e as Error).message);
   }
 
-  // Test 2: supabaseAdmin
+  // Test 2: Database (Drizzle/Neon)
   try {
-    const { getSupabaseAdmin } = await import('./_lib/supabaseAdmin.js');
-    getSupabaseAdmin();
-    results.supabaseAdmin = 'ok';
+    const { db } = await import('../src/DB/index.js');
+    if (!db) throw new Error('DB client not initialized');
+    results.database = 'Drizzle/Neon client initialized';
   } catch (e) {
-    results.supabaseAdmin = String((e as Error).message);
+    results.database = String((e as Error).message);
   }
 
   // Test 3: gemini provider

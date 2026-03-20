@@ -1,18 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 interface ResetPasswordPageProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onSuccess: () => void;
 }
 
-/**
- * Página de redefinição de senha
- * Esta página é exibida quando o Supabase dispara o evento PASSWORD_RECOVERY
- * O token já foi validado pelo Supabase, então só precisamos mostrar o formulário
- */
+/** Página de redefinição de senha via Better Auth. */
 const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSuccess }) => {
   const { updatePassword } = useAuth();
   const [password, setPassword] = useState('');
@@ -41,12 +36,6 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
           setRecoveryEmail(emailFromUrl);
         }
 
-        // Fonte 3: sessão Supabase (após exchange do code)
-        const { data } = await supabase.auth.getUser();
-        const emailFromAuth = data.user?.email || '';
-        if (emailFromAuth && isMounted) {
-          setRecoveryEmail(emailFromAuth);
-        }
       } catch (err) {
         console.warn('Could not load recovery email', err);
       }
@@ -64,8 +53,8 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
     setError('');
 
     // Validações
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres.');
+    if (password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres.');
       return;
     }
 
@@ -148,7 +137,7 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
           <div className="mb-4 sm:mb-6">
             <h2 className="text-base sm:text-lg font-semibold">Redefinir senha</h2>
             <p className="text-[10px] sm:text-xs text-ai-subtext mt-1">
-              Digite sua nova senha abaixo. A senha deve ter no mínimo 6 caracteres.
+              Digite sua nova senha abaixo. A senha deve ter no mínimo 8 caracteres.
             </p>
             {recoveryEmail && (
               <p className="text-[10px] sm:text-xs text-ai-text mt-2">
@@ -161,7 +150,7 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
             <div>
               <label className="block text-[10px] sm:text-xs font-medium text-ai-text mb-1.5">
                 Nova Senha
-                {password && password.length < 6 && <span className="text-rose-500 ml-1">(mínimo 6 caracteres)</span>}
+                {password && password.length < 8 && <span className="text-rose-500 ml-1">(mínimo 8 caracteres)</span>}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none text-ai-subtext">
@@ -176,12 +165,12 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
                     if (error) setError('');
                   }}
                   className={`block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text transition-all outline-none ${
-                    password && password.length < 6
+                    password && password.length < 8
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                       : 'border-ai-border focus:border-ai-text'
                   }`}
-                  placeholder="Mínimo 6 caracteres"
-                  minLength={6}
+                  placeholder="Mínimo 8 caracteres"
+                  minLength={8}
                 />
               </div>
             </div>
@@ -192,7 +181,7 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
                 {confirmPassword && password !== confirmPassword && (
                   <span className="text-rose-500 ml-1">(senhas não coincidem)</span>
                 )}
-                {confirmPassword && password === confirmPassword && password.length >= 6 && (
+                {confirmPassword && password === confirmPassword && password.length >= 8 && (
                   <span className="text-green-600 ml-1">✓</span>
                 )}
               </label>
@@ -211,12 +200,12 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
                   className={`block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 bg-ai-surface border rounded-lg text-xs sm:text-sm focus:ring-1 focus:ring-ai-text transition-all outline-none ${
                     confirmPassword && password !== confirmPassword
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
-                      : confirmPassword && password === confirmPassword && password.length >= 6
+                      : confirmPassword && password === confirmPassword && password.length >= 8
                         ? 'border-green-300 focus:border-green-500 focus:ring-green-500'
                         : 'border-ai-border focus:border-ai-text'
                   }`}
                   placeholder="Digite a senha novamente"
-                  minLength={6}
+                  minLength={8}
                 />
               </div>
             </div>
@@ -229,7 +218,7 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
 
             <button
               type="submit"
-              disabled={isSubmitting || password.length < 6 || password !== confirmPassword}
+              disabled={isSubmitting || password.length < 8 || password !== confirmPassword}
               className="w-full flex items-center justify-center py-2.5 sm:py-3 px-4 bg-ai-text text-white rounded-lg hover:bg-black transition-colors font-medium text-xs sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

@@ -91,7 +91,7 @@ function buildPdfDoc(data: InitiativesOverviewPdfData): jsPDF {
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pw, 22, 'F');
 
-  text('PecuariA', m, 9, 16, 'bold', [255, 255, 255]);
+  text('Gesttor', m, 9, 16, 'bold', [255, 255, 255]);
   text('Relatório de Iniciativas — Visão Geral', m, 17, 9, 'normal', [203, 213, 225]);
 
   const dateStr = new Date().toLocaleDateString('pt-BR', {
@@ -331,7 +331,7 @@ function buildPdfDoc(data: InitiativesOverviewPdfData): jsPDF {
     doc.line(m, fy - 3, pw - m, fy - 3);
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
-    doc.text('Gerado por PecuarIA — Relatório de Iniciativas', m, fy);
+    doc.text('Gerado por Gesttor — Relatório de Iniciativas', m, fy);
     doc.text(`Página ${p} de ${pageCount}`, pw - m, fy, { align: 'right' });
   }
 

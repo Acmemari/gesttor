@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import {
   getTicketDetail,
   sendTicketMessage,
@@ -13,7 +12,6 @@ import {
   type SupportTicketAttachment,
   type SupportMessageAuthorType,
 } from '../lib/supportTickets';
-import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -62,7 +60,7 @@ export function useSupportChat({
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [loadingInitial, setLoadingInitial] = useState(false);
 
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const channelRef = useRef<{ send: (payload: unknown) => void } | null>(null);
   const userNameCacheRef = useRef<Map<string, string>>(new Map());
   const knownMsgIdsRef = useRef<Set<string>>(new Set());
   const knownAttIdsRef = useRef<Set<string>>(new Set());
@@ -181,7 +179,9 @@ export function useSupportChat({
     [loadInitialData, addOrUpdateMessage, addOrUpdateAttachment],
   );
 
-  // -- Channel subscription --
+  const POLL_INTERVAL = 5000; // poll every 5 seconds
+
+  // -- Polling-based subscription (replaces Supabase realtime) --
   useEffect(() => {
     if (!ticketId || !userId) {
       setMessages([]);
@@ -191,132 +191,23 @@ export function useSupportChat({
       return;
     }
 
-    void loadInitialData(ticketId);
-
-    const channelName = `chat:${ticketId}`;
-    const channel = supabase.channel(channelName, {
-      config: { broadcast: { self: false } },
+    void loadInitialData(ticketId).then(() => {
+      if (mountedRef.current) setConnectionStatus('connected');
+    }).catch(() => {
+      if (mountedRef.current) setConnectionStatus('disconnected');
     });
 
-    channel
-      .on('broadcast', { event: 'new_message' }, payload => {
-        const msg = payload.payload?.message as SupportTicketMessage | undefined;
-        if (!msg) return;
-        addOrUpdateMessage(msg);
-        const att = payload.payload?.attachment as SupportTicketAttachment | undefined;
-        if (att) addOrUpdateAttachment(att);
-      })
-      .on('broadcast', { event: 'message_updated' }, payload => {
-        const msg = payload.payload?.message as SupportTicketMessage | undefined;
-        if (!msg) return;
-        addOrUpdateMessage(msg);
-      })
-      .on('broadcast', { event: 'message_deleted' }, payload => {
-        const msgId = payload.payload?.messageId as string | undefined;
-        if (msgId) removeMessageById(msgId);
-      })
-      .on('broadcast', { event: 'typing' }, payload => {
-        const typerUserId = payload.payload?.userId as string | undefined;
-        const typerName = payload.payload?.userName as string | undefined;
-        const isTyping = payload.payload?.isTyping as boolean;
-        if (!typerUserId || typerUserId === userId) return;
+    // No-op channel stub so sendMessage/editMessage/removeMessage broadcasts still compile
+    channelRef.current = { send: () => {} };
 
-        setTypingMap(prev => {
-          const next = new Map(prev);
-          if (isTyping) {
-            next.set(typerUserId, {
-              userName: typerName || 'Alguém',
-              expiresAt: Date.now() + TYPING_EXPIRE_MS,
-            });
-          } else {
-            next.delete(typerUserId);
-          }
-          return next;
-        });
-      })
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'support_ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`,
-        },
-        async payload => {
-          const raw = payload.new as SupportTicketMessage;
-          if (!raw?.id || knownMsgIdsRef.current.has(raw.id)) return;
-
-          const authorName = await resolveAuthorName(raw.author_id);
-          if (!mountedRef.current) return;
-          addOrUpdateMessage({ ...raw, author_name: authorName });
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'support_ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`,
-        },
-        async payload => {
-          const raw = payload.new as SupportTicketMessage;
-          if (!raw?.id) return;
-          const authorName = await resolveAuthorName(raw.author_id);
-          if (!mountedRef.current) return;
-          addOrUpdateMessage({ ...raw, author_name: authorName });
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'support_ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`,
-        },
-        payload => {
-          const old = payload.old as { id?: string };
-          if (old?.id) removeMessageById(old.id);
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'support_ticket_attachments',
-          filter: `ticket_id=eq.${ticketId}`,
-        },
-        async payload => {
-          const raw = payload.new as SupportTicketAttachment;
-          if (!raw?.id || knownAttIdsRef.current.has(raw.id)) return;
-          const [signed] = await withSignedUrls([raw]);
-          if (mountedRef.current) addOrUpdateAttachment(signed);
-        },
-      )
-      .subscribe(status => {
-        if (!mountedRef.current) return;
-        if (status === 'SUBSCRIBED') {
-          setConnectionStatus('connected');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setConnectionStatus('disconnected');
-          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-            channel.subscribe();
-            void syncMissedMessages(ticketId);
-          }, RECONNECT_DELAY);
-        } else if (status === 'CLOSED') {
-          setConnectionStatus('disconnected');
-        }
-      });
-
-    channelRef.current = channel;
+    const pollTimer = setInterval(() => {
+      if (!mountedRef.current || !ticketId) return;
+      void syncMissedMessages(ticketId);
+    }, POLL_INTERVAL);
 
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      void supabase.removeChannel(channel);
+      clearInterval(pollTimer);
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

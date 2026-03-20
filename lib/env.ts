@@ -1,12 +1,9 @@
 /**
- * Validação centralizada de variáveis de ambiente
- * Garante que todas as variáveis obrigatórias estão presentes
+ * Validação centralizada de variáveis de ambiente.
+ * Garante que todas as variáveis obrigatórias estão presentes.
  */
 
 interface EnvConfig {
-  VITE_SUPABASE_URL: string;
-  VITE_SUPABASE_ANON_KEY: string;
-  GEMINI_API_KEY?: string;
   VITE_B2_ENDPOINT: string;
   VITE_B2_REGION: string;
   VITE_B2_BUCKET: string;
@@ -15,20 +12,17 @@ interface EnvConfig {
 }
 
 const requiredEnvVars = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
   'VITE_B2_ENDPOINT',
   'VITE_B2_REGION',
   'VITE_B2_BUCKET',
   'VITE_B2_KEY_ID',
   'VITE_B2_APP_KEY',
 ] as const;
-const optionalEnvVars = ['GEMINI_API_KEY'] as const;
 
 let _cachedEnv: EnvConfig | null = null;
 
 /**
- * Valida se todas as variáveis de ambiente obrigatórias estão definidas
+ * Valida se todas as variáveis de ambiente obrigatórias estão definidas.
  * @throws {Error} Se alguma variável obrigatória estiver faltando
  */
 export function validateEnv(): EnvConfig {
@@ -50,22 +44,7 @@ export function validateEnv(): EnvConfig {
     );
   }
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
-  // Validar formato da URL do Supabase
-  try {
-    const url = new URL(supabaseUrl);
-    if (!url.hostname.includes('supabase')) {
-      console.warn('VITE_SUPABASE_URL não parece ser uma URL do Supabase válida');
-    }
-  } catch {
-    throw new Error('VITE_SUPABASE_URL não é uma URL válida');
-  }
-
   _cachedEnv = {
-    VITE_SUPABASE_URL: supabaseUrl,
-    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    GEMINI_API_KEY: import.meta.env.GEMINI_API_KEY,
     VITE_B2_ENDPOINT: import.meta.env.VITE_B2_ENDPOINT,
     VITE_B2_REGION: import.meta.env.VITE_B2_REGION,
     VITE_B2_BUCKET: import.meta.env.VITE_B2_BUCKET,
@@ -77,14 +56,14 @@ export function validateEnv(): EnvConfig {
 }
 
 /**
- * Obtém variáveis de ambiente com validação (resultado é cacheado)
+ * Obtém variáveis de ambiente com validação (resultado é cacheado).
  */
 export function getEnv(): EnvConfig {
   return validateEnv();
 }
 
 /**
- * Obtém variável de ambiente de forma segura
+ * Obtém variável de ambiente de forma segura.
  * @param key Nome da variável
  * @param defaultValue Valor padrão se não encontrado
  */

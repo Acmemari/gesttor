@@ -8,16 +8,22 @@ import {
   type ProjectRow,
   updateProject,
 } from '../lib/projects';
-import { deleteDelivery, fetchDeliveriesByProject, type DeliveryRow } from '../lib/deliveries';
+import { createDelivery, deleteDelivery, fetchDeliveriesByProject, updateDelivery, type DeliveryRow } from '../lib/deliveries';
 import {
   fetchInitiativesByDelivery,
   ensureDefaultMilestone,
+  deleteInitiative,
   type InitiativeWithProgress,
 } from '../lib/initiatives';
+import { createTask, deleteTask, updateTask } from '../lib/tasks';
 import { fetchPeople, peopleFilteredForResponsavel, peopleFilteredForLiderInterno, type Person } from '../lib/people';
 import { arrayMove } from '@dnd-kit/sortable';
 import { sanitizeText } from '../lib/inputSanitizer';
-import { supabase } from '../lib/supabase';
+import * as projectsApi from '../lib/api/projectsClient';
+import * as deliveriesApi from '../lib/api/deliveriesClient';
+import * as initiativesApi from '../lib/api/initiativesClient';
+import * as milestonesApi from '../lib/api/milestonesClient';
+import * as tasksApi from '../lib/api/tasksClient';
 import HierarchyColumn, { type HierarchyColumnItem } from './HierarchyColumn';
 import {
   ProgramModal,
@@ -436,11 +442,8 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       });
       let participantIds: string[] = [];
       try {
-        const { data: rows } = await supabase
-          .from('initiative_participants')
-          .select('person_id')
-          .eq('initiative_id', id);
-        participantIds = (rows || []).map(r => r.person_id);
+        const result = await initiativesApi.listParticipants(id);
+        participantIds = result.ok ? (result.data ?? []) : [];
       } catch {
         participantIds = [];
       }
@@ -581,16 +584,9 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     setSaving(true);
     try {
       if (editingId) {
-        const { error } = await supabase.from('deliveries').update(payload).eq('id', editingId);
-        if (error) throw new Error(error.message);
+        await updateDelivery(editingId, payload);
       } else {
-        const currentCount = deliveries.length;
-        const { error } = await supabase.from('deliveries').insert({
-          created_by: effectiveUserId,
-          sort_order: currentCount,
-          ...payload,
-        });
-        if (error) throw new Error(error.message);
+        await createDelivery(effectiveUserId, payload);
       }
       await loadDeliveriesForProject(selectedProgramId);
       toast(editingId ? 'Entrega atualizada.' : 'Entrega criada.', 'success');
@@ -675,64 +671,37 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
         : null;
 
       if (editingId) {
-        const { error } = await supabase
-          .from('initiatives')
-          .update({
-            name: sanitizeText(name),
-            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-            start_date: activityForm.start_date || null,
-            end_date: activityForm.end_date || null,
-            status: activityForm.status || 'Não Iniciado',
-            leader: leaderName,
-            internal_leader: internalLeaderName,
-            percent: percentVal,
-          })
-          .eq('id', editingId);
-        if (error) throw new Error(error.message);
-        const { error: delErr } = await supabase
-          .from('initiative_participants')
-          .delete()
-          .eq('initiative_id', editingId);
-        if (delErr) throw new Error(delErr.message);
-        const participantRows = activityForm.participant_ids
-          .filter(pid => pid)
-          .map(personId => ({ initiative_id: editingId, person_id: personId }));
-        if (participantRows.length > 0) {
-          const { error: partErr } = await supabase
-            .from('initiative_participants')
-            .insert(participantRows);
-          if (partErr) throw new Error(partErr.message);
-        }
+        const upd = await initiativesApi.updateInitiative(editingId, {
+          name: sanitizeText(name),
+          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+          start_date: activityForm.start_date || null,
+          end_date: activityForm.end_date || null,
+          status: activityForm.status || 'Não Iniciado',
+          leader: leaderName,
+          internal_leader: internalLeaderName,
+          weight: String(percentVal),
+        });
+        if (!upd.ok) throw new Error(upd.error);
+        const pResult = await initiativesApi.replaceParticipants(editingId, activityForm.participant_ids.filter(Boolean));
+        if (!pResult.ok) throw new Error(pResult.error);
       } else {
-        const { data: inserted, error } = await supabase
-          .from('initiatives')
-          .insert({
-            created_by: effectiveUserId,
-            name: sanitizeText(name),
-            description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
-            start_date: activityForm.start_date || null,
-            end_date: activityForm.end_date || null,
-            status: activityForm.status || 'Não Iniciado',
-            leader: leaderName,
-            internal_leader: internalLeaderName,
-            delivery_id: selectedDeliveryId,
-            client_id: selectedClientId || null,
-            farm_id: selectedFarmId || null,
-            sort_order: selectedDeliveryActivities.length,
-            percent: percentVal,
-          })
-          .select('id')
-          .single();
-        if (error) throw new Error(error.message);
-        const newId = inserted?.id;
-        if (newId && activityForm.participant_ids.length > 0) {
-          const participantRows = activityForm.participant_ids
-            .filter(pid => pid)
-            .map(personId => ({ initiative_id: newId, person_id: personId }));
-          const { error: partErr } = await supabase
-            .from('initiative_participants')
-            .insert(participantRows);
-          if (partErr) throw new Error(partErr.message);
+        const cResult = await initiativesApi.createInitiative({
+          delivery_id: selectedDeliveryId!,
+          name: sanitizeText(name),
+          description: activityForm.description.trim() ? sanitizeText(activityForm.description.trim()) : null,
+          start_date: activityForm.start_date || null,
+          end_date: activityForm.end_date || null,
+          status: activityForm.status || 'Não Iniciado',
+          leader: leaderName,
+          internal_leader: internalLeaderName,
+          organization_id: selectedClientId || null,
+          farm_id: selectedFarmId || null,
+          weight: String(percentVal),
+        });
+        if (!cResult.ok) throw new Error(cResult.error);
+        const newId = cResult.data?.id;
+        if (newId && activityForm.participant_ids.filter(Boolean).length > 0) {
+          await initiativesApi.replaceParticipants(newId, activityForm.participant_ids.filter(Boolean));
         }
       }
       await loadActivitiesForDelivery(selectedDeliveryId!);
@@ -764,8 +733,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       if (!t || !window.confirm(`Excluir "${t.name}"?`)) return;
       setDeleting(id);
       try {
-        const { error } = await supabase.from('initiatives').delete().eq('id', id);
-        if (error) throw new Error(error.message);
+        await deleteInitiative(id);
         if (selectedActivityId === id) {
           setSelectedActivityId(null);
           setTasks([]);
@@ -806,26 +774,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     setSaving(true);
     try {
       if (editingId) {
-        const { error } = await supabase
-          .from('initiative_tasks')
-          .update({
-            title: sanitizeText(title),
-            description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
-            responsible_person_id: taskForm.responsible_person_id,
-            activity_date: activityDate,
-            duration_days: durationDays,
-            due_date: dueDate,
-            completed: taskForm.completed,
-            completed_at: taskForm.completed ? new Date().toISOString() : null,
-            kanban_status: taskForm.kanban_status,
-          })
-          .eq('id', editingId);
-        if (error) throw new Error(error.message);
-      } else {
-        const milestoneId = await ensureDefaultMilestone(selectedActivityId);
-        const order = tasks.length;
-        const { error } = await supabase.from('initiative_tasks').insert({
-          milestone_id: milestoneId,
+        await updateTask(editingId, {
           title: sanitizeText(title),
           description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
           responsible_person_id: taskForm.responsible_person_id,
@@ -833,12 +782,23 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           duration_days: durationDays,
           due_date: dueDate,
           completed: taskForm.completed,
-          completed_at: taskForm.completed ? new Date().toISOString() : null,
+          kanban_status: taskForm.kanban_status as import('../lib/tasks').KanbanStatus,
+        });
+      } else {
+        const milestoneId = await ensureDefaultMilestone(selectedActivityId);
+        const order = tasks.length;
+        await createTask({
+          milestone_id: milestoneId,
+          title: sanitizeText(title),
+          description: taskForm.description.trim() ? sanitizeText(taskForm.description.trim()) : null,
+          responsible_person_id: taskForm.responsible_person_id,
+          activity_date: activityDate,
+          duration_days: durationDays,
+          due_date: dueDate,
           sort_order: order,
-          kanban_status: taskForm.kanban_status,
+          kanban_status: taskForm.kanban_status as import('../lib/tasks').KanbanStatus,
           kanban_order: order,
         });
-        if (error) throw new Error(error.message);
       }
       // Reload activities (which include tasks via milestones) — refreshTasks runs reactively via useEffect
       if (selectedDeliveryId) await loadActivitiesForDelivery(selectedDeliveryId);
@@ -857,8 +817,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       if (!t || !window.confirm(`Excluir "${t.title}"?`)) return;
       setDeleting(id);
       try {
-        const { error } = await supabase.from('initiative_tasks').delete().eq('id', id);
-        if (error) throw new Error(error.message);
+        await deleteTask(id);
         // Reload activities (tasks are embedded) — refreshTasks runs reactively
         if (selectedDeliveryId) await loadActivitiesForDelivery(selectedDeliveryId);
         toast('Tarefa removida.', 'success');
@@ -892,21 +851,36 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
 
   const noopSelect = useCallback(() => { }, []);
 
+  const updateSortOrderForTable = useCallback(
+    async (
+      table: 'projects' | 'deliveries' | 'initiatives' | 'initiative_milestones' | 'initiative_tasks',
+      id: string,
+      sort_order: number,
+    ) => {
+      const unwrap = <T,>(r: { ok: true; data: T } | { ok: false; error: string }) => {
+        if (!r.ok) throw new Error((r as { ok: false; error: string }).error);
+      };
+      if (table === 'projects') unwrap(await projectsApi.updateProject(id, { sort_order }));
+      else if (table === 'deliveries') unwrap(await deliveriesApi.updateDelivery(id, { sort_order }));
+      else if (table === 'initiatives') unwrap(await initiativesApi.updateInitiative(id, { sort_order }));
+      else if (table === 'initiative_milestones') unwrap(await milestonesApi.updateMilestone(id, { sort_order }));
+      else if (table === 'initiative_tasks') unwrap(await tasksApi.updateTask(id, { sort_order }));
+    },
+    [],
+  );
+
   const swapSortOrder = useCallback(
     async (
       table: 'projects' | 'deliveries' | 'initiatives' | 'initiative_milestones' | 'initiative_tasks',
       first: { id: string; sort_order: number },
       second: { id: string; sort_order: number },
     ) => {
-      const [firstUpdate, secondUpdate] = await Promise.all([
-        supabase.from(table).update({ sort_order: second.sort_order }).eq('id', first.id),
-        supabase.from(table).update({ sort_order: first.sort_order }).eq('id', second.id),
+      await Promise.all([
+        updateSortOrderForTable(table, first.id, second.sort_order),
+        updateSortOrderForTable(table, second.id, first.sort_order),
       ]);
-
-      const error = firstUpdate.error || secondUpdate.error;
-      if (error) throw new Error(error.message || 'Erro ao reordenar itens.');
     },
-    [],
+    [updateSortOrderForTable],
   );
 
   const moveProgram = useCallback(
@@ -1012,13 +986,9 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       table: 'projects' | 'deliveries' | 'initiatives' | 'initiative_milestones' | 'initiative_tasks',
       updates: { id: string; sort_order: number }[],
     ) => {
-      const results = await Promise.all(
-        updates.map(({ id, sort_order }) => supabase.from(table).update({ sort_order }).eq('id', id)),
-      );
-      const error = results.find(r => r.error);
-      if (error) throw new Error(error.error?.message || 'Erro ao reordenar.');
+      await Promise.all(updates.map(({ id, sort_order }) => updateSortOrderForTable(table, id, sort_order)));
     },
-    [],
+    [updateSortOrderForTable],
   );
 
   const reorderPrograms = useCallback(

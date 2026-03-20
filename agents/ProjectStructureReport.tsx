@@ -23,7 +23,7 @@ import { fetchDeliveries, type DeliveryRow } from '../lib/deliveries';
 import { fetchInitiativesWithTeams, type InitiativeWithTeam } from '../lib/initiatives';
 import { generateProjectStructurePdf, generateProjectStructurePdfAsBase64 } from '../lib/generateProjectStructurePdf';
 import { saveReportPdf } from '../lib/scenarios';
-import { supabase } from '../lib/supabase';
+import { getAuthHeaders } from '../lib/session';
 
 const formatDate = (d: string | null) => {
   if (!d) return '—';
@@ -68,7 +68,7 @@ interface ProjectStructureReportProps {
 }
 
 const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast }) => {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const { selectedAnalyst } = useAnalyst();
   const { selectedClient } = useClient();
 
@@ -114,14 +114,15 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
     async (delivery: DeliveryRow) => {
       const trimmed = editDraft.trim();
       if (!trimmed) return;
-      const { error: upsertError } = await supabase
-        .from('delivery_ai_summaries')
-        .upsert(
-          { delivery_id: delivery.id, summary: trimmed, source_hash: computeSourceHash(delivery) },
-          { onConflict: 'delivery_id' },
-        );
-      if (upsertError) {
-        console.error('[handleSaveSummary]', upsertError.message);
+      const headers = await getAuthHeaders();
+      const upsertRes = await fetch('/api/delivery-summaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ deliveryId: delivery.id, summary: trimmed, sourceHash: computeSourceHash(delivery) }),
+      });
+      const upsertJson = await upsertRes.json() as { ok: boolean; error?: string };
+      if (!upsertJson.ok) {
+        console.error('[handleSaveSummary]', upsertJson.error);
         onToast?.('Erro ao salvar resumo.', 'error');
         return;
       }
@@ -287,7 +288,6 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
       d: DeliveryRow,
       fnUrl: string,
       accessToken: string,
-      anonKey: string,
       signal: AbortSignal,
     ) => {
       try {
@@ -297,7 +297,6 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
-            apikey: anonKey,
           },
           body: JSON.stringify({
             name: d.name,
@@ -312,9 +311,12 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
         const summary = typeof json?.summary === 'string' ? json.summary.trim() : '';
         if (!summary) throw new Error('Resumo vazio.');
 
-        await supabase
-          .from('delivery_ai_summaries')
-          .upsert({ delivery_id: d.id, summary, source_hash: hashMap[d.id] }, { onConflict: 'delivery_id' });
+        const hdr = await getAuthHeaders();
+        await fetch('/api/delivery-summaries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...hdr },
+          body: JSON.stringify({ deliveryId: d.id, summary, sourceHash: hashMap[d.id] }),
+        });
 
         if (!signal.aborted) {
           setDeliverySummaries(prev => ({ ...prev, [d.id]: summary }));
@@ -336,19 +338,17 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
 
     const run = async () => {
       try {
-        const { data: saved, error: fetchErr } = await supabase
-          .from('delivery_ai_summaries')
-          .select('delivery_id, summary, source_hash')
-          .in('delivery_id', deliveryIds);
-
+        const hdrs = await getAuthHeaders();
+        const savedRes = await fetch(`/api/delivery-summaries?deliveryIds=${encodeURIComponent(deliveryIds.join(','))}`, { headers: hdrs });
         if (controller.signal.aborted) return;
-        if (fetchErr) {
-          console.error('[summaries] Erro ao buscar cache:', fetchErr.message);
+        const savedJson = await savedRes.json() as { ok: boolean; data?: Array<{ deliveryId: string; summary: string; sourceHash: string }>; error?: string };
+        if (!savedJson.ok) {
+          console.error('[summaries] Erro ao buscar cache:', savedJson.error);
         }
 
         const savedMap = new Map<string, { summary: string; source_hash: string }>();
-        (saved || []).forEach((r: { delivery_id: string; summary: string; source_hash: string }) => {
-          savedMap.set(r.delivery_id, r);
+        (savedJson.data ?? []).forEach((r) => {
+          savedMap.set(r.deliveryId, { summary: r.summary, source_hash: r.sourceHash });
         });
 
         const cached: Record<string, string> = {};
@@ -371,8 +371,7 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
 
         setDeliverySummaryLoading(new Set(toGenerate.map(d => d.id)));
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const accessToken = sessionData?.session?.access_token;
+        const accessToken = await getAccessToken();
         if (!accessToken) {
           const errMap: Record<string, string> = {};
           toGenerate.forEach(d => {
@@ -384,14 +383,13 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
         }
 
         const fnUrl = '/api/delivery-summary';
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
         const CONCURRENCY = 3;
 
         for (let i = 0; i < toGenerate.length; i += CONCURRENCY) {
           if (controller.signal.aborted) return;
           const batch = toGenerate.slice(i, i + CONCURRENCY);
           await Promise.allSettled(
-            batch.map(d => generateOne(d, fnUrl, accessToken || '', anonKey || '', controller.signal)),
+            batch.map(d => generateOne(d, fnUrl, accessToken || '', controller.signal)),
           );
         }
       } catch (err) {
@@ -510,7 +508,7 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
               ))}
             </select>
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">{selectedProject.name}</h1>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400 mt-1">PecuariA</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400 mt-1">Gesttor</p>
           </div>
           <div className="flex items-center gap-2">
             <button

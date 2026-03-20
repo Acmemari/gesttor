@@ -23,8 +23,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
+import { getAuthHeaders } from '../lib/session';
 import {
   PERMISSION_KEYS,
   DEFAULT_PERMISSIONS,
@@ -169,10 +168,11 @@ const PermissionCategorySection: React.FC<{
 interface AnalystWithAccess {
   id: string;
   analyst_id: string;
-  farm_id: string;
+  organization_id: string;
   is_responsible: boolean;
   permissions: Record<string, string>;
-  analyst?: { id: string; name: string; email: string } | null;
+  analyst_name: string | null;
+  analyst_email: string | null;
 }
 
 interface FarmPermissionsModalProps {
@@ -180,6 +180,7 @@ interface FarmPermissionsModalProps {
   onClose: () => void;
   farmId: string;
   farmName: string;
+  orgId: string;
   isCurrentUserResponsible: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
@@ -187,72 +188,54 @@ interface FarmPermissionsModalProps {
 export default function FarmPermissionsModal({
   open,
   onClose,
-  farmId,
   farmName,
+  orgId,
   isCurrentUserResponsible,
   onToast,
 }: FarmPermissionsModalProps) {
-  const { user } = useAuth();
   const [analystsToAdd, setAnalystsToAdd] = useState<AnalystOption[]>([]);
   const [selectedAnalystToAdd, setSelectedAnalystToAdd] = useState('');
   const [analystsWithAccess, setAnalystsWithAccess] = useState<AnalystWithAccess[]>([]);
   const [selectedAnalystId, setSelectedAnalystId] = useState<string | null>(null);
   const [editedPermissions, setEditedPermissions] = useState<Record<string, PermissionLevel>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const loadAnalystsToAdd = useCallback(async () => {
-    if (!user?.organizationId) return;
-    const { data, error } = await supabase.rpc('get_analysts_same_org', {
-      p_org_id: user.organizationId,
-      p_exclude_user_id: user.id,
-    });
-    if (error) {
-      console.error('[FarmPermissionsModal] Error loading analysts:', error);
-      return;
-    }
-    setAnalystsToAdd((data || []) as AnalystOption[]);
-  }, [user?.id, user?.organizationId]);
+  const loadAnalystsToAdd = useCallback(async (signal?: AbortSignal) => {
+    if (!orgId) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/organizations?action=available-analysts&organizationId=${encodeURIComponent(orgId)}`, { headers, signal });
+    const json = await res.json() as { ok: boolean; data?: AnalystOption[] };
+    setAnalystsToAdd(json.data ?? []);
+  }, [orgId]);
 
-  const loadAnalystsWithAccess = useCallback(async () => {
-    const { data, error } = await supabase.rpc('get_analyst_farm_details', {
-      p_farm_id: farmId,
-    });
-    if (error) {
-      console.error('[FarmPermissionsModal] Error loading analyst_farms:', error);
-      setAnalystsWithAccess([]);
-      return;
-    }
-    const rows = (
-      (data || []) as {
-        id: string;
-        analyst_id: string;
-        farm_id: string;
-        is_responsible: boolean;
-        permissions: Record<string, string>;
-        analyst_name: string | null;
-        analyst_email: string | null;
-      }[]
-    ).map(r => ({
-      id: r.id,
-      analyst_id: r.analyst_id,
-      farm_id: r.farm_id,
-      is_responsible: r.is_responsible,
-      permissions: r.permissions,
-      analyst:
-        r.analyst_name != null || r.analyst_email != null
-          ? { id: r.analyst_id, name: r.analyst_name ?? '', email: r.analyst_email ?? '' }
-          : null,
-    })) as AnalystWithAccess[];
-    setAnalystsWithAccess(rows);
-  }, [farmId]);
+  const loadAnalystsWithAccess = useCallback(async (signal?: AbortSignal) => {
+    if (!orgId) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/organizations?action=analysts&organizationId=${encodeURIComponent(orgId)}`, { headers, signal });
+    const json = await res.json() as { ok: boolean; data?: AnalystWithAccess[] };
+    setAnalystsWithAccess(json.data ?? []);
+  }, [orgId]);
 
   useEffect(() => {
-    if (!open || !farmId) return;
+    if (!open || !orgId) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
     setLoading(true);
-    Promise.all([loadAnalystsToAdd(), loadAnalystsWithAccess()]).finally(() => setLoading(false));
-  }, [open, farmId, loadAnalystsToAdd, loadAnalystsWithAccess]);
+    setLoadError(null);
+    Promise.all([loadAnalystsToAdd(controller.signal), loadAnalystsWithAccess(controller.signal)])
+      .catch(err => {
+        const isAbort = (err as Error).name === 'AbortError';
+        console.error('[FarmPermissionsModal] load error:', err);
+        setLoadError(isAbort
+          ? 'Tempo limite excedido. Verifique a conexão com o banco de dados.'
+          : 'Não foi possível carregar os analistas. Tente novamente.');
+      })
+      .finally(() => { clearTimeout(timeout); setLoading(false); });
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [open, orgId, loadAnalystsToAdd, loadAnalystsWithAccess]);
 
   useEffect(() => {
     if (selectedAnalystId) {
@@ -269,19 +252,20 @@ export default function FarmPermissionsModal({
   }, [selectedAnalystId, analystsWithAccess]);
 
   const handleAddAnalyst = async () => {
-    if (!selectedAnalystToAdd || !isCurrentUserResponsible) return;
+    if (!selectedAnalystToAdd || !isCurrentUserResponsible || !orgId) return;
     setAdding(true);
     try {
-      const { error } = await supabase.from('analyst_farms').insert({
-        analyst_id: selectedAnalystToAdd,
-        farm_id: farmId,
-        is_responsible: false,
-        permissions: DEFAULT_PERMISSIONS,
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ action: 'add-analyst', organizationId: orgId, analystId: selectedAnalystToAdd, permissions: DEFAULT_PERMISSIONS }),
       });
-      if (error) throw error;
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao adicionar analista');
       onToast?.('Analista adicionado com sucesso.', 'success');
       setSelectedAnalystToAdd('');
-      await loadAnalystsWithAccess();
+      await Promise.all([loadAnalystsToAdd(), loadAnalystsWithAccess()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao adicionar analista';
       onToast?.(msg, 'error');
@@ -290,16 +274,21 @@ export default function FarmPermissionsModal({
     }
   };
 
-  const handleRemoveAnalyst = async (analystId: string) => {
+  const handleRemoveAnalyst = async (analystLinkId: string, analystId: string) => {
     const row = analystsWithAccess.find(a => a.analyst_id === analystId);
     if (!row || row.is_responsible || !isCurrentUserResponsible) return;
-    if (!window.confirm('Remover acesso deste analista à fazenda?')) return;
+    if (!window.confirm('Remover este analista da organização?')) return;
     try {
-      const { error } = await supabase.from('analyst_farms').delete().eq('id', row.id);
-      if (error) throw error;
-      onToast?.('Analista removido.', 'success');
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/organizations?action=remove-analyst&id=${encodeURIComponent(analystLinkId)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao remover analista');
+      onToast?.('Analista removido da organização.', 'success');
       if (selectedAnalystId === analystId) setSelectedAnalystId(null);
-      await loadAnalystsWithAccess();
+      await Promise.all([loadAnalystsToAdd(), loadAnalystsWithAccess()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao remover analista';
       onToast?.(msg, 'error');
@@ -312,11 +301,14 @@ export default function FarmPermissionsModal({
     try {
       const row = analystsWithAccess.find(a => a.analyst_id === selectedAnalystId);
       if (!row) return;
-      const { error } = await supabase
-        .from('analyst_farms')
-        .update({ permissions: editedPermissions })
-        .eq('id', row.id);
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/organizations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ action: 'update-analyst-permissions', id: row.id, permissions: editedPermissions }),
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao salvar permissões');
       onToast?.('Permissões atualizadas.', 'success');
       await loadAnalystsWithAccess();
       onClose();
@@ -342,7 +334,7 @@ export default function FarmPermissionsModal({
         <div className="flex items-center justify-between p-4 border-b border-ai-border">
           <div className="flex items-center gap-2">
             <Users size={20} className="text-ai-accent" />
-            <h2 className="text-lg font-semibold text-ai-text">Gerenciar permissões — {farmName}</h2>
+            <h2 className="text-lg font-semibold text-ai-text">Analistas da organização — {farmName}</h2>
           </div>
           <button
             onClick={onClose}
@@ -355,15 +347,13 @@ export default function FarmPermissionsModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loading ? (
             <p className="text-sm text-ai-subtext">Carregando...</p>
+          ) : loadError ? (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{loadError}</p>
           ) : (
             <>
-              {!user?.organizationId ? (
-                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  Configure sua empresa vinculada para adicionar analistas.
-                </p>
-              ) : (
+              {isCurrentUserResponsible && (
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-ai-text">Adicionar analista (mesma empresa)</label>
+                  <label className="block text-sm font-medium text-ai-text">Adicionar analista à organização</label>
                   <div className="flex gap-2">
                     <select
                       value={selectedAnalystToAdd}
@@ -390,7 +380,7 @@ export default function FarmPermissionsModal({
               )}
 
               <div>
-                <label className="block text-sm font-medium text-ai-text mb-2">Analistas com acesso</label>
+                <label className="block text-sm font-medium text-ai-text mb-2">Analistas com acesso à organização</label>
                 <ul className="space-y-2">
                   {analystsWithAccess.map(row => (
                     <li
@@ -409,7 +399,7 @@ export default function FarmPermissionsModal({
                         className="flex-1 flex items-center justify-between text-left"
                       >
                         <span className="text-sm font-medium text-ai-text">
-                          {row.analyst?.name || row.analyst?.email || row.analyst_id}
+                          {row.analyst_name || row.analyst_email || row.analyst_id}
                           {row.is_responsible && <span className="ml-2 text-xs text-ai-subtext">(responsável)</span>}
                         </span>
                         <ChevronRight
@@ -421,7 +411,7 @@ export default function FarmPermissionsModal({
                       </button>
                       {!row.is_responsible && isCurrentUserResponsible && (
                         <button
-                          onClick={() => handleRemoveAnalyst(row.analyst_id)}
+                          onClick={() => handleRemoveAnalyst(row.id, row.analyst_id)}
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded ml-1"
                           title="Remover"
                         >

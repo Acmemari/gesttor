@@ -27,7 +27,7 @@ const ClientSelector: React.FC = () => {
 
   return (
     <HierarchyCombobox
-      label="Organização"
+      label="Organizações"
       icon={<User className="w-4 h-4 text-ai-accent flex-shrink-0" />}
       items={clients}
       selectedItem={selectedClient}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Users, Calendar } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { getAuthHeaders } from '../lib/session';
 import { useAuth } from '../contexts/AuthContext';
 
 interface TokenUsage {
@@ -40,48 +40,21 @@ const AgentUsageDashboard: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const headers = await getAuthHeaders();
 
-      // Buscar totais
-      const { data: allData, error: allError } = await supabase
-        .from('ai_token_usage')
-        .select('tokens_input, tokens_output, total_tokens');
-
-      if (allError) throw allError;
-
-      // Buscar dados de hoje
-      const { data: todayData, error: todayError } = await supabase
-        .from('ai_token_usage')
-        .select('tokens_input, tokens_output, total_tokens')
-        .gte('created_at', todayStart.toISOString());
-
-      if (todayError) throw todayError;
-
-      // Buscar dados do mês
-      const { data: monthData, error: monthError } = await supabase
-        .from('ai_token_usage')
-        .select('tokens_input, tokens_output, total_tokens')
-        .gte('created_at', monthStart.toISOString());
-
-      if (monthError) throw monthError;
-
-      // Calcular totais
-      const calculateTotals = (data: any[]): TokenUsage => {
-        return data.reduce(
-          (acc, item) => ({
-            total_tokens: acc.total_tokens + (item.total_tokens || 0),
-            tokens_input: acc.tokens_input + (item.tokens_input || 0),
-            tokens_output: acc.tokens_output + (item.tokens_output || 0),
-          }),
-          { total_tokens: 0, tokens_input: 0, tokens_output: 0 },
-        );
+      const fetchPeriod = async (period: string): Promise<TokenUsage> => {
+        const res = await fetch(`/api/ai-usage?period=${period}`, { headers });
+        const json = await res.json() as { ok: boolean; data?: { tokensInput: number; tokensOutput: number; totalTokens: number }; error?: string };
+        if (!json.ok) throw new Error(json.error ?? 'Erro ao carregar uso');
+        const d = json.data ?? { tokensInput: 0, tokensOutput: 0, totalTokens: 0 };
+        return { tokens_input: d.tokensInput, tokens_output: d.tokensOutput, total_tokens: d.totalTokens };
       };
 
-      const today = calculateTotals(todayData || []);
-      const thisMonth = calculateTotals(monthData || []);
-      const total = calculateTotals(allData || []);
+      const [today, thisMonth, total] = await Promise.all([
+        fetchPeriod('today'),
+        fetchPeriod('month'),
+        fetchPeriod('all'),
+      ]);
 
       // Estimar custos (usando preços médios do GPT-4 Turbo)
       // Input: $0.01/1K tokens, Output: $0.03/1K tokens
@@ -101,9 +74,9 @@ const AgentUsageDashboard: React.FC = () => {
           total: estimateCost(total),
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro ao carregar estatísticas:', err);
-      setError(err.message || 'Erro ao carregar dados de uso');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar dados de uso');
     } finally {
       setIsLoading(false);
     }

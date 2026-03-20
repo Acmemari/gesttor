@@ -1,4 +1,5 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { db as dbClient, agentRegistry } from '../../../src/DB/index.js';
+import { eq, and } from 'drizzle-orm';
 import type { AgentManifest } from '../ai/types.js';
 import { helloManifest } from './hello/manifest.js';
 import { feedbackManifest } from './feedback/manifest.js';
@@ -11,21 +12,19 @@ const manifestMap = new Map<string, AgentManifest>([
 ]);
 
 // A short-lived cache (TTL) for dynamic config to reduce DB load on concurrent executions.
-// 15 seconds is usually long enough to batch concurrent requests while feeling instant for admins.
 const CACHE_TTL_MS = 15_000;
 const dynamicConfigCache = new Map<string, { prompt: string; expiresAt: number }>();
 
 export async function getAgentManifest(
   agentId: string,
   version?: string,
-  db?: SupabaseClient,
 ): Promise<AgentManifest | null> {
   let manifest: AgentManifest | null = null;
 
   if (version) {
     manifest = manifestMap.get(`${agentId}@${version}`) ?? null;
   } else {
-    // Latest static version: choose lexicographically highest semver-like string
+    // Latest static version
     const candidates = Array.from(manifestMap.values()).filter(m => m.id === agentId);
     if (candidates.length > 0) {
       candidates.sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
@@ -33,8 +32,8 @@ export async function getAgentManifest(
     }
   }
 
-  // If we have a DB client, try to enrich with dynamic system_prompt
-  if (manifest && db) {
+  // Enrich with dynamic system_prompt from Neon/Drizzle
+  if (manifest) {
     const cacheKey = `${manifest.id}@${manifest.version}`;
     const cached = dynamicConfigCache.get(cacheKey);
 
@@ -43,14 +42,13 @@ export async function getAgentManifest(
     }
 
     try {
-      const { data, error } = await db
-        .from('agent_registry')
-        .select('system_prompt')
-        .eq('id', manifest.id)
-        .eq('version', manifest.version)
-        .single();
+      const [data] = await dbClient
+        .select({ system_prompt: agentRegistry.systemPrompt })
+        .from(agentRegistry)
+        .where(and(eq(agentRegistry.id, manifest.id), eq(agentRegistry.version, manifest.version)))
+        .limit(1);
 
-      if (!error && data?.system_prompt) {
+      if (data?.system_prompt) {
         dynamicConfigCache.set(cacheKey, {
           prompt: data.system_prompt,
           expiresAt: Date.now() + CACHE_TTL_MS,

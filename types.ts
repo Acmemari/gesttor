@@ -49,6 +49,7 @@ export interface ChatMessage {
 }
 
 export interface User {
+  /** ID interno do usuário (PK em user_profiles) */
   id: string;
   name: string;
   email: string;
@@ -87,25 +88,22 @@ export interface Organization {
 export interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
+  sessionReady: boolean;
   isProfileReady: boolean;
-  isPasswordRecovery: boolean;
+  authError: Error | null;
   checkPermission: (feature: string) => boolean;
   checkLimit: (limit: keyof Plan['limits'], value: number) => boolean;
   upgradePlan: (planId: Plan['id']) => void;
   refreshProfile: () => Promise<void>;
+  /** Obtém o token JWT atual do localStorage. Use em chamadas à API. */
+  getAccessToken: () => Promise<string | null>;
+  /** Solicita email de recuperação de senha. */
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  /** Redefine a senha usando token de recuperação (da URL). */
   updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
-  clearPasswordRecovery: () => void;
-  signInWithOAuth: (provider: 'google') => Promise<{ provider: string; url: string } | null>;
-  signup: (
-    email: string,
-    password: string,
-    name: string,
-    phone: string,
-    organizationName?: string,
-  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface ComparatorResult {
@@ -164,37 +162,44 @@ export interface SavedQuestionnaire {
   updated_at: string;
 }
 
+export type PropertyType = 'Própria' | 'Arrendada' | 'Parceria' | 'Comodato' | 'Mista';
+export type WeightMetric = 'Arroba (@)' | 'Kg';
+export type ProductionSystem = 'Cria' | 'Recria' | 'Engorda' | 'Ciclo Completo' | 'Cria e Recria' | 'Recria e Engorda' | 'Recria-Engorda';
+
 export interface Farm {
-  id: string;
+  id: string;                          // text (slug), imutável após criação
   name: string;
   country: string;
   state: string;
   city: string;
-  clientId?: string;
+  organizationId: string;              // uuid, NOT NULL
   // Dimensões (em hectares)
-  totalArea?: number;
-  pastureArea?: number;
-  forageProductionArea?: number;
-  agricultureAreaOwned?: number;
-  agricultureAreaLeased?: number;
-  otherCrops?: number;
-  infrastructure?: number;
-  reserveAndAPP?: number;
-  otherArea?: number;
-  propertyValue?: number;
-  // Valores de operação
-  operationPecuary?: number;
-  operationAgricultural?: number;
-  otherOperations?: number;
+  totalArea?: number | null;
+  pastureArea?: number | null;
+  agricultureArea?: number | null;
+  forageProductionArea?: number | null;
+  agricultureAreaOwned?: number | null;
+  agricultureAreaLeased?: number | null;
+  otherCrops?: number | null;
+  infrastructure?: number | null;
+  reserveAndAPP?: number | null;
+  otherArea?: number | null;
+  // Valores financeiros
+  propertyValue?: number | null;
+  operationPecuary?: number | null;
+  operationAgricultural?: number | null;
+  otherOperations?: number | null;
   agricultureVariation?: number;
-  // Dados da propriedade
-  propertyType: 'Própria' | 'Arrendada';
-  weightMetric: 'Arroba (@)' | 'Quilograma (Kg)';
+  // Configurações
+  propertyType: PropertyType;
+  weightMetric: WeightMetric;
   // Dados do rebanho
-  averageHerd?: number;
-  herdValue?: number;
+  averageHerd?: number | null;
+  herdValue?: number | null;
   commercializesGenetics: boolean;
-  productionSystem: 'Cria' | 'Recria-Engorda' | 'Ciclo Completo';
+  productionSystem: ProductionSystem | null;
+  // Controle
+  ativo: boolean;
   createdAt: string;
   updatedAt: string;
 }

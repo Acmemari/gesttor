@@ -2,10 +2,10 @@
  * Operações CRUD para documentos de clientes (mentoria)
  * Suporta PDF, WORD (doc, docx), Excel (xls, xlsx)
  */
-import { supabase } from './supabase';
 import { ClientDocument, DocumentCategory, DocumentFileType, DocumentUploadParams, DocumentFilter } from '../types';
 import { logger } from './logger';
 import { storageUpload, storageGetSignedUrl, storageRemove } from './storage';
+import { getAuthHeaders } from './session';
 
 const log = logger.withContext({ component: 'clientDocuments' });
 
@@ -27,15 +27,12 @@ const ALLOWED_EXTENSIONS: DocumentFileType[] = ['pdf', 'docx', 'doc', 'xlsx', 'x
  * Valida o arquivo antes do upload
  */
 export function validateFile(file: File): { valid: boolean; error?: string; fileType?: DocumentFileType } {
-  // Validar tamanho
   if (file.size > MAX_FILE_SIZE) {
     return { valid: false, error: `Arquivo muito grande. Máximo permitido: ${MAX_FILE_SIZE / 1024 / 1024}MB` };
   }
 
-  // Validar tipo MIME
   const fileType = ALLOWED_MIME_TYPES[file.type];
   if (!fileType) {
-    // Tentar pela extensão
     const ext = file.name.split('.').pop()?.toLowerCase() as DocumentFileType;
     if (!ext || !ALLOWED_EXTENSIONS.includes(ext)) {
       return { valid: false, error: 'Tipo de arquivo não permitido. Use PDF, DOCX, DOC, XLSX ou XLS.' };
@@ -54,15 +51,30 @@ function generateStoragePath(clientId: string, originalName: string): string {
   const randomId = Math.random().toString(36).substring(2, 8);
   const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
   const safeName = originalName
-    .replace(/\.[^/.]+$/, '') // remove extensão
-    .replace(/[^a-zA-Z0-9-_]/g, '_') // caracteres especiais
-    .substring(0, 50); // limita tamanho
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9-_]/g, '_')
+    .substring(0, 50);
 
   return `${clientId}/${timestamp}_${randomId}_${safeName}.${ext}`;
 }
 
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(url, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...headers, ...(init?.headers ?? {}) },
+    });
+    const json = await res.json() as { ok: boolean; data?: T; error?: string };
+    if (json.ok) return { ok: true, data: json.data as T };
+    return { ok: false, error: json.error || `Erro ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /**
- * Faz upload de um documento para o cliente
+ * Faz upload de um documento para a organização
  */
 export async function uploadDocument(
   params: DocumentUploadParams,
@@ -70,21 +82,11 @@ export async function uploadDocument(
   const { clientId, file, category = 'geral', description } = params;
 
   try {
-    // Validar arquivo
     const validation = validateFile(file);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
 
-    // Obter usuário atual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return { success: false, error: 'Usuário não autenticado' };
-    }
-
-    // Gerar caminho no storage
     const storagePath = generateStoragePath(clientId, file.name);
 
     try {
@@ -95,32 +97,31 @@ export async function uploadDocument(
       return { success: false, error: `Erro ao fazer upload: ${msg}` };
     }
 
-    // Inserir metadados na tabela
-    const { data, error: dbError } = await supabase
-      .from('client_documents')
-      .insert({
-        client_id: clientId,
-        uploaded_by: user.id,
-        file_name: storagePath.split('/').pop(),
-        original_name: file.name,
-        file_type: validation.fileType,
-        file_size: file.size,
-        storage_path: storagePath,
+    const result = await apiFetch<Record<string, unknown>>('/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'create-document',
+        organizationId: clientId,
+        fileName: storagePath.split('/').pop(),
+        originalName: file.name,
+        fileType: validation.fileType,
+        fileSize: file.size,
+        storagePath,
         category,
         description,
-      })
-      .select()
-      .single();
+      }),
+    });
 
-    if (dbError) {
+    if (!result.ok) {
+      const errRes = result as { ok: false; error: string };
       await storageRemove(STORAGE_PREFIX, [storagePath]);
-      log.error('uploadDocument DB error', new Error(dbError.message));
-      return { success: false, error: `Erro ao salvar documento: ${dbError.message}` };
+      log.error('uploadDocument DB error', new Error(errRes.error));
+      return { success: false, error: `Erro ao salvar documento: ${errRes.error}` };
     }
 
     return {
       success: true,
-      document: mapDocumentFromDatabase(data),
+      document: mapDocumentFromDatabase(result.data as unknown as DatabaseDocument),
     };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Erro desconhecido ao fazer upload';
@@ -130,52 +131,48 @@ export async function uploadDocument(
 }
 
 /**
- * Lista documentos de um cliente com filtros opcionais
+ * Lista documentos de uma organização com filtros opcionais
  */
 export async function listDocuments(
   filter: DocumentFilter = {},
 ): Promise<{ documents: ClientDocument[]; error?: string }> {
   try {
-    // Não fazer join com auth.users (uploaded_by) - anon/authenticated não têm permissão.
-    // Apenas client_documents + clients.
-    let query = supabase
-      .from('client_documents')
-      .select(
-        `
-        *,
-        clients(name)
-      `,
-      )
-      .order('created_at', { ascending: false });
-
-    // Aplicar filtros
-    if (filter.clientId) {
-      query = query.eq('client_id', filter.clientId);
+    if (!filter.clientId) {
+      return { documents: [] };
     }
+
+    const result = await apiFetch<DatabaseDocument[]>(
+      `/api/organizations?action=documents&organizationId=${encodeURIComponent(filter.clientId)}`,
+    );
+
+    if (!result.ok) {
+      const errRes = result as { ok: false; error: string };
+      return { documents: [], error: errRes.error };
+    }
+
+    let docs = result.data ?? [];
+
     if (filter.category) {
-      query = query.eq('category', filter.category);
+      docs = docs.filter(d => d.category === filter.category);
     }
     if (filter.fileType) {
-      query = query.eq('file_type', filter.fileType);
+      docs = docs.filter(d => d.file_type === filter.fileType);
     }
     if (filter.searchTerm) {
-      query = query.or(`original_name.ilike.%${filter.searchTerm}%,description.ilike.%${filter.searchTerm}%`);
+      const term = filter.searchTerm.toLowerCase();
+      docs = docs.filter(
+        d =>
+          d.original_name?.toLowerCase().includes(term) ||
+          d.description?.toLowerCase().includes(term),
+      );
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      log.error('listDocuments query error', new Error(error.message));
-      return { documents: [], error: error.message };
-    }
-
-    const documents = (data || []).map(doc => ({
-      ...mapDocumentFromDatabase(doc as unknown as DatabaseDocument),
-      uploaderName: '—',
-      clientName: (doc as unknown as { clients?: { name?: string } }).clients?.name || 'Organização',
-    }));
-
-    return { documents };
+    return {
+      documents: docs.map(doc => ({
+        ...mapDocumentFromDatabase(doc),
+        clientName: 'Organização',
+      })),
+    };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Erro ao listar documentos';
     log.error('listDocuments error', error instanceof Error ? error : new Error(msg));
@@ -202,29 +199,22 @@ export async function getDocumentUrl(storagePath: string): Promise<{ url?: strin
  */
 export async function deleteDocument(documentId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Primeiro, buscar o documento para obter o storage_path
-    const { data: doc, error: fetchError } = await supabase
-      .from('client_documents')
-      .select('storage_path')
-      .eq('id', documentId)
-      .single();
+    const result = await apiFetch<{ deleted: boolean; storagePath: string | null }>(
+      `/api/organizations?action=delete-document&documentId=${encodeURIComponent(documentId)}`,
+      { method: 'DELETE' },
+    );
 
-    if (fetchError || !doc) {
-      return { success: false, error: 'Documento não encontrado' };
+    if (!result.ok) {
+      const errRes = result as { ok: false; error: string };
+      return { success: false, error: errRes.error };
     }
 
-    try {
-      await storageRemove(STORAGE_PREFIX, [doc.storage_path]);
-    } catch {
-      log.warn('deleteDocument storage error (file may already be removed)');
-    }
-
-    // Excluir do banco
-    const { error: dbError } = await supabase.from('client_documents').delete().eq('id', documentId);
-
-    if (dbError) {
-      log.error('deleteDocument DB error', new Error(dbError.message));
-      return { success: false, error: dbError.message };
+    if (result.data.storagePath) {
+      try {
+        await storageRemove(STORAGE_PREFIX, [result.data.storagePath]);
+      } catch {
+        log.warn('deleteDocument storage error (file may already be removed)');
+      }
     }
 
     return { success: true };
@@ -240,11 +230,15 @@ export async function updateDocument(
   updates: { category?: DocumentCategory; description?: string },
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.from('client_documents').update(updates).eq('id', documentId);
+    const result = await apiFetch<{ updated: boolean }>('/api/organizations', {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'update-document', documentId, ...updates }),
+    });
 
-    if (error) {
-      log.error('updateDocument error', new Error(error.message));
-      return { success: false, error: error.message };
+    if (!result.ok) {
+      const errRes = result as { ok: false; error: string };
+      log.error('updateDocument error', new Error(errRes.error));
+      return { success: false, error: errRes.error };
     }
 
     return { success: true };
@@ -260,33 +254,42 @@ export async function updateDocument(
  */
 interface DatabaseDocument {
   id: string;
-  client_id: string;
-  uploaded_by: string;
-  file_name: string;
-  original_name: string;
-  file_type: DocumentFileType;
-  file_size: number;
-  storage_path: string;
-  category: DocumentCategory;
+  organizationId?: string;
+  client_id?: string;
+  uploadedBy?: string;
+  uploaded_by?: string;
+  fileName?: string;
+  file_name?: string;
+  originalName?: string;
+  original_name?: string;
+  fileType?: DocumentFileType;
+  file_type?: DocumentFileType;
+  fileSize?: number;
+  file_size?: number;
+  storagePath?: string;
+  storage_path?: string;
+  category?: DocumentCategory;
   description?: string;
-  created_at: string;
-  updated_at: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 function mapDocumentFromDatabase(doc: DatabaseDocument): ClientDocument {
   return {
     id: doc.id,
-    clientId: doc.client_id,
-    uploadedBy: doc.uploaded_by,
-    fileName: doc.file_name,
-    originalName: doc.original_name,
-    fileType: doc.file_type,
-    fileSize: doc.file_size,
-    storagePath: doc.storage_path,
-    category: doc.category,
+    clientId: doc.organizationId ?? doc.client_id ?? '',
+    uploadedBy: doc.uploadedBy ?? doc.uploaded_by ?? '',
+    fileName: doc.fileName ?? doc.file_name ?? '',
+    originalName: doc.originalName ?? doc.original_name ?? '',
+    fileType: doc.fileType ?? doc.file_type ?? 'pdf',
+    fileSize: doc.fileSize ?? doc.file_size ?? 0,
+    storagePath: doc.storagePath ?? doc.storage_path ?? '',
+    category: doc.category ?? 'geral',
     description: doc.description,
-    createdAt: doc.created_at,
-    updatedAt: doc.updated_at,
+    createdAt: doc.createdAt ?? doc.created_at ?? '',
+    updatedAt: doc.updatedAt ?? doc.updated_at ?? '',
   };
 }
 

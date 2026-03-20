@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  User,
-  Shield,
   Users,
   Activity,
   Search,
@@ -16,12 +14,33 @@ import {
   Trash2,
 } from 'lucide-react';
 import { User as UserType } from '../types';
-import { supabase } from '../lib/supabase';
 import { mapUserProfile } from '../lib/auth/mapUserProfile';
+import { getAuthHeaders } from '../lib/session';
 import { useAuth } from '../contexts/AuthContext';
 
+async function adminGet<T>(action: string, params?: Record<string, string>): Promise<T> {
+  const headers = await getAuthHeaders();
+  const qs = new URLSearchParams({ action, ...params }).toString();
+  const res = await fetch(`/api/admin?${qs}`, { headers });
+  const json = (await res.json()) as { ok: boolean; data: T; error?: string };
+  if (!json.ok) throw new Error(json.error || 'Erro na API');
+  return json.data;
+}
+
+async function adminPost<T>(action: string, body: Record<string, unknown>): Promise<T> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const json = (await res.json()) as { ok: boolean; data: T; error?: string };
+  if (!json.ok) throw new Error(json.error || 'Erro na API');
+  return json.data;
+}
+
 const AdminDashboard: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, sessionReady } = useAuth();
   const [clients, setClients] = useState<UserType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +53,15 @@ const AdminDashboard: React.FC = () => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [userLinks, setUserLinks] = useState<{ organizations: string[]; farmPermissions: number; supportTickets: number; cattleScenarios: number; savedQuestionnaires: number; savedFeedbacks: number; farmMaps: number; orgDocuments: number } | null>(null);
+  const [loadingLinks, setLoadingLinks] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editingClientData, setEditingClientData] = useState<{
     name: string;
     email: string;
-    qualification: 'visitante' | 'cliente' | 'analista';
+    qualification: 'visitante' | 'cliente' | 'analista' | 'administrador';
     status: 'active' | 'inactive';
-    organizationId?: string | null;
     clientId?: string | null;
   } | null>(null);
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
@@ -48,53 +69,19 @@ const AdminDashboard: React.FC = () => {
   const [clientsListError, setClientsListError] = useState<string | null>(null);
   const clientsListLoadedRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [organizations, setOrganizations] = useState<any[]>([]);
-  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
   const menuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   useEffect(() => {
+    if (!sessionReady) return;
     // Verify admin permission before loading
     if (currentUser?.role === 'admin') {
       loadClients();
-      loadOrganizations();
       // clientsList é carregado sob demanda ao abrir edição de um usuário 'cliente'
     } else if (currentUser && (currentUser.role as string) !== 'admin') {
       setError('Acesso negado. Apenas administradores podem visualizar esta página.');
       setIsLoading(false);
     }
-  }, [currentUser]);
-
-  const loadOrganizations = async () => {
-    setIsLoadingOrganizations(true);
-    try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, name, status')
-        .eq('status', 'active')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-
-      // Remove duplicates by name (case-insensitive) - keep the first occurrence
-      if (data && data.length > 0) {
-        const uniqueOrgs = data.filter(
-          (org, index, self) =>
-            org &&
-            org.name &&
-            index === self.findIndex(o => o && o.name && o.name.toLowerCase() === org.name.toLowerCase()),
-        );
-        console.log('[AdminDashboard] Loaded organizations:', uniqueOrgs.length, 'unique organizations');
-        setOrganizations(uniqueOrgs);
-      } else {
-        setOrganizations([]);
-      }
-    } catch (error: any) {
-      console.error('[AdminDashboard] Error loading organizations:', error);
-      // Não mostrar erro ao usuário, apenas log
-    } finally {
-      setIsLoadingOrganizations(false);
-    }
-  };
+  }, [sessionReady, currentUser]);
 
   const loadClientsList = async () => {
     // Só carrega uma vez por sessão — a lista de clientes raramente muda durante uso
@@ -104,17 +91,10 @@ const AdminDashboard: React.FC = () => {
     setIsLoadingClientsList(true);
     setClientsListError(null);
     try {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id, name')
-        .order('name', { ascending: true })
-        .limit(500);
-
-      if (error) throw error;
-      setClientsList(data || []);
+      const rows = await adminGet<{ id: string; name: string }[]>('list-organizations');
+      setClientsList(rows);
       clientsListLoadedRef.current = true;
-    } catch (error: any) {
-      console.error('[AdminDashboard] Error loading clients list:', error);
+    } catch {
       setClientsListError('Erro ao carregar organizações disponíveis.');
     } finally {
       setIsLoadingClientsList(false);
@@ -136,87 +116,12 @@ const AdminDashboard: React.FC = () => {
 
         console.log(`[AdminDashboard] Loading clients (attempt ${attempt + 1}/${retries})...`);
 
-        const { data, error: queryError } = await supabase.rpc('get_users_for_admin', {
-          p_offset: 0,
-          p_limit: 500,
-          p_search: null,
-        });
-
-        if (queryError) {
-          console.error('[AdminDashboard] Error loading clients:', {
-            code: queryError.code,
-            message: queryError.message,
-            details: queryError.details,
-            hint: queryError.hint,
-          });
-
-          // If it's a permission/RLS error, don't retry
-          if (
-            queryError.code === 'PGRST301' ||
-            queryError.message?.includes('permission') ||
-            queryError.message?.includes('RLS')
-          ) {
-            setError(
-              'Erro de permissão. Verifique se você tem permissão de administrador e se as políticas RLS estão configuradas corretamente.',
-            );
-            setIsLoading(false);
-            return;
-          }
-
-          // Retry on other errors
-          if (attempt < retries - 1) {
-            console.log(`[AdminDashboard] Retrying after ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
-
-          setError(`Erro ao carregar usuários: ${queryError.message || 'Erro desconhecido'}`);
-          setIsLoading(false);
-          return;
-        }
-
-        if (data) {
-          console.log(`[AdminDashboard] Loaded ${data.length} client profiles from database`);
-
-          // Log raw data para debug
-          if (data.length > 0) {
-            console.log('[AdminDashboard] Sample raw profile:', {
-              id: data[0].id,
-              name: data[0].name,
-              qualification: data[0].qualification,
-              qualificationType: typeof data[0].qualification,
-            });
-          }
-
-          const mappedClients = data.map(mapUserProfile).filter(Boolean) as UserType[];
-          console.log(`[AdminDashboard] Successfully mapped ${mappedClients.length} clients`);
-
-          // Log mapped data para debug
-          if (mappedClients.length > 0) {
-            console.log('[AdminDashboard] Sample mapped client:', {
-              id: mappedClients[0].id,
-              name: mappedClients[0].name,
-              qualification: mappedClients[0].qualification,
-            });
-          }
-
-          setClients(mappedClients);
-
-          // Calculate stats
-          const active = mappedClients.filter(c => c.status === 'active').length;
-
-          setStats({
-            total: mappedClients.length,
-            active,
-          });
-
-          setIsLoading(false);
-          return; // Success, exit retry loop
-        } else {
-          console.log('[AdminDashboard] No data returned from query');
-          setClients([]);
-          setStats({ total: 0, active: 0 });
-        }
+        const rows = await adminGet<Record<string, unknown>[]>('list-users');
+        const mappedClients = rows.map(mapUserProfile).filter(Boolean) as UserType[];
+        setClients(mappedClients);
+        setStats({ total: mappedClients.length, active: mappedClients.filter(c => c.status === 'active').length });
+        setIsLoading(false);
+        return;
       } catch (error: any) {
         console.error('[AdminDashboard] Exception loading clients:', error);
 
@@ -304,48 +209,22 @@ const AdminDashboard: React.FC = () => {
       if (editingClientData.qualification === 'visitante') {
         updatePayload.organization_id = null;
         updatePayload.client_id = null;
-      } else if (editingClientData.qualification === 'analista') {
-        // Se for analista, incluir organization_id se fornecido e limpar client_id
-        updatePayload.organization_id = editingClientData.organizationId || null;
-        updatePayload.client_id = null;
       } else if (editingClientData.qualification === 'cliente') {
         // Para cliente, salvar o client_id selecionado
         updatePayload.client_id = editingClientData.clientId || null;
       }
 
-      const { data: updateData, error } = await supabase.rpc('admin_update_user_profile', {
-        p_user_id: editingClientId,
-        p_qualification: updatePayload.qualification,
-        p_status: updatePayload.status,
-        p_organization_id: updatePayload.organization_id,
-        p_client_id: updatePayload.client_id,
+      await adminPost('update-user', {
+        targetUserId: editingClientId,
+        role: updatePayload.qualification,
+        status: updatePayload.status,
+        organizationId: updatePayload.organization_id,
+        clientOrgId: updatePayload.client_id,
       });
 
-      if (error) {
-        console.error('[AdminDashboard] Update error:', error);
-        throw error;
-      }
-
-      console.log('[AdminDashboard] Update result:', updateData);
-
-      // Se nenhuma linha foi atualizada, algo bloqueou o update (permissão/dados inválidos)
-      if (!updateData || updateData.length === 0) {
-        throw new Error(
-          'Nenhuma alteração foi aplicada no banco. ' +
-          'Verifique permissões de admin e se as migrations mais recentes foram aplicadas.',
-        );
-      }
-
-      console.log('[AdminDashboard] Updated qualification:', updateData[0].qualification);
-      console.log('[AdminDashboard] Updated status:', updateData[0].status);
-
-      // Recarregar dados do banco para garantir sincronização
       await loadClients();
-
-      // Fechar modal
       setEditingClientId(null);
       setEditingClientData(null);
-
       alert('Usuário atualizado com sucesso!');
     } catch (error: any) {
       console.error('[AdminDashboard] Error saving client:', error);
@@ -371,47 +250,44 @@ const AdminDashboard: React.FC = () => {
     };
   }, [openMenuId]);
 
+  const openDeleteConfirm = async (userId: string) => {
+    setShowDeleteConfirm(userId);
+    setOpenMenuId(null);
+    setUserLinks(null);
+    setDeleteError(null);
+    setLoadingLinks(true);
+    try {
+      const data = await adminGet<{ organizations: string[]; farmPermissions: number; supportTickets: number; cattleScenarios: number; savedQuestionnaires: number; savedFeedbacks: number; farmMaps: number; orgDocuments: number }>(
+        'user-links', { targetUserId: userId }
+      );
+      setUserLinks(data);
+    } catch {
+      setUserLinks(null);
+    } finally {
+      setLoadingLinks(false);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     setDeletingUserId(userId);
-    setShowDeleteConfirm(null);
-    setOpenMenuId(null);
+    setDeleteError(null);
 
     try {
-      // Use the database function to delete user completely
-      // This function deletes all related data including auth.users
-      const { error } = await supabase.rpc('delete_user_completely', {
-        user_id_to_delete: userId,
-      });
+      await adminPost('delete-user', { targetUserId: userId });
 
-      if (error) {
-        // If RPC fails, try manual deletion as fallback
-        console.warn('RPC delete_user_completely failed, trying manual deletion:', error);
-
-        // Manual deletion fallback
-        await supabase.from('cattle_scenarios').delete().eq('user_id', userId);
-        await supabase.from('ai_token_usage').delete().eq('user_id', userId);
-        await supabase.from('calculations').delete().eq('user_id', userId);
-        await supabase.from('chat_messages').delete().eq('user_id', userId);
-        await supabase.from('organizations').delete().eq('owner_id', userId);
-
-        const { error: profileError } = await supabase.from('user_profiles').delete().eq('id', userId);
-
-        if (profileError) throw profileError;
-      }
+      setShowDeleteConfirm(null);
+      setUserLinks(null);
+      setOpenMenuId(null);
 
       // Update local state
       setClients(prevClients => prevClients.filter(client => client.id !== userId));
-
-      // Update stats
       setStats(prev => ({
         total: prev.total - 1,
         active: prev.active - (clients.find(c => c.id === userId)?.status === 'active' ? 1 : 0),
       }));
-
-      alert('Usuário e todos os dados relacionados foram excluídos com sucesso!');
     } catch (error: any) {
       console.error('Error deleting user:', error);
-      alert('Erro ao excluir usuário: ' + (error.message || 'Erro desconhecido'));
+      setDeleteError(error.message || 'Erro desconhecido ao excluir usuário.');
     } finally {
       setDeletingUserId(null);
     }
@@ -499,13 +375,12 @@ const AdminDashboard: React.FC = () => {
                 <select
                   value={editingClientData.qualification || 'visitante'}
                   onChange={e => {
-                    const newQualification = e.target.value as 'visitante' | 'cliente' | 'analista';
+                    const newQualification = e.target.value as 'visitante' | 'cliente' | 'analista' | 'administrador';
                     setEditingClientData(prev =>
                       prev
                         ? {
                             ...prev,
                             qualification: newQualification,
-                            organizationId: newQualification === 'visitante' ? null : prev.organizationId,
                             clientId: newQualification === 'cliente' ? prev.clientId : null,
                           }
                         : null,
@@ -520,6 +395,7 @@ const AdminDashboard: React.FC = () => {
                   <option value="visitante">Visitante</option>
                   <option value="cliente">Cliente</option>
                   <option value="analista">Analista</option>
+                  <option value="administrador">Administrador</option>
                 </select>
               </div>
 
@@ -546,38 +422,13 @@ const AdminDashboard: React.FC = () => {
                 </select>
               </div>
 
-              {/* Empresa (apenas para analistas) */}
+              {/* Mensagem informativa para analistas */}
               {editingClientData.qualification === 'analista' && (
-                <div>
-                  <label className="block text-sm font-medium text-ai-text mb-1">Empresa Vinculada</label>
-                  <select
-                    value={editingClientData.organizationId || ''}
-                    onChange={e =>
-                      setEditingClientData(prev =>
-                        prev
-                          ? {
-                              ...prev,
-                              organizationId: e.target.value || null,
-                            }
-                          : null,
-                      )
-                    }
-                    className="w-full px-3 py-2 border border-ai-border rounded-lg bg-white text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                    disabled={isSaving || isLoadingOrganizations}
-                  >
-                    <option value="">Nenhuma empresa (sem vínculo)</option>
-                    {organizations.map(org => (
-                      <option key={org.id} value={org.id}>
-                        {org.name}
-                      </option>
-                    ))}
-                  </select>
-                  {isLoadingOrganizations && <p className="text-xs text-ai-subtext mt-1">Carregando empresas...</p>}
-                  {!isLoadingOrganizations && organizations.length === 0 && (
-                    <p className="text-xs text-ai-subtext mt-1">
-                      Nenhuma empresa cadastrada. Cadastre empresas em Configurações → Cadastro de Empresa.
-                    </p>
-                  )}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <p className="text-xs text-purple-800">
+                    <strong>Analistas</strong> são vinculados a organizações e fazendas diretamente na tela de{' '}
+                    <strong>Organizações</strong>, na seção de analistas de cada organização.
+                  </p>
                 </div>
               )}
 
@@ -585,9 +436,19 @@ const AdminDashboard: React.FC = () => {
               {editingClientData.qualification === 'visitante' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-xs text-blue-800">
-                    <strong>Visitantes</strong> não precisam ter vínculo com empresa ou analista. Quando convertido para{' '}
-                    <strong>Cliente</strong> ou <strong>Analista</strong>, o vínculo será feito na tela de cadastro
-                    correspondente.
+                    <strong>Visitantes</strong> não precisam ter vínculo com organização. Quando convertido para{' '}
+                    <strong>Cliente</strong>, o vínculo será feito aqui. Quando convertido para{' '}
+                    <strong>Analista</strong>, o vínculo é feito na tela de Organizações.
+                  </p>
+                </div>
+              )}
+
+              {/* Aviso para administrador */}
+              {editingClientData.qualification === 'administrador' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-xs text-red-800">
+                    <strong>Atenção:</strong> O perfil <strong>Administrador</strong> concede acesso total ao sistema,
+                    incluindo gerenciamento de usuários, configurações de IA e todos os dados. Use com cuidado.
                   </p>
                 </div>
               )}
@@ -674,17 +535,80 @@ const AdminDashboard: React.FC = () => {
             <p className="text-sm text-ai-subtext mb-4">
               Tem certeza que deseja excluir este usuário? Esta ação é permanente e não pode ser desfeita.
             </p>
-            <p className="text-xs text-ai-subtext mb-6 bg-red-50 p-3 rounded border border-red-200">
-              <strong>Atenção:</strong> Todos os dados relacionados serão excluídos, incluindo:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Perfil do usuário</li>
-                <li>Mensagens de chat</li>
-                <li>Cenários salvos</li>
-                <li>Cálculos realizados</li>
-                <li>Organizações (se for proprietário)</li>
-                <li>Histórico de uso de tokens</li>
-              </ul>
-            </p>
+            {loadingLinks ? (
+              <div className="flex items-center gap-2 text-sm text-ai-subtext mb-6 bg-gray-50 p-3 rounded border border-ai-border">
+                <Loader2 size={14} className="animate-spin" />
+                Verificando dados vinculados...
+              </div>
+            ) : userLinks && (userLinks.organizations.length > 0 || userLinks.farmPermissions > 0 || userLinks.supportTickets > 0 || userLinks.cattleScenarios > 0 || userLinks.savedQuestionnaires > 0 || userLinks.savedFeedbacks > 0 || userLinks.farmMaps > 0 || userLinks.orgDocuments > 0) ? (
+              <div className="mb-6 space-y-3">
+                {userLinks.organizations.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3">
+                    <p className="text-xs font-semibold text-red-700 mb-1">
+                      Organizações vinculadas ({userLinks.organizations.length}) — serão desvinculadas:
+                    </p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {userLinks.organizations.map(name => (
+                        <li key={name} className="text-xs text-red-600">{name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {userLinks.farmPermissions > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      <strong>{userLinks.farmPermissions}</strong> permissão(ões) de fazenda serão removidas.
+                    </p>
+                  </div>
+                )}
+                {userLinks.supportTickets > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      <strong>{userLinks.supportTickets}</strong> ticket(s) de suporte serão excluídos.
+                    </p>
+                  </div>
+                )}
+                {userLinks.cattleScenarios > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      <strong>{userLinks.cattleScenarios}</strong> cenário(s) pecuário(s) salvos serão excluídos.
+                    </p>
+                  </div>
+                )}
+                {userLinks.savedQuestionnaires > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      <strong>{userLinks.savedQuestionnaires}</strong> questionário(s) salvo(s) serão excluídos.
+                    </p>
+                  </div>
+                )}
+                {userLinks.savedFeedbacks > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      <strong>{userLinks.savedFeedbacks}</strong> feedback(s) gerado(s) serão excluídos.
+                    </p>
+                  </div>
+                )}
+                {(userLinks.farmMaps > 0 || userLinks.orgDocuments > 0) && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="text-xs text-amber-700">
+                      {userLinks.farmMaps > 0 && <><strong>{userLinks.farmMaps}</strong> mapa(s) de fazenda{userLinks.orgDocuments > 0 ? ' e ' : ' serão excluídos.'}</>}
+                      {userLinks.orgDocuments > 0 && <><strong>{userLinks.orgDocuments}</strong> documento(s) de organização serão excluídos.</>}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-ai-subtext mb-6 bg-gray-50 p-3 rounded border border-ai-border">
+                Nenhum dado crítico vinculado encontrado.
+              </p>
+            )}
+            {deleteError && (
+              <div className="mb-4 bg-red-50 border border-red-300 rounded p-3 flex items-start gap-2">
+                <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700 break-all">{deleteError}</p>
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
@@ -874,7 +798,6 @@ const AdminDashboard: React.FC = () => {
                                     email: client.email,
                                     qualification: client.qualification || 'visitante',
                                     status: client.status || 'active',
-                                    organizationId: client.organizationId || null,
                                     clientId: client.clientId || null,
                                   });
                                   // Carrega a lista de organizações sob demanda
@@ -889,10 +812,7 @@ const AdminDashboard: React.FC = () => {
                                 Editar
                               </button>
                               <button
-                                onClick={() => {
-                                  setShowDeleteConfirm(client.id);
-                                  setOpenMenuId(null);
-                                }}
+                                onClick={() => openDeleteConfirm(client.id)}
                                 className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
                               >
                                 <Trash2 size={14} />

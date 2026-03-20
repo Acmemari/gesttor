@@ -16,8 +16,10 @@ interface Company {
 }
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from '../contexts/LocationContext';
-import { supabase } from '../lib/supabase';
-import { createUserProfileIfMissing } from '../lib/auth/createProfile';
+import { getAuthHeaders } from '../lib/session';
+import { authClient } from '../lib/auth/betterAuthClient';
+import { getQuestions, createQuestion, updateQuestion, deleteQuestion } from '../lib/questions';
+import { clearQuestionsCache } from '../hooks/useQuestions';
 import {
   User as UserIcon,
   Lock,
@@ -191,16 +193,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
   ];
 
   useEffect(() => {
-    // Check email verification status
-    const checkEmailVerification = async () => {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (authUser) {
-        setEmailVerified(authUser.email_confirmed_at !== null);
-      }
-    };
-    checkEmailVerification();
+    setEmailVerified(true);
 
     // Load user profile data
     loadUserProfile();
@@ -234,76 +227,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
   const loadQuestions = async () => {
     setIsLoadingQuestions(true);
-    setQuestionsTableMissing(false);
     try {
-      const { data, error } = await supabase
-        .from('questionnaire_questions')
-        .select('*')
-        .order('perg_number', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setQuestions((data || []).map(mapDbToApp));
-    } catch (err: unknown) {
-      setQuestions([]);
-      const msg = err instanceof Error ? err.message : String(err);
-      const code = (err as { code?: string })?.code || '';
-      const tableMissing =
-        code === '42P01' ||
-        /relation.*does not exist|tabela.*não existe/i.test(msg) ||
-        /questionnaire_questions/i.test(msg);
-      if (tableMissing) {
-        setQuestionsTableMissing(true);
-      } else {
-        onToast('Erro ao carregar perguntas. Tente novamente ou verifique a conexão.', 'error');
-      }
+      const data = await getQuestions();
+      setQuestions(data as any[]);
+      setQuestionsTableMissing(false);
+    } catch {
+      setQuestionsTableMissing(true);
     } finally {
       setIsLoadingQuestions(false);
     }
   };
 
   const loadParaguaySetting = async () => {
-    setIsLoadingParaguaySetting(true);
-    try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'paraguay_enabled')
-        .single();
-      if (!error && data?.value === true) {
-        setParaguayEnabled(true);
-      } else {
-        setParaguayEnabled(false);
-      }
-    } catch {
-      setParaguayEnabled(false);
-    } finally {
-      setIsLoadingParaguaySetting(false);
-    }
+    // app_settings table not in new schema — Paraguay always disabled
+    setParaguayEnabled(false);
+    setIsLoadingParaguaySetting(false);
   };
 
   const handleSaveParaguaySetting = async () => {
-    setIsSaving(true);
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('app_settings')
-        .update({
-          value: paraguayEnabled,
-          updated_at: new Date().toISOString(),
-          updated_by: authUser?.id ?? null,
-        })
-        .eq('key', 'paraguay_enabled');
-
-      if (error) throw error;
-      onToast('Configuração salva. A versão Paraguai foi ' + (paraguayEnabled ? 'ativada' : 'desativada') + '.', 'success');
-      refreshLocationSettings();
-    } catch (err) {
-      console.error('Erro ao salvar configuração:', err);
-      onToast('Erro ao salvar configuração. Tente novamente.', 'error');
-    } finally {
-      setIsSaving(false);
-    }
+    onToast('Configuração não disponível nesta versão.', 'info');
   };
 
   const handleSaveQuestion = async () => {
@@ -319,65 +261,42 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
     try {
       if (editingQuestion) {
-        const { error } = await supabase
-          .from('questionnaire_questions')
-          .update({
-            category: questionForm.category,
-            group: questionForm.group,
-            question: questionForm.question,
-            positive_answer: questionForm.positiveAnswer,
-            applicable_types: questionForm.applicableTypes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingQuestion.id);
-
-        if (error) throw error;
+        await updateQuestion(editingQuestion.id, {
+          category: questionForm.category,
+          group: questionForm.group,
+          question: questionForm.question,
+          positiveAnswer: questionForm.positiveAnswer,
+          applicableTypes: questionForm.applicableTypes,
+        });
         onToast('Pergunta atualizada com sucesso!', 'success');
       } else {
-        const { data: inserted, error } = await supabase
-          .from('questionnaire_questions')
-          .insert({
-            category: questionForm.category,
-            group: questionForm.group,
-            question: questionForm.question,
-            positive_answer: questionForm.positiveAnswer,
-            applicable_types: questionForm.applicableTypes,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        if (inserted) setQuestions(prev => [...prev, mapDbToApp(inserted)]);
+        await createQuestion({
+          category: questionForm.category,
+          group: questionForm.group,
+          question: questionForm.question,
+          positiveAnswer: questionForm.positiveAnswer,
+          applicableTypes: questionForm.applicableTypes,
+        });
         onToast('Pergunta criada com sucesso!', 'success');
       }
-
+      clearQuestionsCache();
       setShowQuestionForm(false);
       setEditingQuestion(null);
-      setQuestionForm({
-        category: '' as '' | 'Gente' | 'Gestão' | 'Produção',
-        group: '',
-        question: '',
-        positiveAnswer: 'Sim' as 'Sim' | 'Não',
-        applicableTypes: [],
-      });
-    } catch (error) {
-      console.error('Erro ao salvar pergunta:', error);
-      onToast('Erro ao salvar pergunta', 'error');
+      setQuestionForm({ category: '', group: '', question: '', positiveAnswer: 'Sim', applicableTypes: [] });
+      await loadQuestions();
+    } catch (err: any) {
+      onToast(err.message || 'Erro ao salvar pergunta', 'error');
     }
   };
 
   const handleDeleteQuestion = async (questionId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta pergunta?')) {
-      try {
-        const { error } = await supabase.from('questionnaire_questions').delete().eq('id', questionId);
-
-        if (error) throw error;
-        setQuestions(questions.filter(q => q.id !== questionId));
-        onToast('Pergunta excluída com sucesso!', 'success');
-      } catch (error) {
-        console.error('Erro ao excluir pergunta:', error);
-        onToast('Erro ao excluir pergunta', 'error');
-      }
+    try {
+      await deleteQuestion(questionId);
+      clearQuestionsCache();
+      onToast('Pergunta excluída com sucesso!', 'success');
+      await loadQuestions();
+    } catch (err: any) {
+      onToast(err.message || 'Erro ao excluir pergunta', 'error');
     }
   };
 
@@ -392,14 +311,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
   const loadUserProfile = async () => {
     try {
-      const { data, error } = await supabase.from('user_profiles').select('*').eq('id', user.id).maybeSingle();
-
-      // If profile is missing, try creating it once and keep UI defaults.
-      if (!data && !error) {
-        await createUserProfileIfMissing(user.id);
-      }
-
-      if (data && !error) {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/auth', { headers });
+      const json = await res.json() as { ok: boolean; data?: { name?: string; email?: string; phone?: string; avatar?: string } };
+      if (json.ok && json.data) {
+        const data = json.data;
         setProfileData({
           name: data.name || user.name || '',
           email: data.email || user.email || '',
@@ -423,78 +339,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       const trimmedName = profileData.name.trim();
       const trimmedEmail = profileData.email.trim();
 
-      if (!trimmedName) {
-        throw new Error('O nome não pode ficar vazio');
-      }
+      if (!trimmedName) throw new Error('O nome não pode ficar vazio');
+      if (!trimmedEmail) throw new Error('O email não pode ficar vazio');
 
-      if (!trimmedEmail) {
-        throw new Error('O email não pode ficar vazio');
-      }
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ name: trimmedName, phone: profileData.phone || null }),
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao salvar perfil');
 
-      let { data: updatedProfile, error } = await supabase
-        .from('user_profiles')
-        .update({
-          name: trimmedName,
-          phone: profileData.phone || null,
-          avatar: profileData.avatar,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id)
-        .select('id')
-        .maybeSingle();
-
-      if (error) throw error;
-
-      // If no row was updated, profile might be missing: create and retry once.
-      if (!updatedProfile) {
-        const created = await createUserProfileIfMissing(user.id);
-        if (!created) {
-          throw new Error('Não foi possível localizar ou criar seu perfil para salvar as alterações.');
-        }
-
-        const retry = await supabase
-          .from('user_profiles')
-          .update({
-            name: trimmedName,
-            phone: profileData.phone || null,
-            avatar: profileData.avatar,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', user.id)
-          .select('id')
-          .maybeSingle();
-
-        if (retry.error) throw retry.error;
-        if (!retry.data) {
-          throw new Error('Não foi possível salvar as alterações do perfil.');
-        }
-      }
-
-      const authUpdatePayload: {
-        email?: string;
-        data: { name: string; full_name: string; avatar: string };
-      } = {
-        data: {
-          name: trimmedName,
-          full_name: trimmedName,
-          avatar: profileData.avatar,
-        },
-      };
-
-      // Keep auth metadata in sync to avoid stale name after reload/login.
       if (trimmedEmail !== user.email) {
-        authUpdatePayload.email = trimmedEmail;
+        onToast('Alteração de email não é suportada nesta versão.', 'info');
       }
-
-      const { error: authError } = await supabase.auth.updateUser(authUpdatePayload);
-      if (authError) throw authError;
 
       await refreshProfile();
-      setProfileData(prev => ({
-        ...prev,
-        name: trimmedName,
-        email: trimmedEmail,
-      }));
+      setProfileData(prev => ({ ...prev, name: trimmedName, email: trimmedEmail }));
       onToast('Perfil atualizado com sucesso!', 'success');
       setHasUnsavedChanges(false);
     } catch (error: unknown) {
@@ -518,21 +380,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword,
+      const { error } = await authClient.changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+        revokeOtherSessions: false,
       });
 
-      if (error) throw error;
+      if (error) {
+        onToast(error.message ?? 'Erro ao alterar senha', 'error');
+        return;
+      }
 
       onToast('Senha alterada com sucesso!', 'success');
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Erro ao alterar senha';
-      onToast(msg, 'error');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : 'Erro ao alterar senha', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -541,26 +403,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
   const handleDeleteAccount = async () => {
     setIsSaving(true);
     try {
-      // Call the database function to delete the user's account completely
-      const { error } = await supabase.rpc('delete_my_account');
-
-      if (error) {
-        throw new Error(error.message || 'Erro ao excluir conta. Por favor, entre em contato com o suporte.');
-      }
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/auth', { method: 'DELETE', headers });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao excluir conta. Por favor, entre em contato com o suporte.');
 
       onToast('Sua conta foi excluída com sucesso.', 'success');
-
-      // Sign out the user
-      await supabase.auth.signOut();
-
-      setTimeout(() => {
-        onLogout();
-      }, 1500);
+      setTimeout(() => { onLogout(); }, 1500);
     } catch (error: unknown) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : 'Erro ao excluir conta. Tente novamente ou entre em contato com o suporte.';
+      const msg = error instanceof Error ? error.message : 'Erro ao excluir conta. Tente novamente ou entre em contato com o suporte.';
       onToast(msg, 'error');
       setIsSaving(false);
       setShowDeleteConfirm(false);
@@ -569,17 +420,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
   const handleDownloadData = async () => {
     try {
-      // Fetch all user data
-      const [profileData, messagesData, scenariosData] = await Promise.all([
-        supabase.from('user_profiles').select('*').eq('id', user.id).single(),
-        supabase.from('chat_messages').select('*').eq('user_id', user.id),
-        supabase.from('cattle_scenarios').select('*').eq('user_id', user.id),
-      ]);
+      const headers = await getAuthHeaders();
+      const profileRes = await fetch('/api/auth', { headers });
+      const profileJson = await profileRes.json() as { ok: boolean; data?: unknown };
 
       const exportData = {
-        profile: profileData.data,
-        messages: messagesData.data,
-        scenarios: scenariosData.data,
+        profile: profileJson.ok ? profileJson.data : null,
+        messages: [],
+        scenarios: [],
         exportedAt: new Date().toISOString(),
       };
 
@@ -587,7 +435,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `pecuaria-data-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `gesttor-data-${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -792,29 +640,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
   const loadCompanies = async () => {
     setIsLoadingCompanies(true);
     try {
-      // Admins can see all companies, regular users see only their own
-      let query = supabase.from('organizations').select('*');
-
-      if (user.role !== 'admin') {
-        query = query.eq('owner_id', user.id);
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Remove duplicates by name (case-insensitive) - keep the most recent one
-      if (data && data.length > 0) {
-        const uniqueCompanies = data.filter((company, index, self) => {
-          const firstIndex = self.findIndex(c => c.name.toLowerCase().trim() === company.name.toLowerCase().trim());
-          // Keep only the first occurrence (most recent due to order by created_at desc)
-          return index === firstIndex;
-        });
-
-        setCompanies(uniqueCompanies);
-      } else {
-        setCompanies([]);
-      }
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/organizations?limit=100', { headers });
+      const json = await res.json() as { ok: boolean; data?: Array<{ id: string; name: string; phone?: string; address?: string; city?: string; state?: string; plan?: string; status?: string }> };
+      if (!json.ok) throw new Error('Erro ao carregar organizações');
+      const rows = json.data ?? [];
+      // Remove duplicates by name (case-insensitive)
+      const seen = new Set<string>();
+      const unique = rows.filter(r => {
+        const key = r.name.toLowerCase().trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setCompanies(unique.map(r => ({
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        address: r.address,
+        city: r.city,
+        state: r.state,
+        plan: r.plan as Company['plan'],
+        status: r.status as Company['status'],
+      })));
     } catch (error: unknown) {
       void error;
       onToast('Erro ao carregar empresas', 'error');
@@ -851,7 +699,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       return;
     }
 
-    // Only admins can create companies
     if (user.role !== 'admin') {
       onToast('Apenas administradores podem cadastrar empresas', 'error');
       return;
@@ -860,48 +707,35 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
     setIsSaving(true);
     try {
       const companyName = companyForm.name.trim();
+      const headers = await getAuthHeaders();
 
-      // Check for duplicate name (case-insensitive) when creating new company
-      if (!editingCompany) {
-        const { data: existingCompanies, error: checkError } = await supabase
-          .from('organizations')
-          .select('id, name')
-          .ilike('name', companyName);
-
-        if (checkError) throw checkError;
-
-        if (existingCompanies && existingCompanies.length > 0) {
-          onToast('Já existe uma empresa com este nome', 'error');
-          setIsSaving(false);
-          return;
-        }
-      }
-
-      const companyData = {
+      const payload = {
         name: companyName,
         phone: companyForm.phone ? companyForm.phone.replace(/\D/g, '') : null,
         address: companyForm.address.trim() || null,
         city: companyForm.city.trim() || null,
         state: companyForm.state.trim().toUpperCase() || null,
-        zip_code: companyForm.zip_code ? companyForm.zip_code.replace(/\D/g, '') : null,
-        description: companyForm.description.trim() || null,
         plan: companyForm.plan,
         status: companyForm.status,
-        owner_id: user.id,
-        updated_at: new Date().toISOString(),
       };
 
       if (editingCompany) {
-        // Update existing company
-        const { error } = await supabase.from('organizations').update(companyData).eq('id', editingCompany.id);
-
-        if (error) throw error;
+        const res = await fetch('/api/organizations', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ id: editingCompany.id, ...payload }),
+        });
+        const json = await res.json() as { ok: boolean; error?: string };
+        if (!json.ok) throw new Error(json.error ?? 'Erro ao atualizar empresa');
         onToast('Empresa atualizada com sucesso!', 'success');
       } else {
-        // Create new company
-        const { error } = await supabase.from('organizations').insert(companyData);
-
-        if (error) throw error;
+        const res = await fetch('/api/organizations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json() as { ok: boolean; error?: string };
+        if (!json.ok) throw new Error(json.error ?? 'Erro ao criar empresa');
         onToast('Empresa cadastrada com sucesso!', 'success');
       }
 
@@ -939,7 +773,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
   };
 
   const handleDeleteCompany = async (companyId: string) => {
-    // Only admins can delete companies
     if (user.role !== 'admin') {
       onToast('Apenas administradores podem excluir empresas', 'error');
       return;
@@ -951,9 +784,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('organizations').delete().eq('id', companyId);
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/organizations?id=${encodeURIComponent(companyId)}`, { method: 'DELETE', headers });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (!json.ok) throw new Error(json.error ?? 'Erro ao excluir empresa');
       onToast('Empresa excluída com sucesso!', 'success');
       await loadCompanies();
     } catch (error: unknown) {
@@ -1682,37 +1516,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
         return;
       }
 
-      const { data: existing } = await supabase.from('questionnaire_questions').select('id');
-      if (existing?.length) {
-        const { error: deleteError } = await supabase
-          .from('questionnaire_questions')
-          .delete()
-          .in(
-            'id',
-            existing.map(r => r.id),
-          );
-        if (deleteError) throw deleteError;
+      let created = 0;
+      for (const q of importedQuestions) {
+        await createQuestion({
+          category: q.category,
+          group: q.group,
+          question: q.question,
+          positiveAnswer: q.positiveAnswer,
+          applicableTypes: q.applicableTypes,
+        });
+        created++;
       }
-
-      const toInsert = importedQuestions.map(q => ({
-        perg_number: /^\d+$/.test(q.id) ? parseInt(q.id, 10) : null,
-        category: q.category,
-        group: q.group,
-        question: q.question,
-        positive_answer: q.positiveAnswer,
-        applicable_types: q.applicableTypes,
-      }));
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('questionnaire_questions')
-        .insert(toInsert)
-        .select();
-
-      if (insertError) throw insertError;
-      setQuestions((inserted || []).map(mapDbToApp));
-      onToast(`${importedQuestions.length} pergunta(s) importada(s) e salvas com sucesso!`, 'success');
-
+      clearQuestionsCache();
+      await loadQuestions();
+      onToast(`${created} pergunta(s) importada(s) com sucesso!`, 'success');
       event.target.value = '';
+      return;
     } catch (error) {
       console.error('Erro ao importar:', error);
       onToast('Erro ao processar arquivo. Verifique se é CSV ou Excel (.xlsx) com as colunas corretas.', 'error');

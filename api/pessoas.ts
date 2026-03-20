@@ -1,0 +1,463 @@
+/**
+ * API de pessoas (CRUD completo + sub-recursos).
+ *
+ * GET  /api/pessoas?id=xxx                       → 1 pessoa com perfis+fazendas+permissões
+ * GET  /api/pessoas?organizationId=xxx           → lista pessoas da org
+ *   Params opcionais: search, offset, limit, ativo, perfilId, farmId
+ * GET  /api/pessoas?resource=perfis              → lista todos os perfis (inclui inativos com all=true)
+ * GET  /api/pessoas?resource=cargos              → lista todos os cargos (inclui inativos com all=true)
+ * POST /api/pessoas                              → criar pessoa
+ * POST /api/pessoas { action: '...' }            → sub-recursos e config (ver abaixo)
+ * PATCH /api/pessoas                             → atualizar dados da pessoa (body.id obrigatório)
+ * DELETE /api/pessoas?id=xxx                     → soft delete (ativo=false)
+ *
+ * Sub-recursos via POST body.action:
+ *   'add-perfil'           → { pessoaId, perfilId, cargoFuncaoId? }
+ *   'remove-perfil'        → { pessoaPerfilId }
+ *   'add-fazenda'          → { pessoaId, farmId }
+ *   'set-primary-fazenda'  → { pessoaId, pessoaFazendaId }
+ *   'remove-fazenda'       → { pessoaFazendaId }
+ *   'upsert-permissao'     → { pessoaId, farmId, assume_tarefas_fazenda?, pode_alterar_semana_fechada?, pode_apagar_semana? }
+ *   'create-perfil'        → { nome, descricao?, sortOrder? }        (admin only)
+ *   'update-perfil'        → { id, nome?, descricao?, ativo?, sortOrder? } (admin only)
+ *   'create-cargo'         → { nome, sortOrder? }                    (admin only)
+ *   'update-cargo'         → { id, nome?, ativo?, sortOrder? }       (admin only)
+ */
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { eq } from 'drizzle-orm';
+import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
+import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { db } from '../src/DB/index.js';
+import { userProfiles, farms as farmsTable } from '../src/DB/schema.js';
+import {
+  getPessoa,
+  listPessoas,
+  listPessoasByFarm,
+  getPermsByEmail,
+  createPessoa,
+  updatePessoa,
+  deactivatePessoa,
+  listPerfis,
+  listPerfisAll,
+  createPerfil,
+  updatePerfil,
+  listCargosFuncoes,
+  listCargosFuncoesAll,
+  createCargoFuncao,
+  updateCargoFuncao,
+  getPessoaPerfis,
+  addPessoaPerfil,
+  removePessoaPerfil,
+  getPessoaFazendas,
+  addPessoaFazenda,
+  setPrimaryFazenda,
+  removePessoaFazenda,
+  getPessoaPermissoes,
+  upsertPessoaPermissao,
+  analystCanAccessOrg,
+  analystCanAccessPessoa,
+  type CreatePessoaInput,
+  type UpdatePessoaInput,
+} from '../src/DB/repositories/pessoas.js';
+
+async function getUserRole(userId: string): Promise<string | null> {
+  const [p] = await db
+    .select({ role: userProfiles.role })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, userId))
+    .limit(1);
+  return p?.role ?? null;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setCorsHeaders(res);
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
+  const userId = await getAuthUserIdFromRequest(req);
+  if (!userId) {
+    jsonError(res, 'Não autorizado', { code: 'AUTH_MISSING_OR_INVALID_TOKEN', status: 401 });
+    return;
+  }
+
+  const role = await getUserRole(userId);
+  if (!role) {
+    jsonError(res, 'Perfil não encontrado', { code: 'AUTH_PROFILE_NOT_FOUND', status: 401 });
+    return;
+  }
+
+  const isAdmin = role === 'administrador';
+  const isAnalyst = role === 'analista' || isAdmin;
+  if (!isAnalyst) {
+    jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+    return;
+  }
+
+  // ─── GET ────────────────────────────────────────────────────────────────────
+  if (req.method === 'GET') {
+    const idParam = typeof req.query?.id === 'string' ? req.query.id : null;
+    const orgIdParam = typeof req.query?.organizationId === 'string' ? req.query.organizationId : null;
+    const resource = typeof req.query?.resource === 'string' ? req.query.resource : null;
+    const farmIdParam = typeof req.query?.farmId === 'string' ? req.query.farmId : null;
+
+    // checkPerms: verificar permissões de semana por email (compat GestaoSemanal)
+    if (req.query?.checkPerms === 'true') {
+      const email = typeof req.query?.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+      if (!email) { jsonError(res, 'email obrigatório', { status: 400 }); return; }
+      const rows = await getPermsByEmail(email);
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    // GET por farmId sem organizationId (compat lib/people.ts)
+    if (farmIdParam && !orgIdParam && !idParam && !resource) {
+      if (!isAdmin) {
+        // Resolver a organização da fazenda e checar acesso
+        const [farm] = await db.select({ organizationId: farmsTable.organizationId }).from(farmsTable).where(eq(farmsTable.id, farmIdParam)).limit(1);
+        if (!farm?.organizationId || !(await analystCanAccessOrg(userId, farm.organizationId))) {
+          jsonError(res, 'Acesso negado a esta fazenda', { code: 'FORBIDDEN', status: 403 });
+          return;
+        }
+      }
+      const assumeTarefas = req.query?.assumeTarefas === 'true';
+      const rows = await listPessoasByFarm(farmIdParam, { assumeTarefas });
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    // Recursos estáticos
+    if (resource === 'perfis') {
+      const all = req.query?.all === 'true';
+      const rows = all ? await listPerfisAll() : await listPerfis();
+      jsonSuccess(res, rows);
+      return;
+    }
+    if (resource === 'cargos') {
+      const all = req.query?.all === 'true';
+      const rows = all ? await listCargosFuncoesAll() : await listCargosFuncoes();
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    // GET por ID (com sub-recursos)
+    if (idParam) {
+      if (!isAdmin && !(await analystCanAccessPessoa(userId, idParam))) {
+        jsonError(res, 'Acesso negado a esta pessoa', { code: 'FORBIDDEN', status: 403 });
+        return;
+      }
+      const pessoa = await getPessoa(idParam);
+      if (!pessoa) {
+        jsonError(res, 'Pessoa não encontrada', { code: 'NOT_FOUND', status: 404 });
+        return;
+      }
+      const [pessoaPerfisRows, pessoaFazendasRows, pessoaPermissoesRows] = await Promise.all([
+        getPessoaPerfis(idParam),
+        getPessoaFazendas(idParam),
+        getPessoaPermissoes(idParam),
+      ]);
+      jsonSuccess(res, { ...pessoa, perfis: pessoaPerfisRows, fazendas: pessoaFazendasRows, permissoes: pessoaPermissoesRows });
+      return;
+    }
+
+    // GET lista por organização
+    if (orgIdParam) {
+      if (!isAdmin && !(await analystCanAccessOrg(userId, orgIdParam))) {
+        jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+        return;
+      }
+      const offset = Math.max(0, Number(req.query?.offset) || 0);
+      const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
+      const search = typeof req.query?.search === 'string' ? req.query.search : undefined;
+      const ativoParam = req.query?.ativo;
+      const ativo = ativoParam === 'false' ? false : ativoParam === 'true' ? true : true;
+      const perfilId = req.query?.perfilId ? Number(req.query.perfilId) : undefined;
+      const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : undefined;
+
+      const { rows, hasMore } = await listPessoas(orgIdParam, { search, ativo, offset, limit, perfilId, farmId });
+      jsonSuccess(res, rows, { offset, limit, hasMore });
+      return;
+    }
+
+    jsonError(res, 'Parâmetro id, organizationId ou resource obrigatório', { status: 400 });
+    return;
+  }
+
+  // ─── POST (criar ou sub-recursos) ─────────────────────────────────────────
+  if (req.method === 'POST') {
+    const body = req.body as Record<string, unknown>;
+    const action = typeof body?.action === 'string' ? body.action : null;
+
+    // Sub-recursos via action
+    if (action) {
+      switch (action) {
+        case 'add-perfil': {
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          const perfilId = typeof body.perfilId === 'number' ? body.perfilId : null;
+          const cargoFuncaoId = typeof body.cargoFuncaoId === 'number' ? body.cargoFuncaoId : null;
+          if (!pessoaId || !perfilId) {
+            jsonError(res, 'pessoaId e perfilId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await addPessoaPerfil(pessoaId, perfilId, cargoFuncaoId);
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'remove-perfil': {
+          const pessoaPerfilId = typeof body.pessoaPerfilId === 'string' ? body.pessoaPerfilId : null;
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          if (!pessoaPerfilId || !pessoaId) {
+            jsonError(res, 'pessoaPerfilId e pessoaId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await removePessoaPerfil(pessoaPerfilId);
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'add-fazenda': {
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          const farmId = typeof body.farmId === 'string' ? body.farmId : null;
+          if (!pessoaId || !farmId) {
+            jsonError(res, 'pessoaId e farmId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await addPessoaFazenda(pessoaId, farmId);
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'set-primary-fazenda': {
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          const pessoaFazendaId = typeof body.pessoaFazendaId === 'string' ? body.pessoaFazendaId : null;
+          if (!pessoaId || !pessoaFazendaId) {
+            jsonError(res, 'pessoaId e pessoaFazendaId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await setPrimaryFazenda(pessoaId, pessoaFazendaId);
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'remove-fazenda': {
+          const pessoaFazendaId = typeof body.pessoaFazendaId === 'string' ? body.pessoaFazendaId : null;
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          if (!pessoaFazendaId || !pessoaId) {
+            jsonError(res, 'pessoaFazendaId e pessoaId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await removePessoaFazenda(pessoaFazendaId);
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'upsert-permissao': {
+          const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
+          const farmId = typeof body.farmId === 'string' ? body.farmId : null;
+          if (!pessoaId || !farmId) {
+            jsonError(res, 'pessoaId e farmId são obrigatórios', { code: 'VALIDATION', status: 400 });
+            return;
+          }
+          if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+            jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          await upsertPessoaPermissao(pessoaId, farmId, {
+            assume_tarefas_fazenda: body.assume_tarefas_fazenda === true,
+            pode_alterar_semana_fechada: body.pode_alterar_semana_fechada === true,
+            pode_apagar_semana: body.pode_apagar_semana === true,
+          });
+          jsonSuccess(res, { ok: true });
+          return;
+        }
+
+        case 'create-perfil': {
+          if (!isAdmin) {
+            jsonError(res, 'Apenas administradores podem criar perfis', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          const nome = typeof body.nome === 'string' ? body.nome.trim() : '';
+          if (!nome) { jsonError(res, 'nome é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
+          const perfil = await createPerfil({
+            nome,
+            descricao: typeof body.descricao === 'string' ? body.descricao : null,
+            sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : 0,
+          });
+          jsonSuccess(res, perfil);
+          return;
+        }
+
+        case 'update-perfil': {
+          if (!isAdmin) {
+            jsonError(res, 'Apenas administradores podem editar perfis', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          const id = typeof body.id === 'number' ? body.id : null;
+          if (!id) { jsonError(res, 'id é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
+          const updated = await updatePerfil(id, {
+            nome: typeof body.nome === 'string' ? body.nome : undefined,
+            descricao: body.descricao !== undefined ? (typeof body.descricao === 'string' ? body.descricao : null) : undefined,
+            ativo: typeof body.ativo === 'boolean' ? body.ativo : undefined,
+            sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : undefined,
+          });
+          if (!updated) { jsonError(res, 'Perfil não encontrado', { code: 'NOT_FOUND', status: 404 }); return; }
+          jsonSuccess(res, updated);
+          return;
+        }
+
+        case 'create-cargo': {
+          if (!isAdmin) {
+            jsonError(res, 'Apenas administradores podem criar cargos', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          const nome = typeof body.nome === 'string' ? body.nome.trim() : '';
+          if (!nome) { jsonError(res, 'nome é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
+          const cargo = await createCargoFuncao({
+            nome,
+            sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : 0,
+          });
+          jsonSuccess(res, cargo);
+          return;
+        }
+
+        case 'update-cargo': {
+          if (!isAdmin) {
+            jsonError(res, 'Apenas administradores podem editar cargos', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+          const id = typeof body.id === 'number' ? body.id : null;
+          if (!id) { jsonError(res, 'id é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
+          const updated = await updateCargoFuncao(id, {
+            nome: typeof body.nome === 'string' ? body.nome : undefined,
+            ativo: typeof body.ativo === 'boolean' ? body.ativo : undefined,
+            sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : undefined,
+          });
+          if (!updated) { jsonError(res, 'Cargo não encontrado', { code: 'NOT_FOUND', status: 404 }); return; }
+          jsonSuccess(res, updated);
+          return;
+        }
+
+        default:
+          jsonError(res, `Action desconhecida: ${action}`, { code: 'VALIDATION', status: 400 });
+          return;
+      }
+    }
+
+    // Criação de pessoa
+    const data = body as Partial<CreatePessoaInput> & { organizationId?: string };
+    const fullName = typeof data.full_name === 'string' ? data.full_name.trim() : '';
+    if (!fullName) {
+      jsonError(res, 'Campo full_name é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    const orgId = data.organization_id || (typeof data.organizationId === 'string' ? data.organizationId : null);
+    if (!orgId) {
+      jsonError(res, 'Campo organization_id é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    if (!isAdmin && !(await analystCanAccessOrg(userId, orgId))) {
+      jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+      return;
+    }
+
+    try {
+      const input: CreatePessoaInput = {
+        created_by: userId,
+        full_name: fullName,
+        preferred_name: data.preferred_name ?? null,
+        phone_whatsapp: data.phone_whatsapp ?? null,
+        email: data.email ?? null,
+        location_city_uf: data.location_city_uf ?? null,
+        photo_url: data.photo_url ?? null,
+        organization_id: orgId,
+        user_id: data.user_id ?? null,
+        cpf: data.cpf ?? null,
+        rg: data.rg ?? null,
+        data_nascimento: data.data_nascimento ?? null,
+        data_contratacao: data.data_contratacao ?? null,
+        endereco: data.endereco ?? null,
+        observacoes: data.observacoes ?? null,
+      };
+      const pessoa = await createPessoa(input);
+      jsonSuccess(res, pessoa);
+    } catch (err) {
+      console.error('[pessoas POST]', err);
+      jsonError(res, 'Erro ao criar pessoa', { status: 500 });
+    }
+    return;
+  }
+
+  // ─── PATCH (atualizar) ────────────────────────────────────────────────────
+  if (req.method === 'PATCH') {
+    const body = req.body as { id?: string } & UpdatePessoaInput;
+    const pessoaId = typeof body?.id === 'string' ? body.id : null;
+    if (!pessoaId) {
+      jsonError(res, 'Campo id é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+      jsonError(res, 'Acesso negado a esta pessoa', { code: 'FORBIDDEN', status: 403 });
+      return;
+    }
+
+    const { id: _id, ...updates } = body as { id: string } & UpdatePessoaInput;
+    try {
+      const updated = await updatePessoa(pessoaId, updates);
+      if (!updated) {
+        jsonError(res, 'Pessoa não encontrada', { code: 'NOT_FOUND', status: 404 });
+        return;
+      }
+      jsonSuccess(res, updated);
+    } catch (err) {
+      console.error('[pessoas PATCH]', err);
+      jsonError(res, 'Erro ao atualizar pessoa', { status: 500 });
+    }
+    return;
+  }
+
+  // ─── DELETE (soft delete) ─────────────────────────────────────────────────
+  if (req.method === 'DELETE') {
+    const pessoaId = typeof req.query?.id === 'string' ? req.query.id : null;
+    if (!pessoaId) {
+      jsonError(res, 'Parâmetro id obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    if (!isAdmin && !(await analystCanAccessPessoa(userId, pessoaId))) {
+      jsonError(res, 'Acesso negado a esta pessoa', { code: 'FORBIDDEN', status: 403 });
+      return;
+    }
+
+    try {
+      await deactivatePessoa(pessoaId);
+      jsonSuccess(res, { id: pessoaId, ativo: false });
+    } catch (err) {
+      console.error('[pessoas DELETE]', err);
+      jsonError(res, 'Erro ao desativar pessoa', { status: 500 });
+    }
+    return;
+  }
+
+  jsonError(res, 'Método não permitido', { status: 405 });
+}

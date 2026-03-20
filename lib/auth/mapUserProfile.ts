@@ -3,7 +3,12 @@ import { logger } from '../logger';
 
 const log = logger.withContext({ component: 'mapUserProfile' });
 
-interface SupabaseProfile {
+/**
+ * Perfil retornado pela API /api/auth (tabela user_profiles do Neon).
+ * role: 'administrador' | 'analista' | 'cliente' | 'visitante'
+ * client_id é preenchido pelo endpoint GET /api/auth para role='cliente'.
+ */
+interface NeonProfile {
   id: string;
   email: string;
   name?: string;
@@ -11,11 +16,35 @@ interface SupabaseProfile {
   plan?: string;
   status?: string;
   avatar?: string;
-  last_login?: string;
-  organization_id?: string;
-  client_id?: string;
+  imageUrl?: string | null;   // camelCase — retornado pelo Drizzle ORM
+  image_url?: string | null;  // snake_case — compatibilidade legado
+  lastLogin?: string;         // camelCase — retornado pelo Drizzle ORM
+  last_login?: string;        // snake_case — compatibilidade legado
   phone?: string;
-  qualification?: string | null;
+  client_id?: string | null;  // preenchido pela API GET /api/auth para role='cliente'
+}
+
+/**
+ * Deriva (role, qualification) da app a partir do role armazenado no Neon.
+ *   administrador → role='admin', qualification='analista'
+ *   analista      → role='client', qualification='analista'
+ *   cliente       → role='client', qualification='cliente'
+ *   visitante     → role='client', qualification='visitante'
+ */
+function deriveRoleAndQualification(dbRole: string): {
+  role: 'admin' | 'client';
+  qualification: 'visitante' | 'cliente' | 'analista';
+} {
+  switch (dbRole.toLowerCase()) {
+    case 'administrador':
+      return { role: 'admin', qualification: 'analista' };
+    case 'analista':
+      return { role: 'client', qualification: 'analista' };
+    case 'cliente':
+      return { role: 'client', qualification: 'cliente' };
+    default:
+      return { role: 'client', qualification: 'visitante' };
+  }
 }
 
 export const mapUserProfile = (input: unknown): User | null => {
@@ -24,7 +53,7 @@ export const mapUserProfile = (input: unknown): User | null => {
     return null;
   }
 
-  const profile = input as SupabaseProfile;
+  const profile = input as NeonProfile;
 
   if (!profile.id) {
     log.warn('Invalid profile: missing id');
@@ -36,12 +65,7 @@ export const mapUserProfile = (input: unknown): User | null => {
     return null;
   }
 
-  const validRoles = ['admin', 'client'] as const;
-  const role = profile.role;
-  if (!role || !validRoles.includes(role as (typeof validRoles)[number])) {
-    log.warn('Invalid profile: missing or invalid role');
-    return null;
-  }
+  const { role, qualification } = deriveRoleAndQualification(profile.role ?? 'visitante');
 
   const validPlans = ['basic', 'pro', 'enterprise'] as const;
   let plan: 'basic' | 'pro' | 'enterprise' | undefined = undefined;
@@ -63,10 +87,11 @@ export const mapUserProfile = (input: unknown): User | null => {
     }
   }
 
+  const rawLastLogin = profile.lastLogin ?? profile.last_login;
   let lastLogin: string | undefined = undefined;
-  if (profile.last_login) {
+  if (rawLastLogin) {
     try {
-      const date = new Date(profile.last_login);
+      const date = new Date(rawLastLogin);
       if (!isNaN(date.getTime())) {
         lastLogin = date.toISOString();
       } else {
@@ -82,51 +107,27 @@ export const mapUserProfile = (input: unknown): User | null => {
       ? profile.name.trim()
       : profile.email.split('@')[0] || 'Usuário';
 
-  const avatar = profile.avatar && typeof profile.avatar === 'string' ? profile.avatar : name.charAt(0).toUpperCase();
-
-  let organizationId: string | undefined = undefined;
-  if (profile.organization_id) {
-    organizationId = String(profile.organization_id);
-  }
-
-  let clientId: string | undefined = undefined;
-  if (profile.client_id) {
-    clientId = String(profile.client_id);
-  }
+  const rawImageUrl = profile.imageUrl ?? profile.image_url;
+  const imageUrl = rawImageUrl && typeof rawImageUrl === 'string' ? rawImageUrl : null;
+  const avatar =
+    imageUrl ||
+    (profile.avatar && typeof profile.avatar === 'string' && profile.avatar.startsWith('http')
+      ? profile.avatar
+      : (profile.avatar as string) || name.charAt(0).toUpperCase());
 
   const phone = profile.phone && typeof profile.phone === 'string' ? profile.phone : undefined;
-
-  const validQualifications = ['visitante', 'cliente', 'analista'] as const;
-  let qualification: 'visitante' | 'cliente' | 'analista' | undefined = undefined;
-
-  if (profile.qualification !== null && profile.qualification !== undefined) {
-    const qualValue = String(profile.qualification).trim();
-    if (validQualifications.includes(qualValue as (typeof validQualifications)[number])) {
-      qualification = qualValue as 'visitante' | 'cliente' | 'analista';
-    } else {
-      // Qualificação inválida no banco: infere pelo vínculo existente para evitar
-      // que um usuário alocado a uma organização seja tratado como visitante.
-      log.warn('Invalid qualification value, inferring from client_id');
-      qualification = profile.client_id ? 'cliente' : 'visitante';
-    }
-  } else {
-    // Qualificação nula: infere pelo vínculo com organização.
-    // Evita que usuários com client_id definido entrem no fluxo de visitante.
-    qualification = profile.client_id ? 'cliente' : 'visitante';
-  }
 
   return {
     id: String(profile.id),
     name,
     email: profile.email.trim().toLowerCase(),
-    role: role as 'admin' | 'client',
+    role,
     avatar,
     plan,
     status,
     lastLogin,
-    organizationId,
-    clientId,
     phone,
     qualification,
+    clientId: profile.client_id ?? undefined,
   };
 };

@@ -61,7 +61,7 @@ export const generatePerformancePdf = (
     doc.rect(0, 0, pageWidth, 24, 'F');
 
     // Logo & Title
-    addText('PecuariA', margin, 10, 18, 'bold', [255, 255, 255]);
+    addText('Gesttor', margin, 10, 18, 'bold', [255, 255, 255]);
     addText('Diagnóstico de Performance', margin, 18, 9, 'normal', [203, 213, 225]); // slate-300
 
     // Farm Info & User

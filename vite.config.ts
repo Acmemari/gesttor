@@ -8,19 +8,18 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       port: 3000,
-      host: '0.0.0.0',
+      host: 'localhost',
       proxy: {
         // Proxy para API routes em desenvolvimento
         '/api': {
-          target: 'http://localhost:3001',
+          target: 'http://localhost:3333',
           changeOrigin: true,
           secure: false,
         },
       },
     },
     optimizeDeps: {
-      // Forçar reconstrução do cache em cada restart
-      force: true,
+      include: ['better-auth/client', '@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
     },
     plugins: [react()],
     define: {

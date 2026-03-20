@@ -13,9 +13,9 @@ import {
   Search,
 } from 'lucide-react';
 import { Client, Farm } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { mapFarmsFromDatabase } from '../lib/utils/farmMapper';
+import { getAuthHeaders } from '../lib/session';
 
 interface AnalystManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -55,64 +55,42 @@ const AnalystManagement: React.FC<AnalystManagementProps> = ({ onToast }) => {
       setIsLoading(true);
       setError(null);
 
-      // 1. Buscar apenas usuários com qualification='analista' (não incluir administradores que não são analistas)
-      const { data: analystsData, error: analystsError } = await supabase
-        .from('user_profiles')
-        .select('id, name, email')
-        .eq('qualification', 'analista')
-        .order('name', { ascending: true });
+      const headers = await getAuthHeaders();
 
-      if (analystsError) {
-        console.error('[AnalystManagement] Error loading analysts:', analystsError);
-        setError(`Erro ao carregar analistas: ${analystsError.message}`);
+      // 1. Buscar usuários com role='analista' ou 'administrador'
+      const analystsRes = await fetch('/api/admin?action=list-analysts', { headers });
+      const analystsJson = await analystsRes.json() as { ok: boolean; data?: Array<{ id: string; name: string; email: string }>; error?: string };
+      if (!analystsJson.ok) {
+        setError(`Erro ao carregar analistas: ${analystsJson.error || analystsRes.status}`);
         return;
       }
-
-      if (!analystsData || analystsData.length === 0) {
+      const analystsData = analystsJson.data ?? [];
+      if (analystsData.length === 0) {
         setAnalysts([]);
-        setIsLoading(false);
         return;
       }
 
-      // 2. Para cada analista, buscar seus clientes
+      // 2. Para cada analista, buscar suas organizações e fazendas
       const analystsWithClients = await Promise.all(
         analystsData.map(async analyst => {
-          const { data: clientsData, error: clientsError } = await supabase
-            .from('clients')
-            .select('*')
-            .eq('analyst_id', analyst.id)
-            .order('name', { ascending: true });
+          const orgsRes = await fetch(`/api/organizations?analystId=${encodeURIComponent(analyst.id)}&limit=100`, { headers });
+          const orgsJson = await orgsRes.json() as { ok: boolean; data?: Array<{ id: string; name: string; email: string; phone?: string | null }>; error?: string };
+          const orgsData = orgsJson.ok ? (orgsJson.data ?? []) : [];
 
-          if (clientsError) {
-            console.error(`[AnalystManagement] Error loading clients for analyst ${analyst.id}:`, clientsError);
-            return {
-              ...analyst,
-              clients: [],
-            };
-          }
-
-          // 3. Para cada cliente, buscar suas fazendas
           const clientsWithFarms = await Promise.all(
-            (clientsData || []).map(async client => {
-              // Fonte canônica: farms.client_id
-              const { data: farmsData, error: farmsError } = await supabase
-                .from('farms')
-                .select('*')
-                .eq('client_id', client.id)
-                .order('name', { ascending: true });
-
-              if (farmsError) {
-                console.error(`[AnalystManagement] Error loading farms for client ${client.id}:`, farmsError);
-                return {
-                  ...client,
-                  farms: [],
-                };
-              }
-
-              const farms = farmsData ? mapFarmsFromDatabase(farmsData) : [];
-
+            orgsData.map(async org => {
+              const farmsRes = await fetch(`/api/farms?organizationId=${encodeURIComponent(org.id)}&limit=100`, { headers });
+              const farmsJson = await farmsRes.json() as { ok: boolean; data?: unknown[]; error?: string };
+              const farmsData = farmsJson.ok ? (farmsJson.data ?? []) : [];
+              const farms = mapFarmsFromDatabase(farmsData as any[]);
               return {
-                ...client,
+                id: org.id,
+                name: org.name,
+                email: org.email || '',
+                phone: org.phone || '',
+                analystId: analyst.id,
+                createdAt: '',
+                updatedAt: '',
                 farms,
               } as ClientData;
             }),

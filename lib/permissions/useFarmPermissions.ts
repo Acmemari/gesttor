@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
-import { supabase } from '../supabase';
+import { fetchFarmPermissions, fetchFarmPermissionsBatch } from '../api/permissionsClient';
 import type { PermissionLevel } from './permissionKeys';
 import { DEFAULT_PERMISSIONS } from './permissionKeys';
 import { logger } from '../logger';
@@ -20,7 +20,7 @@ export const FULL_ACCESS: FarmPermissionsResult = {
   hasAccess: true,
 };
 
-/** Sem acesso (analista sem registro em analyst_farms). Referencia estavel. */
+/** Sem acesso (analista sem vínculo com a organização da fazenda). Referencia estavel. */
 export const NO_ACCESS: FarmPermissionsResult = {
   permissions: { ...DEFAULT_PERMISSIONS },
   canView: () => false,
@@ -111,8 +111,9 @@ export interface FarmPermissionsResult {
 /**
  * Hook para obter permissões do analista em relação a uma fazenda.
  * - Admin (userRole === 'admin'): retorna FULL_ACCESS imediatamente, sem query
- * - Analista com registro em analyst_farms: usa permissions do registro
- * - Analista sem registro: sem acesso (isHidden true para tudo)
+ * - Analista principal da organização: retorna FULL_ACCESS (is_responsible=true)
+ * - Analista secundário da organização: usa permissions de organization_analysts
+ * - Analista sem vínculo com a organização: sem acesso (isHidden true para tudo)
  */
 export function useFarmPermissions(
   farmId: string | null | undefined,
@@ -135,25 +136,20 @@ export function useFarmPermissions(
     let cancelled = false;
 
     const load = async () => {
-      const { data, error } = await supabase
-        .from('analyst_farms')
-        .select('permissions, is_responsible')
-        .eq('farm_id', farmId)
-        .eq('analyst_id', userId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (error) {
-        log.error('Error loading analyst_farms', new Error(error.message));
-        setAnalystFarm(null);
-      } else if (data) {
-        const perms = (data.permissions as Record<string, string>) || {};
-        setAnalystFarm({
-          permissions: perms,
-          is_responsible: data.is_responsible ?? false,
-        });
-      } else {
+      try {
+        const data = await fetchFarmPermissions(farmId);
+        if (cancelled) return;
+        if (data) {
+          setAnalystFarm({
+            permissions: data.permissions || {},
+            is_responsible: data.is_responsible ?? false,
+          });
+        } else {
+          setAnalystFarm(null);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        log.error('Error loading farm permissions', err instanceof Error ? err : new Error(String(err)));
         setAnalystFarm(null);
       }
       setIsLoading(false);
@@ -201,23 +197,20 @@ export function useBatchFarmPermissions(
 
     let cancelled = false;
     const load = async () => {
-      const { data, error } = await supabase.rpc('get_farm_permissions_batch', {
-        p_farm_ids: stableIds,
-        p_user_id: userId,
-      });
-
-      if (cancelled) return;
-      if (error) {
-        log.error('useBatchFarmPermissions error', new Error(error.message));
-        setRows([]);
-      } else {
+      try {
+        const data = await fetchFarmPermissionsBatch(stableIds);
+        if (cancelled) return;
         setRows(
-          (data ?? []).map((r: { farm_id: string; is_responsible: boolean; permissions: unknown }) => ({
+          data.map(r => ({
             farm_id: r.farm_id,
             is_responsible: r.is_responsible ?? false,
-            permissions: (r.permissions as Record<string, string>) ?? {},
+            permissions: r.permissions ?? {},
           })),
         );
+      } catch (err) {
+        if (cancelled) return;
+        log.error('useBatchFarmPermissions error', err instanceof Error ? err : new Error(String(err)));
+        setRows([]);
       }
       setIsLoading(false);
     };

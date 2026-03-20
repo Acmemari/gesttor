@@ -53,7 +53,7 @@ export const QuestionnaireResultsPrintView: React.FC<QuestionnaireResultsPrintVi
                 <FileText size={14} />
                 Diagnóstico de Alta Performance
               </div>
-              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-2">PecuarIA</h1>
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-2">Gesttor</h1>
               <div className="flex flex-wrap gap-5 text-slate-400 text-sm">
                 <span className="flex items-center gap-1.5">
                   <MapPin size={16} /> {questionnaire.farm_name || 'Fazenda não identificada'}
@@ -292,7 +292,7 @@ export const QuestionnaireResultsPrintView: React.FC<QuestionnaireResultsPrintVi
             <div className="w-6 h-6 bg-slate-800 rounded flex items-center justify-center text-white font-bold text-[10px]">
               P
             </div>
-            <span>PecuarIA Inteligência Animal &copy; {new Date().getFullYear()}</span>
+            <span>Gesttor Inteligência Animal &copy; {new Date().getFullYear()}</span>
           </div>
           <div className="italic text-slate-300">
             Documento gerado eletronicamente para fins de consultoria técnica.

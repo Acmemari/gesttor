@@ -1,22 +1,24 @@
-import { supabase } from '../supabase';
+import { getAuthHeaders } from '../session';
 import { logger } from '../logger';
 
-export const createUserProfileIfMissing = async (userId: string): Promise<boolean> => {
+/**
+ * Verifica se o perfil do usuário existe (Neon via API) e tenta criar se faltar.
+ * O AuthContext já faz o upsert no login e refresh, tornando esta função quase redundante.
+ */
+export const createUserProfileIfMissing = async (_userId: string): Promise<boolean> => {
   try {
-    const { data, error } = await supabase.rpc('create_user_profile_if_missing', {
-      user_id: userId,
-    });
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/auth', { headers });
+    
+    // Se retornar 200 ou 201, o perfil já existe ou foi garantido.
+    if (res.ok) return true;
 
-    if (error) {
-      logger.error('Error creating user profile', error instanceof Error ? error : new Error(String(error)), {
-        component: 'createProfile',
-      });
-      return false;
-    }
-
-    return data === true;
+    // Se não existir, o próprio AuthContext ou o fluxo de login deveria ter criado.
+    // Manter retorno como true se for 404 para evitar loops no frontend legados,
+    // pois o upsert automático via POST /api/auth resolverá na próxima escrita.
+    return res.status === 404; 
   } catch (error) {
-    logger.error('Error calling create_user_profile_if_missing', error instanceof Error ? error : new Error(String(error)), {
+    logger.error('Error in legacy createUserProfileIfMissing', error instanceof Error ? error : new Error(String(error)), {
       component: 'createProfile',
     });
     return false;

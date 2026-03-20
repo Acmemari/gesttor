@@ -339,7 +339,7 @@ export function generateReportPDF(data: PDFReportData): void {
   const footerY = pageHeight - margin - 5;
   doc.setFontSize(8);
   doc.setTextColor(128, 128, 128);
-  doc.text('Gerado por PecuarIA - Calculadora de Resultado Pecuário', pageWidth / 2, footerY, { align: 'center' });
+  doc.text('Gerado por Gesttor - Calculadora de Resultado Pecuário', pageWidth / 2, footerY, { align: 'center' });
 
   // Save PDF
   const fileName = scenarioName
@@ -718,7 +718,7 @@ function buildComparatorDoc(data: ComparatorPDFData): jsPDF {
   const footerY = pageHeight - margin - 5;
   doc.setFontSize(8);
   doc.setTextColor(128, 128, 128);
-  doc.text('Gerado por PecuarIA - Calculadora de Resultado Pecuário', pageWidth / 2, footerY, { align: 'center' });
+  doc.text('Gerado por Gesttor - Calculadora de Resultado Pecuário', pageWidth / 2, footerY, { align: 'center' });
 
   return doc;
 }

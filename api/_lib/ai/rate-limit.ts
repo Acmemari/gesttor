@@ -1,4 +1,5 @@
-import { supabaseAdmin } from '../supabaseAdmin.js';
+import { db, planLimits, rateLimits } from '../../../src/DB/index.js';
+import { eq, and } from 'drizzle-orm';
 import type { PlanId } from './types.js';
 
 export interface RateLimitCheckResult {
@@ -15,10 +16,11 @@ interface PlanLimitRates {
 
 const WINDOW_MS = 60_000;
 
-function floorToMinute(date = new Date()): string {
+function floorToMinute(date = new Date()): Date {
   const d = new Date(date);
   d.setUTCSeconds(0, 0);
-  return d.toISOString();
+  d.setUTCMilliseconds(0);
+  return d;
 }
 
 function remainingWindowMs(now = Date.now()): number {
@@ -27,14 +29,23 @@ function remainingWindowMs(now = Date.now()): number {
 }
 
 async function getPlanRates(plan: PlanId): Promise<PlanLimitRates> {
-  const { data, error } = await supabaseAdmin
-    .from('plan_limits')
-    .select('max_requests_per_minute_org, max_requests_per_minute_user')
-    .eq('plan_id', plan)
-    .single();
+  const [data] = await db
+    .select({
+      max_requests_per_minute_org: planLimits.maxRequestsPerMinuteOrg,
+      max_requests_per_minute_user: planLimits.maxRequestsPerMinuteUser,
+    })
+    .from(planLimits)
+    .where(eq(planLimits.planId, plan))
+    .limit(1);
 
-  if (error || !data) {
-    throw new Error(`Failed to load plan rates for "${plan}": ${error?.message ?? 'not found'}`);
+  if (!data) {
+    console.warn(`[rate-limit] plan_limits not found for "${plan}", using hardcoded defaults`);
+    const defaults: Record<string, PlanLimitRates> = {
+      basic:      { max_requests_per_minute_org: 20,  max_requests_per_minute_user: 10  },
+      pro:        { max_requests_per_minute_org: 60,  max_requests_per_minute_user: 30  },
+      enterprise: { max_requests_per_minute_org: 200, max_requests_per_minute_user: 100 },
+    };
+    return defaults[plan] ?? defaults['basic'];
   }
 
   return {
@@ -43,40 +54,40 @@ async function getPlanRates(plan: PlanId): Promise<PlanLimitRates> {
   };
 }
 
-async function getCountForKey(key: string, windowStart: string): Promise<number> {
-  const { data, error } = await supabaseAdmin
-    .from('rate_limits')
-    .select('request_count')
-    .eq('key', key)
-    .eq('window_start', windowStart)
-    .maybeSingle();
+async function getCountForKey(key: string, windowStart: Date): Promise<number> {
+  const [data] = await db
+    .select({
+      request_count: rateLimits.requestCount,
+    })
+    .from(rateLimits)
+    .where(and(eq(rateLimits.key, key), eq(rateLimits.windowStart, windowStart)))
+    .limit(1);
 
-  if (error) throw new Error(`Failed to read rate limit counter: ${error.message}`);
-  return Number(data?.request_count ?? 0);
+  return data?.request_count ?? 0;
 }
 
-async function incrementCounter(key: string, windowStart: string): Promise<number> {
+async function incrementCounter(key: string, windowStart: Date): Promise<number> {
   const current = await getCountForKey(key, windowStart);
 
   if (current === 0) {
-    const { error: insertError } = await supabaseAdmin.from('rate_limits').insert({
-      key,
-      window_start: windowStart,
-      request_count: 1,
-    });
-
-    if (!insertError) return 1;
-    // If conflict due to race, continue to update path below.
+    try {
+      await db.insert(rateLimits).values({
+        key,
+        windowStart,
+        requestCount: 1,
+      });
+      return 1;
+    } catch {
+      // Conflict race, fallback to update
+    }
   }
 
   const next = current + 1;
-  const { error: updateError } = await supabaseAdmin
-    .from('rate_limits')
-    .update({ request_count: next })
-    .eq('key', key)
-    .eq('window_start', windowStart);
+  await db
+    .update(rateLimits)
+    .set({ requestCount: next })
+    .where(and(eq(rateLimits.key, key), eq(rateLimits.windowStart, windowStart)));
 
-  if (updateError) throw new Error(`Failed to increment rate limit counter: ${updateError.message}`);
   return next;
 }
 
