@@ -173,7 +173,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await authClient.signUp.email({ email, password, name });
 
       if (result.error) {
-        const msg = result.error.message || result.error.statusText || 'Erro ao criar conta';
+        let msg = result.error.message || result.error.statusText || 'Erro ao criar conta';
+        const lower = msg.toLowerCase();
+        if (
+          lower.includes('already') ||
+          lower.includes('exist') ||
+          lower.includes('registered') ||
+          result.error.code === 'USER_ALREADY_EXISTS'
+        ) {
+          msg = 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.';
+        }
         log.error('signUp error', new Error(msg), { code: result.error.code, status: result.error.status });
         return { success: false, error: msg };
       }

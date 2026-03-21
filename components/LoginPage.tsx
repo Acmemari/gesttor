@@ -64,7 +64,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
       const result = await signup(email, password, name, phone, organizationName);
 
       if (!result.success) {
-        setLoginError(result.error || 'Erro ao criar conta. Tente novamente.');
+        const errMsg = result.error || '';
+        const isEmailTaken = errMsg.toLowerCase().includes('already') || errMsg.toLowerCase().includes('exist') || errMsg.toLowerCase().includes('registered');
+        setLoginError(isEmailTaken ? 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.' : errMsg || 'Erro ao criar conta. Tente novamente.');
         setIsSubmitting(false);
         return;
       }
