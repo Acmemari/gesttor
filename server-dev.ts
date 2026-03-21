@@ -67,9 +67,9 @@ function createVercelAdapter(req: Request, res: Response) {
       headers.forEach((v, k) => res.setHeader(k, v));
       res.status(statusCode).json(data);
     },
-    end() {
+    end(data?: string) {
       headers.forEach((v, k) => res.setHeader(k, v));
-      res.status(statusCode).end();
+      res.status(statusCode).end(data);
     },
   } as unknown as VercelResponse;
 

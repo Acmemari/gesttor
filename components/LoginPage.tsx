@@ -77,7 +77,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
 
       if (!result.success) {
         // DEFINIR ERRO E PARAR
-        setLoginError('Email ou senha incorretos. Verifique suas credenciais.');
+        setLoginError(result.error || 'Email ou senha incorretos. Verifique suas credenciais.');
         setIsSubmitting(false);
         return; // NÃO CONTINUA
       }
