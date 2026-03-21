@@ -45,6 +45,7 @@ app.get('/', (_req, res) => {
 function createVercelAdapter(req: Request, res: Response) {
   const vercelReq = {
     method: req.method,
+    url: req.originalUrl,
     body: req.body,
     headers: req.headers,
     query: req.query,
@@ -120,6 +121,11 @@ app.post('/api/agents-run', (req, res) => {
 
 app.post('/api/storage', (req, res) => {
   handleApiRoute('./api/storage.ts', req, res);
+});
+
+// Better Auth — catch-all para /api/auth/*
+app.all('/api/auth/*', (req, res) => {
+  handleApiRoute('./api/auth/catchAll.ts', req, res);
 });
 
 app.listen(PORT, () => {
