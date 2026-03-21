@@ -84,7 +84,10 @@ async function handleApiRoute(routePath: string, req: Request, res: Response) {
     await handler(vercelReq, vercelRes);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erro interno no servidor de desenvolvimento';
-    console.error(`[server-dev] Erro ${req.path}:`, message);
+    console.error(`[server-dev] ❌ Erro ${req.method} ${req.path}:`, message);
+    if (error instanceof Error && error.stack) {
+      console.error('[server-dev] Stack:', error.stack);
+    }
     if (!res.headersSent) {
       res.status(500).json({ error: message });
     }
@@ -123,8 +126,13 @@ app.post('/api/storage', (req, res) => {
   handleApiRoute('./api/storage.ts', req, res);
 });
 
+// Perfil de usuário — /api/auth (exato, sem subpath)
+app.all('/api/auth', (req, res) => {
+  handleApiRoute('./api/auth.ts', req, res);
+});
+
 // Better Auth — catch-all para /api/auth/*
-app.all('/api/auth/*', (req, res) => {
+app.all('/api/auth/*path', (req, res) => {
   handleApiRoute('./api/auth/catchAll.ts', req, res);
 });
 
