@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Mail, ArrowRight, Loader2, User, Building2, Phone } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Loader2, User, Building2, Phone, Eye, EyeOff } from 'lucide-react';
 import { APP_VERSION } from '../src/version';
 import { formatPhone, validatePhone } from '../lib/utils/phoneMask';
 
@@ -21,6 +21,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,6 +134,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 setName('');
                 setPhone('');
                 setOrganizationName('');
+                setShowPassword(false);
+                setShowConfirmPassword(false);
               }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
                 !isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -146,6 +150,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 setLoginError('');
                 setPassword('');
                 setConfirmPassword('');
+                setShowPassword(false);
+                setShowConfirmPassword(false);
               }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
                 isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -240,14 +246,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                   <Lock size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={e => {
                     setPassword(e.target.value);
                     if (loginError) setLoginError('');
                   }}
-                  className={`block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-500 transition-all outline-none ${
+                  className={`block w-full pl-10 sm:pl-11 pr-10 sm:pr-11 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-500 transition-all outline-none ${
                     isSignup && password && !passwordLengthValid
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                       : 'border-gray-200 focus:border-gray-500'
@@ -255,6 +261,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                   placeholder={isSignup ? 'Mínimo 6 caracteres' : '••••••••'}
                   minLength={isSignup ? 6 : undefined}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 sm:pr-3.5 flex items-center text-gray-400 hover:text-gray-600 outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff size={16} className="sm:w-[18px] sm:h-[18px]" />
+                  ) : (
+                    <Eye size={16} className="sm:w-[18px] sm:h-[18px]" />
+                  )}
+                </button>
               </div>
             </div>
 
@@ -273,11 +290,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                       <Lock size={16} className="sm:w-[18px] sm:h-[18px]" />
                     </div>
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       required={isSignup}
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className={`block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 transition-all outline-none ${
+                      className={`block w-full pl-10 sm:pl-11 pr-10 sm:pr-11 py-2 bg-gray-50 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 transition-all outline-none ${
                         confirmPassword && !passwordsMatch
                           ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                           : confirmPassword && passwordsMatch
@@ -286,6 +303,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                       }`}
                       placeholder="Digite a senha novamente"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 sm:pr-3.5 flex items-center text-gray-400 hover:text-gray-600 outline-none"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff size={16} className="sm:w-[18px] sm:h-[18px]" />
+                      ) : (
+                        <Eye size={16} className="sm:w-[18px] sm:h-[18px]" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
