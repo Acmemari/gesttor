@@ -73,8 +73,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone));
+          // Clonar ANTES de qualquer operação assíncrona (body só pode ser lido uma vez)
+          try {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone)).catch(() => {});
+          } catch (_) {}
           return response;
         })
         .catch(() => caches.match('/index.html').then(r => r || caches.match('/'))),
