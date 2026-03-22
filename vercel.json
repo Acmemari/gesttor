@@ -14,5 +14,8 @@
       ]
     }
   ],
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/auth/(.*)", "destination": "/api/auth/catchAll" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
