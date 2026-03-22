@@ -19,7 +19,22 @@ export default async function catchAllHandler(req: VercelRequest, res: VercelRes
   try {
     // Construir a URL completa para o Better Auth
     const baseURL = process.env.BETTER_AUTH_URL ?? 'http://localhost:3333';
-    const url = `${baseURL}${req.url ?? '/api/auth'}`;
+    
+    // Recuperar o path original passado via query param pelo vercel.json rewrite
+    let originalPath = req.url ?? '/api/auth';
+    if (originalPath.includes('?path=')) {
+      try {
+        const parsedUrl = new URL(`http://localhost${originalPath}`);
+        const pathParam = parsedUrl.searchParams.get('path');
+        if (pathParam) {
+          originalPath = `/api/auth/${pathParam}`;
+        }
+      } catch (e) {
+        // Ignora erros de parse na URL
+      }
+    }
+    
+    const url = `${baseURL}${originalPath}`;
 
     // Converter headers do Vercel para o formato Headers da Fetch API
     const SKIP_HEADERS = new Set(['host', 'transfer-encoding', 'connection']);
