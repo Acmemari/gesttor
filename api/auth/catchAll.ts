@@ -8,19 +8,21 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { auth } from '../_lib/auth.js';
+import { toNodeHandler } from 'better-auth/node';
 
+// Importante: Desativar bodyParser para não quebrar streams de requisições POST
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
+const nodeHandler = toNodeHandler(auth);
+
 export default async function catchAllHandler(req: VercelRequest, res: VercelResponse): Promise<void> {
   try {
-    // Construir a URL completa para o Better Auth
-    const baseURL = process.env.BETTER_AUTH_URL ?? 'http://localhost:3333';
-    
-    // Recuperar o path original passado via query param pelo vercel.json rewrite
+    // 1. A Vercel reescreveu a URL via vercel.json, o que muda req.url para /api/auth/catchAll
+    // Nossa regra adiciona o caminho original no parâmetro `?path=`. Vamos reconstruir o original.
     let originalPath = req.url ?? '/api/auth';
     if (originalPath.includes('?path=')) {
       try {
@@ -33,70 +35,17 @@ export default async function catchAllHandler(req: VercelRequest, res: VercelRes
         // Ignora erros de parse na URL
       }
     }
-    
-    const url = `${baseURL}${originalPath}`;
 
-    // Converter headers do Vercel para o formato Headers da Fetch API
-    const SKIP_HEADERS = new Set(['content-length', 'host', 'transfer-encoding', 'connection']);
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (value !== undefined && !SKIP_HEADERS.has(key.toLowerCase())) {
-        if (Array.isArray(value)) {
-          headers.set(key, value.join(', '));
-        } else {
-          headers.set(key, value);
-        }
-      }
-    }
+    // 2. Modifica o req para o Better Auth enxergar exatamente a rota que ele espera (ex: /api/auth/sign-in/email)
+    req.url = originalPath;
 
-    // Ler body raw da requisição
-    let rawBody: Buffer | undefined;
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-      }
-      rawBody = Buffer.concat(chunks);
-    }
-
-    const bodyString = rawBody && rawBody.length > 0 ? rawBody.toString('utf-8') : undefined;
-
-    // Criar Request padrão da Fetch API para o Better Auth
-    const request = new Request(url, {
-      method: req.method ?? 'GET',
-      headers,
-      body: bodyString,
-    });
-
-    // Invocar o handler do Better Auth
-    const response = await auth.handler(request);
-
-    // Logging de erro manual
-    if (response.status >= 400) {
-      const clone = response.clone();
-      const errText = await clone.text().catch(() => 'no text');
-      console.error(`[catchAll] BA error ${response.status} for ${req.method} ${req.url}:`, errText);
-    }
-
-    // Copiar status HTTP
-    res.status(response.status);
-
-    // Copiar headers da resposta
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'transfer-encoding') {
-        res.setHeader(key, value);
-      }
-    });
-
-    // Copiar body da resposta
-    const responseText = await response.text();
-    res.end(responseText);
+    // 3. O toNodeHandler faz TODA a abstração de Converter Request Node -> Fetch -> Request Node
+    await nodeHandler(req, res);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    console.error('[catchAll] Unhandled error:', message, stack);
+    console.error('[catchAll] Falha não tratada no handler:', err);
     if (!res.headersSent) {
-      res.status(500).json({ error: message, stack: process.env.NODE_ENV !== 'production' ? stack : undefined });
+      res.status(500).json({ error: message, fallback: 'Internal catchAll error' });
     }
   }
 }
