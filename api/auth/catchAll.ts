@@ -37,7 +37,7 @@ export default async function catchAllHandler(req: VercelRequest, res: VercelRes
     const url = `${baseURL}${originalPath}`;
 
     // Converter headers do Vercel para o formato Headers da Fetch API
-    const SKIP_HEADERS = new Set(['host', 'transfer-encoding', 'connection']);
+    const SKIP_HEADERS = new Set(['content-length', 'host', 'transfer-encoding', 'connection']);
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
       if (value !== undefined && !SKIP_HEADERS.has(key.toLowerCase())) {
@@ -59,11 +59,13 @@ export default async function catchAllHandler(req: VercelRequest, res: VercelRes
       rawBody = Buffer.concat(chunks);
     }
 
+    const bodyString = rawBody && rawBody.length > 0 ? rawBody.toString('utf-8') : undefined;
+
     // Criar Request padrão da Fetch API para o Better Auth
     const request = new Request(url, {
       method: req.method ?? 'GET',
       headers,
-      body: rawBody && rawBody.length > 0 ? rawBody : undefined,
+      body: bodyString,
     });
 
     // Invocar o handler do Better Auth
