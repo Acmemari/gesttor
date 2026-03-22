@@ -73,16 +73,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
       setIsSubmitting(false);
     } else {
       // Login flow - SIMPLES
-      const result = await login(email, password);
+      try {
+        const result = await login(email, password);
 
-      if (!result.success) {
-        // DEFINIR ERRO E PARAR
-        setLoginError('Email ou senha incorretos. Verifique suas credenciais.');
+        if (!result.success) {
+          setLoginError(result.error || 'Email ou senha incorretos. Verifique suas credenciais.');
+          setIsSubmitting(false);
+          return;
+        }
+        // Login bem sucedido - AuthContext vai redirecionar
         setIsSubmitting(false);
-        return; // NÃO CONTINUA
+      } catch {
+        setLoginError('Erro de conexão. Verifique sua internet e tente novamente.');
+        setIsSubmitting(false);
       }
-      // Login bem sucedido - AuthContext vai redirecionar
-      setIsSubmitting(false);
     }
   };
 
@@ -107,7 +111,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
         {/* Logo Section */}
         <div className="flex flex-col items-center mb-3 sm:mb-4">
           <h1 className="text-lg sm:text-xl font-bold tracking-tight">Gesttor</h1>
-          <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">Calculadora de resultados para a pecuária</p>
+          <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">Calculadora de resultados para gestão de precisão</p>
           <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">@ntonio_chaker_</p>
           <p className="text-ai-subtext text-[10px] sm:text-xs">antonio@inttegra.com</p>
           <p className="text-ai-subtext text-[9px] sm:text-[10px] font-medium tracking-wide">v{APP_VERSION} SaaS</p>
@@ -198,7 +202,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                     if (loginError) setLoginError('');
                   }}
                   className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-blue-50/60 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
-                  placeholder="exemplo@gesttor.com"
+                  placeholder="exemplo@gesttor.app"
                 />
               </div>
             </div>

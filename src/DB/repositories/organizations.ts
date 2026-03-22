@@ -1,6 +1,6 @@
 import { eq, ilike, and, ne } from 'drizzle-orm';
 import { db } from '../index.js';
-import { organizations, organizationAnalysts, clientDocuments, userProfiles } from '../schema.js';
+import { organizations, organizationAnalysts, organizationOwners, clientDocuments, userProfiles } from '../schema.js';
 import { randomUUID } from 'crypto';
 
 export type OrgOwnerInput = {
@@ -74,9 +74,28 @@ export async function deactivateOrganization(id: string) {
   return row;
 }
 
-export async function saveOrganizationOwners(_orgId: string, _owners: OrgOwnerInput[]) {
-  // Organizations use a separate owners table linked via clientOwners.
-  // Callers that need owner persistence should handle via clientOwners directly.
+export async function saveOrganizationOwners(orgId: string, owners: OrgOwnerInput[]) {
+  await db.delete(organizationOwners).where(eq(organizationOwners.organizationId, orgId));
+  const valid = owners.filter(o => o.name?.trim());
+  if (valid.length === 0) return;
+  await db.insert(organizationOwners).values(
+    valid.map((o, i) => ({
+      organizationId: orgId,
+      name: o.name.trim(),
+      email: o.email ?? null,
+      phone: o.phone ?? null,
+      cpf: o.cpf ?? null,
+      sortOrder: i,
+    })),
+  );
+}
+
+export async function getOrganizationOwners(orgId: string) {
+  return db
+    .select()
+    .from(organizationOwners)
+    .where(eq(organizationOwners.organizationId, orgId))
+    .orderBy(organizationOwners.sortOrder);
 }
 
 export async function getOrganizationDocuments(_orgId: string) {

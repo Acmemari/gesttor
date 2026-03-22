@@ -3,7 +3,7 @@
  * Versão do cache - atualizar quando necessário invalidar cache
  */
 const CACHE_VERSION = 'v5';
-const CACHE_NAME = `pecuaria-cache-${CACHE_VERSION}`;
+const CACHE_NAME = `gesttor-cache-${CACHE_VERSION}`;
 
 // Recursos estáticos para cache
 const STATIC_ASSETS = ['/'];

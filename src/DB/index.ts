@@ -22,10 +22,17 @@ function init(): { pool: Pool; db: ReturnType<typeof drizzle<typeof schema>> } {
     throw new Error('[DB] DATABASE_URL não está definido. Verifique .env / .env.local');
   }
 
+  // Append sslmode=verify-full to suppress pg-connection-string SSL warning
+  const connStr = connectionString.includes('sslmode=')
+    ? connectionString
+    : connectionString + (connectionString.includes('?') ? '&' : '?') + 'sslmode=verify-full';
+
   _pool = new Pool({
-    connectionString,
+    connectionString: connStr,
     ssl: { rejectUnauthorized: false },
     max: 10,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
   });
 
   _db = drizzle(_pool, { schema });

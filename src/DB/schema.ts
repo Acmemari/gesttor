@@ -60,6 +60,20 @@ export const baVerification = pgTable('ba_verification', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// ── Organization Owners ────────────────────────────────────────────────────────
+
+export const organizationOwners = pgTable('organization_owners', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  email: text('email'),
+  phone: text('phone'),
+  cpf: text('cpf'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ── Clients ────────────────────────────────────────────────────────────────────
 
 export const clients = pgTable('clients', {

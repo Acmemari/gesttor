@@ -1,4 +1,4 @@
-import { eq, and, ilike, or } from 'drizzle-orm';
+import { eq, and, ilike, or, exists } from 'drizzle-orm';
 import { db } from '../index.js';
 import { farms, organizations, userProfiles, analystFarms, organizationAnalysts } from '../schema.js';
 
@@ -116,7 +116,18 @@ export async function getOrganizations(params: {
 
   const conditions: ReturnType<typeof eq>[] = [];
   if (!includeInactive) conditions.push(eq(organizations.ativo, true));
-  if (analystId) conditions.push(eq(organizations.analystId, analystId));
+  if (analystId) conditions.push(
+    or(
+      eq(organizations.analystId, analystId),
+      exists(
+        db.select().from(organizationAnalysts)
+          .where(and(
+            eq(organizationAnalysts.organizationId, organizations.id),
+            eq(organizationAnalysts.analystId, analystId),
+          ))
+      ),
+    ) as ReturnType<typeof eq>,
+  );
   if (organizationId) conditions.push(eq(organizations.id, organizationId));
   if (search) conditions.push(ilike(organizations.name, `%${search}%`));
 
@@ -129,6 +140,40 @@ export async function getOrganizations(params: {
   return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
-export async function validateHierarchy(_params: unknown) {
-  return { valid: true };
+export async function validateHierarchy(params: {
+  analystId?: string | null;
+  clientId?: string | null;
+  farmId?: string | null;
+}): Promise<{ analyst_valid: boolean; client_valid: boolean; farm_valid: boolean }> {
+  const { analystId, clientId, farmId } = params;
+
+  let analyst_valid = false;
+  let client_valid = false;
+  let farm_valid = false;
+
+  if (analystId) {
+    const [row] = await db.select({ id: userProfiles.id })
+      .from(userProfiles)
+      .where(and(eq(userProfiles.id, analystId), eq(userProfiles.role, 'analista')))
+      .limit(1);
+    analyst_valid = !!row;
+  }
+
+  if (clientId) {
+    const [row] = await db.select({ id: organizations.id })
+      .from(organizations)
+      .where(and(eq(organizations.id, clientId), eq(organizations.ativo, true)))
+      .limit(1);
+    client_valid = !!row;
+  }
+
+  if (farmId) {
+    const [row] = await db.select({ id: farms.id })
+      .from(farms)
+      .where(and(eq(farms.id, farmId), eq(farms.ativo, true)))
+      .limit(1);
+    farm_valid = !!row;
+  }
+
+  return { analyst_valid, client_valid, farm_valid };
 }

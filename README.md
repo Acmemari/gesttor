@@ -106,9 +106,6 @@ O projeto utiliza as seguintes variáveis de ambiente:
   - `VITE_SUPABASE_ANON_KEY` - Chave anônima do Supabase (obrigatória)
 
 - **Backend (Vercel Serverless Functions):**
-  - `N8N_WEBHOOK_URL` - URL do webhook n8n para processamento do chat (obrigatória)
-
-**Importante:** Configure `N8N_WEBHOOK_URL` nas variáveis de ambiente do Vercel para que o chat funcione em produção.
 
 ### Integração n8n Webhook
 

@@ -1,24 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
-import { getEnv } from './env';
-
-// Valida e obtém variáveis de ambiente
-const env = getEnv();
-
-export const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
+/**
+ * DEPRECATED: This file only exists to satisfy outdated tests that mock it.
+ * Do not import or use this file in application code.
+ * The @supabase/supabase-js dependency has been removed.
+ */
+export const supabase = {
   auth: {
-    flowType: 'pkce',
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+    getSession: async () => ({ data: { session: null }, error: null })
   },
-  global: {
-    headers: {
-      'x-client-info': 'pecuaria-web',
-    },
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 20,
-    },
-  },
-});
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        order: async () => ({ data: [], error: null }),
+        single: async () => ({ data: null, error: null })
+      })
+    })
+  })
+} as any;

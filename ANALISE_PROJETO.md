@@ -1,4 +1,4 @@
-# Análise Completa do Projeto Pecuária
+# Análise Completa do Projeto Gesttor
 
 **Data da Análise:** 2025-01-27  
 **Versão do Projeto:** 1.3 SaaS
@@ -7,7 +7,7 @@
 
 ## 📋 Visão Geral
 
-O **Pecuária** é uma aplicação SaaS (Software as a Service) voltada para o setor pecuário, oferecendo ferramentas de análise econômica, consultoria virtual e gestão de rebanho. A aplicação utiliza React, TypeScript, Supabase para backend e OpenAI Assistant para o chat.
+O **Gesttor** é uma aplicação SaaS (Software as a Service) voltada para o setor pecuário, oferecendo ferramentas de análise econômica, consultoria virtual e gestão de rebanho. A aplicação utiliza React, TypeScript, Supabase para backend e OpenAI Assistant para o chat.
 
 ### Propósito Principal
 
@@ -288,7 +288,6 @@ GEMINI_API_KEY=optional-key
 #### Backend (Vercel)
 
 ```env
-N8N_WEBHOOK_URL=https://pecuaria-n8n.tcvxzi.easypanel.host/webhook/fala-antonio
 SUPABASE_SERVICE_ROLE_KEY=service-role-key (opcional)
 ```
 

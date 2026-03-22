@@ -31,6 +31,7 @@ import {
   removeOrgAnalyst,
   updateOrgAnalystPermissions,
   listAvailableAnalysts,
+  getOrganizationOwners,
   type OrgOwnerInput,
 } from '../src/DB/repositories/organizations.js';
 
@@ -129,7 +130,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
         return;
       }
-      jsonSuccess(res, org);
+      const owners = await getOrganizationOwners(id);
+      jsonSuccess(res, { ...org, owners, ownersCount: owners.length });
       return;
     }
 
@@ -267,11 +269,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await saveOrganizationOwners(org.id, body.owners);
       }
 
+      const savedOwners = await getOrganizationOwners(org.id);
       jsonSuccess(res, {
         ...org,
         createdAt: org.createdAt?.toISOString() ?? '',
         updatedAt: org.updatedAt?.toISOString() ?? '',
-        ownersCount: body.owners?.filter(o => o.name.trim()).length ?? 0,
+        owners: savedOwners,
+        ownersCount: savedOwners.length,
         farmsCount: 0,
       });
     } catch (err) {
@@ -463,13 +467,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // Hard delete de organização por id (apenas admin)
+    // Soft delete de organização por id (apenas admin)
     if (q.id) {
       if (!isAdmin) {
         jsonError(res, 'Apenas administradores podem excluir organizações', { code: 'FORBIDDEN', status: 403 });
         return;
       }
-      await db.delete(organizations).where(eq(organizations.id, q.id));
+      await db
+        .update(organizations)
+        .set({ ativo: false, updatedAt: new Date() })
+        .where(eq(organizations.id, q.id));
       jsonSuccess(res, { deleted: true });
       return;
     }
