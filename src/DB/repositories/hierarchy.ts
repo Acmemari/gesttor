@@ -2,6 +2,10 @@ import { eq, and, ilike, or } from 'drizzle-orm';
 import { db } from '../index.js';
 import { farms, organizations, userProfiles, analystFarms, organizationAnalysts } from '../schema.js';
 
+export type AnalystRow = typeof userProfiles.$inferSelect;
+export type OrganizationRow = typeof organizations.$inferSelect;
+export type FarmRow = typeof farms.$inferSelect;
+
 export type CreateFarmInput = {
   id: string;
   name: string;
@@ -85,29 +89,44 @@ export async function deactivateFarm(id: string) {
   return row;
 }
 
-export async function getAnalystsForAdmin(params: { search?: string; offset?: number; limit?: number } = {}) {
+export async function getAnalystsForAdmin(
+  _userId: string,
+  params: { search?: string | null; offset?: number; limit?: number } = {},
+): Promise<{ rows: AnalystRow[]; hasMore: boolean }> {
+  const { offset = 0, limit = 50, search } = params;
+
   let query = db.select().from(userProfiles).where(eq(userProfiles.role, 'analista')).$dynamic();
-  if (params.offset) query = query.offset(params.offset);
-  if (params.limit) query = query.limit(params.limit);
-  return query;
+  if (search) query = query.where(and(eq(userProfiles.role, 'analista'), ilike(userProfiles.name, `%${search}%`)));
+  query = query.offset(offset).limit(limit + 1);
+
+  const rows = await query;
+  const hasMore = rows.length > limit;
+  return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
 export async function getOrganizations(params: {
-  analystId?: string;
-  search?: string;
+  analystId?: string | null;
+  organizationId?: string | null;
+  search?: string | null;
   offset?: number;
   limit?: number;
   includeInactive?: boolean;
-} = {}) {
+} = {}): Promise<{ rows: OrganizationRow[]; hasMore: boolean }> {
+  const { offset = 0, limit = 50, search, analystId, organizationId, includeInactive = false } = params;
+
   const conditions: ReturnType<typeof eq>[] = [];
-  if (!params.includeInactive) conditions.push(eq(organizations.ativo, true));
-  if (params.analystId) conditions.push(eq(organizations.analystId, params.analystId));
+  if (!includeInactive) conditions.push(eq(organizations.ativo, true));
+  if (analystId) conditions.push(eq(organizations.analystId, analystId));
+  if (organizationId) conditions.push(eq(organizations.id, organizationId));
+  if (search) conditions.push(ilike(organizations.name, `%${search}%`));
 
   let query = db.select().from(organizations).$dynamic();
   if (conditions.length > 0) query = query.where(and(...conditions));
-  if (params.offset) query = query.offset(params.offset);
-  if (params.limit) query = query.limit(params.limit);
-  return query;
+  query = query.offset(offset).limit(limit + 1);
+
+  const rows = await query;
+  const hasMore = rows.length > limit;
+  return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
 export async function validateHierarchy(_params: unknown) {
