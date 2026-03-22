@@ -105,7 +105,7 @@ export const auth = betterAuth({
 
         // Não usar await para evitar timing attacks (conforme recomendação Better Auth)
         void resend.emails.send({
-          from: 'Gesttor <gesttor@gesttor.app>',
+          from: 'Gesttor <suporte@gesttor.app>',
           to: user.email,
           subject: 'Redefinir Senha — Gesttor',
           html,
