@@ -126,9 +126,9 @@ app.post('/api/storage', (req, res) => {
   handleApiRoute('./api/storage.ts', req, res);
 });
 
-// Perfil de usuário — /api/auth (exato, sem subpath)
-app.all('/api/auth', (req, res) => {
-  handleApiRoute('./api/auth.ts', req, res);
+// Perfil de usuário — /api/profile
+app.all('/api/profile', (req, res) => {
+  handleApiRoute('./api/profile.ts', req, res);
 });
 
 // Better Auth — catch-all para /api/auth/*

@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Busca perfil completo de user_profiles via /api/auth
-      const result = await apiFetch('/api/auth');
+      const result = await apiFetch('/api/profile');
       if (cancelled) return;
 
       if (result.ok && result.data) {
@@ -147,7 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // O onSuccess no betterAuthClient já armazenou o token em localStorage.
       // Agora busca o perfil completo de user_profiles.
-      const profileResult = await apiFetch('/api/auth');
+      const profileResult = await apiFetch('/api/profile');
       if (!profileResult.ok || !profileResult.data) {
         clearToken();
         return { success: false, error: 'Perfil não encontrado após login' };
@@ -286,7 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── refreshProfile ─────────────────────────────────────────────────────────
   const refreshProfile = useCallback(async () => {
-    const result = await apiFetch('/api/auth');
+    const result = await apiFetch('/api/profile');
     if (result.ok && result.data) {
       const profile = mapUserProfile(result.data as Record<string, unknown>);
       if (profile) setUser(profile);
@@ -299,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── upgradePlan ────────────────────────────────────────────────────────────
   const upgradePlan = useCallback(async (planId: Plan['id']) => {
     if (!user) return;
-    const result = await apiFetch('/api/auth', {
+    const result = await apiFetch('/api/profile', {
       method: 'POST',
       body: JSON.stringify({ plan: planId }),
     });
