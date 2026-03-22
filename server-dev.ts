@@ -33,7 +33,12 @@ const { auth } = await import('./api/_lib/auth.js');
 const { toNodeHandler } = await import('better-auth/node');
 const authNodeHandler = toNodeHandler(auth);
 
-app.all('/api/auth/*', (req, res) => {
+// /api/auth EXATO → endpoint de perfil (api/auth.ts) — com json parser próprio
+// DEVE ser registrado ANTES do catch-all para ter prioridade
+app.all('/api/auth', express.json(), (req, res) => handleApiRoute('./api/auth.ts', req, res));
+
+// /api/auth/* → Better Auth (sign-in, sign-up, session, etc.) — SEM json pre-parse
+app.all('/api/auth/{*path}', (req, res) => {
   authNodeHandler(req as any, res as any);
 });
 
