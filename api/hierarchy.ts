@@ -36,9 +36,9 @@ function mapOrganizationRow(r: OrganizationRow) {
     name: r.name,
     phone: r.phone || '',
     email: r.email,
-    analystId: r.analystId,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
+    analystId: r.analyst_id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 

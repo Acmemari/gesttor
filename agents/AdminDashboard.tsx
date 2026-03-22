@@ -45,7 +45,7 @@ const AdminDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [qualificationFilter, setQualificationFilter] = useState<'all' | 'visitante' | 'cliente' | 'analista'>('all');
+  const [qualificationFilter, setQualificationFilter] = useState<'all' | 'visitante' | 'cliente' | 'analista' | 'administrador'>('all');
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -165,6 +165,8 @@ const AdminDashboard: React.FC = () => {
 
   const getQualificationLabel = (qualification?: string) => {
     switch (qualification) {
+      case 'administrador':
+        return 'Administrador';
       case 'cliente':
         return 'Cliente';
       case 'analista':
@@ -177,6 +179,8 @@ const AdminDashboard: React.FC = () => {
 
   const getQualificationColor = (qualification?: string) => {
     switch (qualification) {
+      case 'administrador':
+        return 'bg-red-100 text-red-700';
       case 'cliente':
         return 'bg-blue-100 text-blue-700';
       case 'analista':
@@ -686,6 +690,7 @@ const AdminDashboard: React.FC = () => {
               { key: 'visitante' as const, label: 'Visitante', color: 'bg-gray-100 text-gray-700', activeColor: 'bg-gray-700 text-white' },
               { key: 'cliente' as const, label: 'Cliente', color: 'bg-blue-50 text-blue-700', activeColor: 'bg-blue-600 text-white' },
               { key: 'analista' as const, label: 'Analista', color: 'bg-purple-50 text-purple-700', activeColor: 'bg-purple-600 text-white' },
+              { key: 'administrador' as const, label: 'Admin', color: 'bg-red-50 text-red-700', activeColor: 'bg-red-600 text-white' },
             ]).map(opt => {
               const count = opt.key === 'all'
                 ? clients.length

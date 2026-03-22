@@ -8,44 +8,66 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { auth } from '../_lib/auth.js';
-import { toNodeHandler } from 'better-auth/node';
-
-// Importante: Desativar bodyParser para não quebrar streams de requisições POST
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-const nodeHandler = toNodeHandler(auth);
 
 export default async function catchAllHandler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  try {
-    // 1. A Vercel reescreveu a URL via vercel.json, o que muda req.url para /api/auth/catchAll
-    // Nossa regra adiciona o caminho original no parâmetro `?path=`. Vamos reconstruir o original.
-    let originalPath = req.url ?? '/api/auth';
-    if (originalPath.includes('?path=')) {
-      try {
-        const parsedUrl = new URL(`http://localhost${originalPath}`);
-        const pathParam = parsedUrl.searchParams.get('path');
-        if (pathParam) {
-          originalPath = `/api/auth/${pathParam}`;
-        }
-      } catch (e) {
-        // Ignora erros de parse na URL
+  // Construir a URL completa para o Better Auth
+  const baseURL = process.env.BETTER_AUTH_URL ?? 'http://localhost:3333';
+  const url = `${baseURL}${req.url ?? '/api/auth'}`;
+
+  // Converter headers do Vercel para o formato Headers da Fetch API
+  // Excluir headers que causam conflito ao re-serializar o body (content-length,
+  // host, transfer-encoding). O Fetch API recalcula content-length automaticamente.
+  const SKIP_HEADERS = new Set(['content-length', 'host', 'transfer-encoding', 'connection']);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value !== undefined && !SKIP_HEADERS.has(key.toLowerCase())) {
+      if (Array.isArray(value)) {
+        headers.set(key, value.join(', '));
+      } else {
+        headers.set(key, value);
       }
     }
+  }
 
-    // 2. Modifica o req para o Better Auth enxergar exatamente a rota que ele espera (ex: /api/auth/sign-in/email)
-    req.url = originalPath;
-
-    // 3. O toNodeHandler faz TODA a abstração de Converter Request Node -> Fetch -> Request Node
-    await nodeHandler(req, res);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[catchAll] Falha não tratada no handler:', err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: message, fallback: 'Internal catchAll error' });
+  // Construir body para métodos com payload
+  let body: string | undefined;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (req.body !== undefined && req.body !== null) {
+      body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      if (!headers.has('content-type')) {
+        headers.set('content-type', 'application/json');
+      }
     }
   }
+
+  // Criar Request padrão da Fetch API para o Better Auth
+  const request = new Request(url, {
+    method: req.method ?? 'GET',
+    headers,
+    body,
+  });
+
+  // Invocar o handler do Better Auth
+  const response = await auth.handler(request);
+
+  if (response.status >= 400) {
+    const clone = response.clone();
+    const errText = await clone.text();
+    console.error(`[catchAll] BA error ${response.status} for ${req.method} ${req.url}:`, errText);
+  }
+
+  // Copiar status HTTP
+  res.status(response.status);
+
+  // Copiar headers da resposta
+  response.headers.forEach((value, key) => {
+    // Evitar headers problemáticos que o Vercel gerencia
+    if (key.toLowerCase() !== 'transfer-encoding') {
+      res.setHeader(key, value);
+    }
+  });
+
+  // Copiar body da resposta
+  const responseText = await response.text();
+  res.end(responseText);
 }

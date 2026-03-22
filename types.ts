@@ -61,7 +61,7 @@ export interface User {
   organizationId?: string;
   clientId?: string;
   phone?: string;
-  qualification?: 'visitante' | 'cliente' | 'analista';
+  qualification?: 'visitante' | 'cliente' | 'analista' | 'administrador';
   full_name?: string;
 }
 

@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           SELECT id, name, email, role, avatar, image_url, plan, status,
                  last_login, phone, created_at, updated_at
           FROM user_profiles
-          WHERE role != 'administrador'
+          WHERE 1=1
         `;
         const params: unknown[] = [];
 

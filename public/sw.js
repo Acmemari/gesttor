@@ -2,7 +2,7 @@
  * Service Worker para cache de recursos estáticos
  * Versão do cache - atualizar quando necessário invalidar cache
  */
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `pecuaria-cache-${CACHE_VERSION}`;
 
 // Recursos estáticos para cache
@@ -73,11 +73,8 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          // Clonar ANTES de qualquer operação assíncrona (body só pode ser lido uma vez)
-          try {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone)).catch(() => {});
-          } catch (_) {}
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone));
           return response;
         })
         .catch(() => caches.match('/index.html').then(r => r || caches.match('/'))),
@@ -92,10 +89,7 @@ self.addEventListener('fetch', event => {
       caches.match(request).then(cached => {
         const fetchAndCache = fetch(request).then(response => {
           if (response && response.status === 200 && response.type === 'basic') {
-            try {
-              const responseClone = response.clone();
-              caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone)).catch(() => {});
-            } catch (_) {}
+            caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
           }
           return response;
         });

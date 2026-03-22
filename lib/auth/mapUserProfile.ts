@@ -33,11 +33,11 @@ interface NeonProfile {
  */
 function deriveRoleAndQualification(dbRole: string): {
   role: 'admin' | 'client';
-  qualification: 'visitante' | 'cliente' | 'analista';
+  qualification: 'visitante' | 'cliente' | 'analista' | 'administrador';
 } {
   switch (dbRole.toLowerCase()) {
     case 'administrador':
-      return { role: 'admin', qualification: 'analista' };
+      return { role: 'admin', qualification: 'administrador' };
     case 'analista':
       return { role: 'client', qualification: 'analista' };
     case 'cliente':
