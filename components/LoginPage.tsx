@@ -10,7 +10,7 @@ interface LoginPageProps {
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
-  const { login, signup } = useAuth();
+  const { login, signInWithOAuth, signup } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,8 +37,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
         return;
       }
 
-      if (password.length < 8) {
-        setLoginError('A senha deve ter pelo menos 8 caracteres.');
+      if (password.length < 6) {
+        setLoginError('A senha deve ter pelo menos 6 caracteres.');
         setIsSubmitting(false);
         return;
       }
@@ -61,7 +61,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
         return;
       }
 
-      const result = await signup(email, password, name);
+      const result = await signup(email, password, name, phone, organizationName);
 
       if (!result.success) {
         const errMsg = result.error || '';
@@ -77,12 +77,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
 
       if (!result.success) {
         // DEFINIR ERRO E PARAR
-        setLoginError(result.error || 'Email ou senha incorretos. Verifique suas credenciais.');
+        setLoginError('Email ou senha incorretos. Verifique suas credenciais.');
         setIsSubmitting(false);
         return; // NÃO CONTINUA
       }
       // Login bem sucedido - AuthContext vai redirecionar
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuthLogin = async (provider: 'google') => {
+    try {
+      setIsOAuthLoading(provider);
+      setLoginError('');
+      await signInWithOAuth(provider);
+    } catch (err: any) {
+      setLoginError(`Erro ao fazer login com ${provider}. Tente novamente.`);
+      setIsOAuthLoading(null);
     }
   };
 

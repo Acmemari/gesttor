@@ -45,7 +45,6 @@ app.get('/', (_req, res) => {
 function createVercelAdapter(req: Request, res: Response) {
   const vercelReq = {
     method: req.method,
-    url: req.originalUrl,
     body: req.body,
     headers: req.headers,
     query: req.query,
@@ -67,9 +66,9 @@ function createVercelAdapter(req: Request, res: Response) {
       headers.forEach((v, k) => res.setHeader(k, v));
       res.status(statusCode).json(data);
     },
-    end(data?: string) {
+    end() {
       headers.forEach((v, k) => res.setHeader(k, v));
-      res.status(statusCode).end(data);
+      res.status(statusCode).end();
     },
   } as unknown as VercelResponse;
 
@@ -84,10 +83,7 @@ async function handleApiRoute(routePath: string, req: Request, res: Response) {
     await handler(vercelReq, vercelRes);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erro interno no servidor de desenvolvimento';
-    console.error(`[server-dev] ❌ Erro ${req.method} ${req.path}:`, message);
-    if (error instanceof Error && error.stack) {
-      console.error('[server-dev] Stack:', error.stack);
-    }
+    console.error(`[server-dev] Erro ${req.path}:`, message);
     if (!res.headersSent) {
       res.status(500).json({ error: message });
     }
@@ -124,16 +120,6 @@ app.post('/api/agents-run', (req, res) => {
 
 app.post('/api/storage', (req, res) => {
   handleApiRoute('./api/storage.ts', req, res);
-});
-
-// Perfil de usuário — /api/profile
-app.all('/api/profile', (req, res) => {
-  handleApiRoute('./api/profile.ts', req, res);
-});
-
-// Better Auth — catch-all para /api/auth/*
-app.all('/api/auth/*path', (req, res) => {
-  handleApiRoute('./api/auth/catchAll.ts', req, res);
 });
 
 app.listen(PORT, () => {
