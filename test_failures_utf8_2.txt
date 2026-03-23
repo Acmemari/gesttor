@@ -1,0 +1,276 @@
+﻿
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/gesttor[39m
+
+[90mstdout[2m | src/test/lib/auth/mapUserProfile.test.ts[2m > [22m[2mmapUserProfile[2m > [22m[2mshould return null for null/undefined profile
+[22m[39m[33m[WARN][0m 20:23:00 [mapUserProfile] Invalid profile: profile is null, undefined, or not an object
+  Context: { component: [32m'mapUserProfile'[39m }
+[33m[WARN][0m 20:23:00 [mapUserProfile] Invalid profile: profile is null, undefined, or not an object
+  Context: { component: [32m'mapUserProfile'[39m }
+
+ [31mΓ¥»[39m src/test/lib/auth/mapUserProfile.test.ts [2m([22m[2m9 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[32m 117[2mms[22m[39m
+     [32mΓ£ô[39m should return null for null/undefined profile[32m 55[2mms[22m[39m
+[31m     [31m├ù[31m should map profile correctly[39m[32m 39[2mms[22m[39m
+[31m     [31m├ù[31m should handle missing optional fields[39m[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m should convert last_login to ISO string[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m should infer qualification=cliente when organization_id exists and qualification is null[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m should infer qualification=cliente when organization_id exists and qualification is undefined[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m should infer qualification=cliente when organization_id exists and qualification is invalid[32m 1[2mms[22m[39m
+[31m     [31m├ù[31m should keep qualification=visitante when organization_id is absent and qualification is null[39m[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m should expose organizationId when organization_id is present[32m 1[2mms[22m[39m
+node.exe : 
+No linha:1 
+caractere:1
++ & "C:\Program Files
+\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (:String   
+ ) [], RemoteExce    
+ption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+[31mΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»Γ
+Ä»ΓÄ»[39m[1m[41m 
+Failed Tests 3 [49m
+[22m[31mΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»[39m
+
+[41m[1m FAIL 
+[22m[49m src/test/l
+ib/auth/mapUserProfil
+e.test.ts[2m > [22m
+mapUserProfile[2m > 
+[22mshould map 
+profile correctly
+[31m[1mAssertionErr
+or[22m: expected { 
+id: 'user-123', 
+ΓÇª(10) } to deeply 
+equal { id: 
+'user-123', ΓÇª(11) 
+}[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "avatar": 
+"T",[22m
+[32m-   "clientId": 
+undefined,[39m
+[2m    "email": "tes
+t@example.com",[22m
+[2m    "id": 
+"user-123",[22m
+[2m    "lastLogin": 
+"2024-01-01T00:00:00.
+000Z",[22m
+[2m    "name": 
+"Test User",[22m
+[2m    
+"organizationId": 
+"org-123",[22m
+[2m    "phone": 
+undefined,[22m
+[2m    "plan": 
+"pro",[22m
+[32m-   
+"qualification": 
+"visitante",[39m
+[31m+   
+"qualification": 
+"cliente",[39m
+[2m    "role": 
+"client",[22m
+[2m    "status": 
+"active",[22m
+[2m  }[22m
+
+[36m [2mΓ¥»[22m sr
+c/test/lib/auth/mapUs
+erProfile.test.ts:[2
+m24:20[22m[39m
+    [90m 22| [39m
+    [90m 23| [39m  
+  [35mconst[39m 
+result [33m=[39m [
+34mmapUserProfile[39
+m(profile)[33m;[39m
+    [90m 24| [39m  
+  [34mexpect[39m(re
+sult)[33m.[39m[34m
+toEqual[39m({
+    [90m   | [39m  
+                 
+[31m^[39m
+    [90m 25| [39m  
+    id[33m:[39m [3
+2m'user-123'[39m[33
+m,[39m
+    [90m 26| [39m  
+    name[33m:[39m 
+[32m'Test 
+User'[39m[33m,[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[1/
+3]ΓÄ»[22m[39m
+
+[41m[1m FAIL 
+[22m[49m src/test/l
+ib/auth/mapUserProfil
+e.test.ts[2m > [22m
+mapUserProfile[2m > 
+[22mshould handle 
+missing optional 
+fields
+[31m[1mAssertionErr
+or[22m: expected { 
+id: 'user-123', 
+ΓÇª(10) } to deeply 
+equal { id: 
+'user-123', ΓÇª(11) 
+}[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "avatar": 
+"T",[22m
+[32m-   "clientId": 
+undefined,[39m
+[2m    "email": "tes
+t@example.com",[22m
+[2m    "id": 
+"user-123",[22m
+[2m    "lastLogin": 
+undefined,[22m
+[2m    "name": 
+"Test User",[22m
+[2m    
+"organizationId": 
+undefined,[22m
+[2m    "phone": 
+undefined,[22m
+[2m    "plan": 
+undefined,[22m
+[32m-   
+"qualification": 
+"visitante",[39m
+[31m+   
+"qualification": 
+"administrador",[39m
+[2m    "role": 
+"admin",[22m
+[2m    "status": 
+undefined,[22m
+[2m  }[22m
+
+[36m [2mΓ¥»[22m sr
+c/test/lib/auth/mapUs
+erProfile.test.ts:[2
+m49:20[22m[39m
+    [90m 47| [39m
+    [90m 48| [39m  
+  [35mconst[39m 
+result [33m=[39m [
+34mmapUserProfile[39
+m(profile)[33m;[39m
+    [90m 49| [39m  
+  [34mexpect[39m(re
+sult)[33m.[39m[34m
+toEqual[39m({
+    [90m   | [39m  
+                 
+[31m^[39m
+    [90m 50| [39m  
+    id[33m:[39m [3
+2m'user-123'[39m[33
+m,[39m
+    [90m 51| [39m  
+    name[33m:[39m 
+[32m'Test 
+User'[39m[33m,[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[2/
+3]ΓÄ»[22m[39m
+
+[41m[1m FAIL 
+[22m[49m src/test/l
+ib/auth/mapUserProfil
+e.test.ts[2m > [22m
+mapUserProfile[2m > 
+[22mshould keep qual
+ification=visitante 
+when organization_id 
+is absent and 
+qualification is null
+[31m[1mAssertionErr
+or[22m: expected 
+'cliente' to be 
+'visitante' // 
+Object.is 
+equality[39m
+
+Expected: [32m"[7mv
+isita[27mnte"[39m
+Received: [31m"[7mc
+lie[27mnte"[39m
+
+[36m [2mΓ¥»[22m sr
+c/test/lib/auth/mapUs
+erProfile.test.ts:[2
+m131:35[22m[39m
+    [90m129| [39m
+    [90m130| [39m  
+  [35mconst[39m 
+result [33m=[39m [
+34mmapUserProfile[39
+m(profile)[33m;[39m
+    [90m131| [39m  
+  [34mexpect[39m(re
+sult[33m?.[39mquali
+fication)[33m.[39m
+[34mtoBe[39m([32m'v
+isitante'[39m)[33m;
+[39m
+    [90m   | [39m  
+                     
+           
+[31m^[39m
+    [90m132| [39m  
+  [34mexpect[39m(re
+sult[33m?.[39morgan
+izationId)[33m.[39m
+[34mtoBeUndefined[3
+9m()[33m;[39m
+    [90m133| [39m  
+})[33m;[39m
+
+[31m[2mΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[3/
+3]ΓÄ»[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m6 passed[39m[22m[90m (9)[39m
+[2m   Start at [22m 20:22:56
+[2m   Duration [22m 4.19s[2m (transform 201ms, setup 480ms, import 239ms, tests 117ms, environment 2.75s)[22m
+

@@ -9,71 +9,72 @@ const API_BASE = '/api';
 
 export interface Pessoa {
   id: string;
-  created_by: string;
-  full_name: string;
-  preferred_name: string | null;
-  phone_whatsapp: string | null;
+  createdBy: string;
+  fullName: string;
+  preferredName: string | null;
+  phoneWhatsapp: string | null;
   email: string | null;
-  location_city_uf: string | null;
-  photo_url: string | null;
-  organization_id: string | null;
-  user_id: string | null;
+  locationCityUf: string | null;
+  photoUrl: string | null;
+  organizationId: string | null;
+  userId: string | null;
   cpf: string | null;
   rg: string | null;
-  data_nascimento: string | null;
-  data_contratacao: string | null;
+  dataNascimento: string | null;
+  dataContratacao: string | null;
   endereco: string | null;
   observacoes: string | null;
   ativo: boolean;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Perfil {
-  id: number;
+  id: string;
   nome: string;
   descricao: string | null;
   ativo: boolean;
-  sort_order: number;
-  created_at: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface CargoFuncao {
-  id: number;
+  id: string;
   nome: string;
   ativo: boolean;
-  sort_order: number;
-  created_at: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface PessoaPerfil {
   id: string;
-  pessoa_id: string;
-  perfil_id: number;
-  cargo_funcao_id: number | null;
+  pessoaId: string;
+  perfilId: string;
+  cargoFuncaoId: string | null;
   ativo: boolean;
-  created_at: string;
-  perfil_nome?: string;
-  cargo_funcao_nome?: string | null;
+  createdAt: string;
+  perfilNome?: string;
+  cargoFuncaoNome?: string | null;
 }
 
 export interface PessoaFazenda {
   id: string;
-  pessoa_id: string;
-  farm_id: string;
-  is_primary: boolean;
-  created_at: string;
+  pessoaId: string;
+  farmId: string;
+  farmName?: string;
+  isPrimary: boolean;
+  createdAt: string;
 }
 
 export interface PessoaPermissao {
   id: string;
-  pessoa_id: string;
-  farm_id: string;
-  assume_tarefas_fazenda: boolean;
-  pode_alterar_semana_fechada: boolean;
-  pode_apagar_semana: boolean;
-  created_at: string;
-  updated_at: string;
+  pessoaId: string;
+  farmId: string;
+  assumeTarefasFazenda: boolean;
+  podeAlterarSemanaFechada: boolean;
+  podeApagarSemana: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PessoaCompleta extends Pessoa {
@@ -176,7 +177,7 @@ export async function listPessoas(options: {
   organizationId: string;
   search?: string;
   ativo?: boolean;
-  perfilId?: number | null;
+  perfilId?: string | null;
   farmId?: string | null;
   offset?: number;
   limit?: number;
@@ -206,7 +207,7 @@ export async function createPessoa(data: CreatePessoaData): Promise<Pessoa | nul
     method: 'POST',
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(res.error);
+  if (!res.ok) throw new Error((res as ApiError).error);
   return res.data;
 }
 
@@ -215,7 +216,7 @@ export async function updatePessoa(id: string, data: UpdatePessoaData): Promise<
     method: 'PATCH',
     body: JSON.stringify({ id, ...data }),
   });
-  if (!res.ok) throw new Error(res.error);
+  if (!res.ok) throw new Error((res as ApiError).error);
   return res.data;
 }
 
@@ -253,7 +254,7 @@ export async function createPerfil(data: { nome: string; descricao?: string | nu
   return res.data;
 }
 
-export async function updatePerfil(id: number, data: { nome?: string; descricao?: string | null; ativo?: boolean; sortOrder?: number }): Promise<Perfil> {
+export async function updatePerfil(id: string, data: { nome?: string; descricao?: string | null; ativo?: boolean; sortOrder?: number }): Promise<Perfil> {
   const res = await fetchApi<Perfil>(`${API_BASE}/pessoas`, {
     method: 'POST',
     body: JSON.stringify({ action: 'update-perfil', id, ...data }),
@@ -271,7 +272,7 @@ export async function createCargoFuncao(data: { nome: string; sortOrder?: number
   return res.data;
 }
 
-export async function updateCargoFuncao(id: number, data: { nome?: string; ativo?: boolean; sortOrder?: number }): Promise<CargoFuncao> {
+export async function updateCargoFuncao(id: string, data: { nome?: string; ativo?: boolean; sortOrder?: number }): Promise<CargoFuncao> {
   const res = await fetchApi<CargoFuncao>(`${API_BASE}/pessoas`, {
     method: 'POST',
     body: JSON.stringify({ action: 'update-cargo', id, ...data }),
@@ -332,8 +333,8 @@ async function postAction(payload: Record<string, unknown>): Promise<void> {
 
 export async function addPessoaPerfil(
   pessoaId: string,
-  perfilId: number,
-  cargoFuncaoId?: number | null,
+  perfilId: string,
+  cargoFuncaoId?: string | null,
 ): Promise<void> {
   await postAction({ action: 'add-perfil', pessoaId, perfilId, cargoFuncaoId: cargoFuncaoId ?? null });
 }

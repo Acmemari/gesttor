@@ -15,7 +15,7 @@ export interface ProjectStakeholderRow {
 export interface ProjectRow {
   id: string;
   created_by: string;
-  client_id: string | null;
+  organization_id: string | null;
   name: string;
   description: string | null;
   transformations_achievements: string | null;
@@ -29,7 +29,7 @@ export interface ProjectRow {
 }
 
 export interface FetchProjectsFilters {
-  clientId?: string;
+  organizationId?: string;
   farmId?: string;
   clientMode?: boolean;
 }
@@ -37,7 +37,7 @@ export interface FetchProjectsFilters {
 export interface ProjectPayload {
   name: string;
   description?: string | null;
-  client_id?: string | null;
+  organization_id?: string | null;
   transformations_achievements?: string | null;
   success_evidence?: string[] | null;
   start_date?: string | null;
@@ -48,7 +48,7 @@ export interface ProjectPayload {
 
 function buildQuery(filters?: FetchProjectsFilters): string {
   const p = new URLSearchParams();
-  if (filters?.clientId) p.set('clientId', filters.clientId);
+  if (filters?.organizationId) p.set('organizationId', filters.organizationId);
   if (filters?.farmId) p.set('farmId', filters.farmId);
   if (filters?.clientMode) p.set('clientMode', 'true');
   const qs = p.toString();

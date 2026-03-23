@@ -1,0 +1,311 @@
+﻿node.exe : 
+(node:18772) 
+Warning: SECURITY 
+WARNING: The SSL 
+modes 'prefer', 
+'require', and 
+'verify-ca' are 
+treated as aliases 
+for 'verify-full'.
+No linha:1 
+caractere:1
++ & "C:\Program Files
+\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: ((node:1   
+ 8772) Wa... 'ver    
+ify-full'.:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+In the next major 
+version (pg-connectio
+n-string v3.0.0 and 
+pg v9.0.0), these 
+modes will adopt 
+standard libpq 
+semantics, which 
+have weaker security 
+guarantees.
+
+To prepare for this 
+change:
+- If you want the 
+current behavior, 
+explicitly use 
+'sslmode=verify-full'
+- If you want libpq 
+compatibility now, 
+use 'uselibpqcompat=t
+rue&sslmode=require'
+
+See https://www.postg
+resql.org/docs/curren
+t/libpq-ssl.html for 
+libpq SSL mode 
+definitions.
+(Use `node 
+--trace-warnings 
+...` to show where 
+the warning was 
+created)
+Connected to Neon database
+
+--- Table Existence and Row Counts ---
+Table "people": 3 rows
+Table "pessoas": NOT FOUND
+Table "person_farms": 4 rows
+Table "pessoa_fazendas": 1 rows
+Table "person_fazendas": NOT FOUND
+Table "person_profiles": 3 rows
+Table "pessoa_perfis": 0 rows
+Table "person_perfils": NOT FOUND
+Table "person_permissions": 0 rows
+Table "pessoa_permissoes": 0 rows
+Table "profiles": 10 rows
+Table "perfils": NOT FOUND
+Table "job_roles": 25 rows
+Table "cargo_funcao": NOT FOUND
+
+--- Comparing person_farms vs pessoa_fazendas schemas ---
+[
+  {
+    "table_name": "person_farms",
+    "column_name": "id",
+    "data_type": "uuid",
+    "is_nullable": "NO",
+    "column_default": "gen_random_uuid()"
+  },
+  {
+    "table_name": "person_farms",
+    "column_name": "pessoa_id",
+    "data_type": "uuid",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "person_farms",
+    "column_name": "farm_id",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "person_farms",
+    "column_name": "primary_farm",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "table_name": "person_farms",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "pessoa_fazendas",
+    "column_name": "id",
+    "data_type": "uuid",
+    "is_nullable": "NO",
+    "column_default": "gen_random_uuid()"
+  },
+  {
+    "table_name": "pessoa_fazendas",
+    "column_name": "pessoa_id",
+    "data_type": "uuid",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "pessoa_fazendas",
+    "column_name": "farm_id",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "pessoa_fazendas",
+    "column_name": "is_primary",
+    "data_type": "boolean",
+    "is_nullable": "NO",
+    "column_default": "false"
+  },
+  {
+    "table_name": "pessoa_fazendas",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  }
+]
+
+--- Comparing people vs pessoas schemas ---
+[
+  {
+    "table_name": "people",
+    "column_name": "id",
+    "data_type": "uuid",
+    "is_nullable": "NO",
+    "column_default": "gen_random_uuid()"
+  },
+  {
+    "table_name": "people",
+    "column_name": "full_name",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "preferred_name",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "phone_whatsapp",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "email",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "location_city_uf",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "photo_url",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "organization_id",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "user_id",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "cpf",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "rg",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "data_nascimento",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "data_contratacao",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "endereco",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "observacoes",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "ativo",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "true"
+  },
+  {
+    "table_name": "people",
+    "column_name": "created_by",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "farm_id",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "people",
+    "column_name": "pode_alterar_semana_fechada",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "table_name": "people",
+    "column_name": "pode_apagar_semana",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "table_name": "people",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "people",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  }
+]

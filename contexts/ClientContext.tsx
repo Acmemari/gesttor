@@ -10,6 +10,6 @@ interface ClientContextType {
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => <>{children}</>;
 
 export const useClient = (): ClientContextType => {
-  const { selectedClient, setSelectedClient } = useHierarchy();
-  return { selectedClient, setSelectedClient };
+  const { selectedOrganization, setSelectedOrganization } = useHierarchy();
+  return { selectedClient: selectedOrganization, setSelectedClient: setSelectedOrganization };
 };

@@ -10,6 +10,8 @@ import {
   date,
   bigint,
   primaryKey,
+  index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 // ── Better Auth tables ─────────────────────────────────────────────────────────
@@ -64,7 +66,7 @@ export const baVerification = pgTable('ba_verification', {
 
 export const organizationOwners = pgTable('organization_owners', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   email: text('email'),
   phone: text('phone'),
@@ -74,40 +76,11 @@ export const organizationOwners = pgTable('organization_owners', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// ── Clients ────────────────────────────────────────────────────────────────────
+// ── Organizations ──────────────────────────────────────────────────────────────
 
-export const clients = pgTable('clients', {
+export const organizationDocuments = pgTable('organization_documents', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  phone: text('phone'),
-  email: text('email').notNull(),
-  cnpj: text('cnpj'),
-  address: text('address'),
-  city: text('city'),
-  state: text('state'),
-  plan: text('plan'),
-  status: text('status').default('active'),
-  ativo: boolean('ativo').default(true),
-  analystId: text('analyst_id'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-
-export const clientOwners = pgTable('client_owners', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  email: text('email'),
-  phone: text('phone'),
-  cpf: text('cpf'),
-  sortOrder: integer('sort_order').default(0),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-
-export const clientDocuments = pgTable('client_documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   uploadedBy: text('uploaded_by'),
   fileName: text('file_name').notNull(),
   originalName: text('original_name').notNull(),
@@ -123,7 +96,7 @@ export const clientDocuments = pgTable('client_documents', {
 // ── Organizations ──────────────────────────────────────────────────────────────
 
 export const organizations = pgTable('organizations', {
-  id: text('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   cnpj: text('cnpj'),
   email: text('email'),
@@ -134,16 +107,16 @@ export const organizations = pgTable('organizations', {
   status: text('status').default('active'),
   plan: text('plan'),
   ativo: boolean('ativo').default(true),
-  ownerId: text('owner_id'),
-  analystId: text('analyst_id'),
+  ownerId: uuid('owner_id'),
+  analystId: uuid('analyst_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const organizationAnalysts = pgTable('organization_analysts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
-  analystId: text('analyst_id').notNull(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  analystId: uuid('analyst_id').notNull(),
   permissions: jsonb('permissions').default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -163,8 +136,7 @@ export const userProfiles = pgTable('user_profiles', {
   lastLogin: timestamp('last_login'),
   phone: text('phone'),
   plan: text('plan'),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
-  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -177,8 +149,7 @@ export const farms = pgTable('farms', {
   country: text('country').notNull(),
   state: text('state'),
   city: text('city').notNull(),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
-  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   totalArea: numeric('total_area'),
   pastureArea: numeric('pasture_area'),
   agricultureArea: numeric('agriculture_area'),
@@ -201,18 +172,11 @@ export const farms = pgTable('farms', {
   commercializesGenetics: boolean('commercializes_genetics').default(false),
   productionSystem: text('production_system'),
   ativo: boolean('ativo').default(true),
+  createdBy: text('created_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const analystFarms = pgTable('analyst_farms', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  analystId: text('analyst_id').notNull(),
-  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
-  isResponsible: boolean('is_responsible').default(false),
-  permissions: jsonb('permissions').default('{}'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
 
 // ── People ─────────────────────────────────────────────────────────────────────
 
@@ -239,9 +203,15 @@ export const people = pgTable('people', {
   podeApagarSemana: boolean('pode_apagar_semana').default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_people_organization_id').on(t.organizationId),
+  index('idx_people_farm_id').on(t.farmId),
+  index('idx_people_ativo').on(t.ativo),
+  // Partial unique index on CPF (nulls allowed, but non-null CPF must be unique)
+  // Note: Drizzle doesn't support partial indexes natively; enforced via SQL migration
+]);
 
-export const perfils = pgTable('perfils', {
+export const perfils = pgTable('profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   nome: text('nome').notNull(),
   descricao: text('descricao'),
@@ -251,7 +221,7 @@ export const perfils = pgTable('perfils', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const cargoFuncao = pgTable('cargo_funcao', {
+export const cargoFuncao = pgTable('job_roles', {
   id: uuid('id').primaryKey().defaultRandom(),
   nome: text('nome').notNull(),
   ativo: boolean('ativo').default(true),
@@ -260,7 +230,7 @@ export const cargoFuncao = pgTable('cargo_funcao', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const personPerfils = pgTable('person_perfils', {
+export const personProfiles = pgTable('person_profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   pessoaId: uuid('pessoa_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   perfilId: uuid('perfil_id').notNull().references(() => perfils.id, { onDelete: 'cascade' }),
@@ -268,15 +238,15 @@ export const personPerfils = pgTable('person_perfils', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const personFazendas = pgTable('person_fazendas', {
+export const personFarms = pgTable('person_farms', {
   id: uuid('id').primaryKey().defaultRandom(),
   pessoaId: uuid('pessoa_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   primaryFarm: boolean('primary_farm').default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, t => [uniqueIndex('person_farms_pessoa_farm_uidx').on(t.pessoaId, t.farmId)]);
 
-export const personPermissoes = pgTable('person_permissoes', {
+export const personPermissions = pgTable('person_permissions', {
   id: uuid('id').primaryKey().defaultRandom(),
   pessoaId: uuid('pessoa_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
@@ -289,12 +259,12 @@ export const personPermissoes = pgTable('person_permissoes', {
 
 // ── Gestão Semanal ─────────────────────────────────────────────────────────────
 
-export const pessoas = pgTable('pessoas', {
+export const pessoas = pgTable('assignees', {
   id: uuid('id').primaryKey().defaultRandom(),
   nome: text('nome').notNull(),
 });
 
-export const semanas = pgTable('semanas', {
+export const semanas = pgTable('work_weeks', {
   id: uuid('id').primaryKey().defaultRandom(),
   numero: integer('numero').notNull(),
   modo: text('modo').notNull(),
@@ -305,7 +275,7 @@ export const semanas = pgTable('semanas', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const atividades = pgTable('atividades', {
+export const atividades = pgTable('activities', {
   id: uuid('id').primaryKey().defaultRandom(),
   semanaId: uuid('semana_id').notNull().references(() => semanas.id, { onDelete: 'cascade' }),
   titulo: text('titulo').notNull(),
@@ -317,7 +287,7 @@ export const atividades = pgTable('atividades', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-export const historicoSemanas = pgTable('historico_semanas', {
+export const historicoSemanas = pgTable('week_history', {
   id: uuid('id').primaryKey().defaultRandom(),
   semanaNumero: integer('semana_numero').notNull(),
   total: integer('total').notNull().default(0),
@@ -333,8 +303,7 @@ export const historicoSemanas = pgTable('historico_semanas', {
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdBy: text('created_by'),
-  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   description: text('description'),
   transformationsAchievements: text('transformations_achievements'),
@@ -352,8 +321,7 @@ export const deliveries = pgTable('deliveries', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdBy: text('created_by'),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
-  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   description: text('description'),
   transformationsAchievements: text('transformations_achievements'),
@@ -519,7 +487,7 @@ export const agentTrainingImages = pgTable('agent_training_images', {
 
 export const agentRuns = pgTable('agent_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
-  orgId: text('org_id'),
+  orgId: uuid('org_id'),
   userId: text('user_id'),
   agentId: text('agent_id').notNull(),
   agentVersion: text('agent_version').notNull(),
@@ -655,7 +623,7 @@ export const savedFeedbacks = pgTable('saved_feedbacks', {
 
 // ── Other ──────────────────────────────────────────────────────────────────────
 
-export const empAss = pgTable('emp_ass', {
+export const empAss = pgTable('consulting_firms', {
   id: uuid('id').primaryKey().defaultRandom(),
   nome: text('nome').notNull(),
   analistas: jsonb('analistas').default('[]'),

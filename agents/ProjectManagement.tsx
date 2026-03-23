@@ -43,7 +43,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
     setIsExporting(mode);
     try {
       const tree = await loadFullEAPTree(userId, {
-        clientId: selectedClient?.id ?? undefined,
+        organizationId: selectedClient?.id ?? undefined,
         farmId: selectedFarm?.id ?? undefined,
         clientMode: isCliente,
       });
@@ -95,7 +95,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
           const base64 = await generateProgramaImpressaoBase64(pdfData);
           const safeName = (project.name || 'Programa de Trabalho').slice(0, 60);
           await saveReportPdf(userId, `Programa de Trabalho — ${safeName}`, base64, 'programa_impressao_pdf', {
-            clientId: selectedClient?.id ?? null,
+            organizationId: selectedClient?.id ?? null,
             farmId: selectedFarm?.id ?? null,
           });
           onToast?.('Documento salvo com sucesso!', 'success');
@@ -232,7 +232,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
       {viewMode === 'columns' && (
         <ProgramaWorkbench
           effectiveUserId={effectiveUserId ?? ''}
-          selectedClientId={selectedClient?.id || null}
+          selectedOrganizationId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
           readonly={isCliente}
           onToast={onToast}
@@ -241,7 +241,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
       {viewMode === 'mindmap' && (
         <EAPMindMap
           effectiveUserId={effectiveUserId ?? ''}
-          selectedClientId={selectedClient?.id || null}
+          selectedOrganizationId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
           readonly={isCliente}
           onToast={onToast}
@@ -250,7 +250,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
       {viewMode === 'document' && (
         <ProgramaDocumento
           effectiveUserId={effectiveUserId ?? ''}
-          selectedClientId={selectedClient?.id || null}
+          selectedOrganizationId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
           readonly={isCliente}
           onToast={onToast}

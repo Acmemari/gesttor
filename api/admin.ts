@@ -199,7 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { label: 'initiatives (created_by)', sql: `UPDATE initiatives SET created_by = $2 WHERE created_by = $1` },
             { label: 'deliveries (created_by)', sql: `UPDATE deliveries SET created_by = $2 WHERE created_by = $1` },
             { label: 'projects (created_by)', sql: `UPDATE projects SET created_by = $2 WHERE created_by = $1` },
-            { label: 'pessoas (created_by)', sql: `UPDATE pessoas SET created_by = $2 WHERE created_by = $1` },
+            { label: 'assignees (created_by)', sql: `UPDATE assignees SET created_by = $2 WHERE created_by = $1` },
           ];
           for (const step of reassignSteps) {
             await client.query(step.sql, [targetUserId, userId]).catch(e => {

@@ -28,7 +28,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 export interface ScenarioFilters {
-  clientId?: string | null;
+  organizationId?: string | null;
   farmId?: string | null;
 }
 
@@ -38,7 +38,7 @@ export interface ScenarioFilters {
 export const getSavedScenarios = async (userId: string, filters?: ScenarioFilters): Promise<CattleScenario[]> => {
   try {
     const params = new URLSearchParams({ userId });
-    if (filters?.clientId) params.set('orgId', filters.clientId);
+    if (filters?.organizationId) params.set('orgId', filters.organizationId);
     if (filters?.farmId) params.set('farmId', filters.farmId);
 
     const res = await apiFetch(`/api/cattle-scenarios?${params}`);
@@ -58,6 +58,7 @@ export const getSavedScenarios = async (userId: string, filters?: ScenarioFilter
           id: scenario.id as string,
           user_id: scenario.userId as string,
           client_id: (scenario.organizationId as string | null) ?? null,
+          organizationId: (scenario.organizationId as string | null) ?? null,
           farm_id: (scenario.farmId as string | null) ?? null,
           farm_name: (scenario.farmName as string | null) ?? null,
           name: scenario.name as string,
@@ -143,7 +144,7 @@ const validateScenarioData = (name?: string, inputs?: CattleCalculatorInputs) =>
 };
 
 export interface SaveScenarioOptions {
-  clientId?: string | null;
+  organizationId?: string | null;
   farmId?: string | null;
   farmName?: string | null;
 }
@@ -174,7 +175,7 @@ export const saveReportPdf = async (
     method: 'POST',
     body: JSON.stringify({
       userId,
-      organizationId: options?.clientId || null,
+      organizationId: options?.organizationId || null,
       farmId: options?.farmId || null,
       farmName: options?.farmName || null,
       name: sanitizedName,
@@ -197,6 +198,7 @@ export const saveReportPdf = async (
     ...data,
     user_id: data.userId,
     client_id: data.organizationId ?? null,
+    organizationId: data.organizationId ?? null,
     farm_id: data.farmId ?? null,
     farm_name: data.farmName ?? null,
     created_at: data.createdAt,
@@ -247,7 +249,7 @@ export const saveComparatorReport = async (
     method: 'POST',
     body: JSON.stringify({
       userId,
-      organizationId: options?.clientId || null,
+      organizationId: options?.organizationId || null,
       farmId: options?.farmId || null,
       farmName: options?.farmName || null,
       name: sanitizedName,
@@ -267,6 +269,7 @@ export const saveComparatorReport = async (
     ...data,
     user_id: data.userId,
     client_id: data.organizationId ?? null,
+    organizationId: data.organizationId ?? null,
     farm_id: data.farmId ?? null,
     farm_name: data.farmName ?? null,
     created_at: data.createdAt,
@@ -302,7 +305,7 @@ export const saveScenario = async (
     method: 'POST',
     body: JSON.stringify({
       userId,
-      organizationId: options?.clientId || null,
+      organizationId: options?.organizationId || null,
       farmId: options?.farmId || null,
       farmName: options?.farmName || null,
       name: sanitizedName,
@@ -322,6 +325,7 @@ export const saveScenario = async (
     ...data,
     user_id: data.userId,
     client_id: data.organizationId ?? null,
+    organizationId: data.organizationId ?? null,
     farm_id: data.farmId ?? null,
     farm_name: data.farmName ?? null,
     created_at: data.createdAt,
@@ -368,6 +372,7 @@ export const updateScenario = async (
     ...data,
     user_id: data.userId,
     client_id: data.organizationId ?? null,
+    organizationId: data.organizationId ?? null,
     farm_id: data.farmId ?? null,
     farm_name: data.farmName ?? null,
     created_at: data.createdAt,
@@ -419,6 +424,7 @@ export const getScenario = async (scenarioId: string, userId: string): Promise<C
     ...data,
     user_id: data.userId,
     client_id: data.organizationId ?? null,
+    organizationId: data.organizationId ?? null,
     farm_id: data.farmId ?? null,
     farm_name: data.farmName ?? null,
     created_at: data.createdAt,

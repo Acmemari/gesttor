@@ -12,6 +12,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { and, eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
 import { db } from '../src/DB/index.js';
 import { userProfiles, organizations, organizationAnalysts, farms as farmsTable } from '../src/DB/schema.js';
 import {
@@ -66,8 +67,8 @@ async function analystCanAccessOrg(analystId: string, orgId: string): Promise<bo
 /** Verifica se analista tem acesso à fazenda via organização. */
 async function analystCanAccessFarm(analystId: string, farmId: string): Promise<boolean> {
   const farm = await getFarm(farmId);
-  if (!farm?.organization_id) return false;
-  return analystCanAccessOrg(analystId, farm.organization_id);
+  if (!farm?.organizationId) return false;
+  return analystCanAccessOrg(analystId, farm.organizationId);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -94,6 +95,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isAnalyst) {
     jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
     return;
+  }
+
+  // ─── Rate limiting ──────────────────────────────────────────────────────────
+  if (req.method !== 'GET') {
+    const rl = await checkCrudRateLimit({ userId });
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil((rl.retryAfterMs ?? 60000) / 1000)));
+      jsonError(res, 'Muitas requisições. Tente novamente em instantes.', { status: 429 });
+      return;
+    }
   }
 
   // ─── GET ───────────────────────────────────────────────────────────────────
@@ -140,16 +151,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST') {
     const body = req.body as Partial<CreateFarmInput> & { name?: string; organizationId?: string };
 
-    if (!body?.name?.trim()) {
+    const farmName = body?.name?.trim() ?? '';
+    if (!farmName) {
       jsonError(res, 'Campo name é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    if (farmName.length > 255) {
+      jsonError(res, 'name deve ter no máximo 255 caracteres', { code: 'VALIDATION', status: 400 });
       return;
     }
     if (!body?.organizationId) {
       jsonError(res, 'Campo organizationId é obrigatório', { code: 'VALIDATION', status: 400 });
       return;
     }
-    if (!body?.city?.trim()) {
+    const farmCity = body?.city?.trim() ?? '';
+    if (!farmCity) {
       jsonError(res, 'Campo city é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
+    // Validate numeric fields (must be non-negative if provided)
+    const numericFields = [
+      'totalArea', 'pastureArea', 'agricultureArea', 'forageProductionArea',
+      'agricultureAreaOwned', 'agricultureAreaLeased', 'otherCrops', 'infrastructure',
+      'reserveAndAPP', 'otherArea', 'propertyValue', 'operationPecuary',
+      'operationAgricultural', 'otherOperations', 'averageHerd', 'herdValue',
+    ] as const;
+    for (const field of numericFields) {
+      const val = body[field];
+      if (val !== null && val !== undefined) {
+        const num = Number(val);
+        if (isNaN(num) || num < 0) {
+          jsonError(res, `Campo ${field} deve ser um número não-negativo`, { code: 'VALIDATION', status: 400 });
+          return;
+        }
+      }
+    }
+
+    // Validate enum fields
+    const validPropertyTypes = ['Própria', 'Arrendada'];
+    if (body.propertyType && !validPropertyTypes.includes(body.propertyType)) {
+      jsonError(res, `propertyType inválido. Use: ${validPropertyTypes.join(', ')}`, { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    const validWeightMetrics = ['Arroba (@)', 'Quilograma (Kg)'];
+    if (body.weightMetric && !validWeightMetrics.includes(body.weightMetric)) {
+      jsonError(res, `weightMetric inválido. Use: ${validWeightMetrics.join(', ')}`, { code: 'VALIDATION', status: 400 });
       return;
     }
 
@@ -165,15 +212,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(organizations.id, body.organizationId))
       .limit(1);
 
-    const baseSlug = generateFarmId(body.name.trim(), org?.name ?? body.organizationId);
+    const baseSlug = generateFarmId(farmName, org?.name ?? body.organizationId);
 
     try {
       const farmData: CreateFarmInput = {
         id: baseSlug,
-        name: body.name.trim(),
+        name: farmName,
         country: body.country ?? 'Brasil',
         state: body.state ?? null,
-        city: body.city.trim(),
+        city: farmCity,
         organizationId: body.organizationId,
         totalArea: body.totalArea ?? null,
         pastureArea: body.pastureArea ?? null,
@@ -202,7 +249,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const created = await createFarm(farmData, userId);
       jsonSuccess(res, mapFarmFromDatabase(created));
     } catch (err) {
-      console.error('[farms POST]', err);
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('unique') || msg.includes('duplicate')) {
+        jsonError(res, 'Já existe uma fazenda com este nome nesta organização', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      console.error('[farms POST] erro ao criar fazenda');
       jsonError(res, 'Erro ao criar fazenda', { status: 500 });
     }
     return;
@@ -231,8 +283,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       jsonSuccess(res, mapFarmFromDatabase(updated));
-    } catch (err) {
-      console.error('[farms PATCH]', err);
+    } catch {
+      console.error('[farms PATCH] erro ao atualizar fazenda');
       jsonError(res, 'Erro ao atualizar fazenda', { status: 500 });
     }
     return;
@@ -254,8 +306,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       await deactivateFarm(farmId);
       jsonSuccess(res, { id: farmId, ativo: false });
-    } catch (err) {
-      console.error('[farms DELETE]', err);
+    } catch {
+      console.error('[farms DELETE] erro ao desativar fazenda');
       jsonError(res, 'Erro ao desativar fazenda', { status: 500 });
     }
     return;

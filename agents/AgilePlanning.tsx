@@ -1466,13 +1466,13 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     () =>
       productionSystem === 'Recria-Engorda'
         ? [
-            { id: 'tempoPerm', label: 'Tempo Perm.', value: recriaTempoPermanenciaMeses, format: (v: number) => `${v.toFixed(1)} meses` },
-            { id: 'pesoArroba', label: 'Peso em @', value: recriaPesoArroba, format: (v: number) => `${v.toFixed(1)} @` },
-            { id: 'producaoArrobaHa', label: 'Prod. @/ha/ano', value: producaoArrobaHa, format: (v: number) => `${v.toFixed(2)} @/ha` },
-            { id: 'giroEstoque', label: 'Giro de Estoque', value: recriaGiroEstoque, format: (v: number) => `${v.toFixed(1)}%` },
-            { id: 'lotacaoCabHa', label: 'Lotação Cab/ha', value: recriaLotacaoCabHa, format: (v: number) => v.toFixed(2) },
-            { id: 'lotacaoUaHa', label: 'Lotação UA/ha', value: recriaLotacaoUaHa, format: (v: number) => v.toFixed(2) },
-          ]
+          { id: 'tempoPerm', label: 'Tempo Perm.', value: recriaTempoPermanenciaMeses, format: (v: number) => `${v.toFixed(1)} meses` },
+          { id: 'pesoArroba', label: 'Peso em @', value: recriaPesoArroba, format: (v: number) => `${v.toFixed(1)} @` },
+          { id: 'producaoArrobaHa', label: 'Prod. @/ha/ano', value: producaoArrobaHa, format: (v: number) => `${v.toFixed(2)} @/ha` },
+          { id: 'giroEstoque', label: 'Giro de Estoque', value: recriaGiroEstoque, format: (v: number) => `${v.toFixed(1)}%` },
+          { id: 'lotacaoCabHa', label: 'Lotação Cab/ha', value: recriaLotacaoCabHa, format: (v: number) => v.toFixed(2) },
+          { id: 'lotacaoUaHa', label: 'Lotação UA/ha', value: recriaLotacaoUaHa, format: (v: number) => v.toFixed(2) },
+        ]
         : [],
     [
       productionSystem,
@@ -1636,8 +1636,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     const totalPesoVivo =
       herdRows.length > 0 && totalRebanhoMedio > 0
         ? Math.round(
-            herdRows.reduce((sum, r) => sum + r.rebanhoMedio * r.pesoVivoKg, 0) / totalRebanhoMedio,
-          )
+          herdRows.reduce((sum, r) => sum + r.rebanhoMedio * r.pesoVivoKg, 0) / totalRebanhoMedio,
+        )
         : 0;
 
     const herdComposition = {
@@ -2655,121 +2655,121 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
               {showReproductiveIndices && (
                 <div className="flex gap-3 flex-1 items-stretch">
                   <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0 flex-1">
-                      <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
-                        Índices Reprodutivos
-                      </h3>
-                      <div className="flex flex-col justify-between flex-1 gap-2">
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Fertilidade</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {fertility.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">70%</span>
-                            <input
-                              type="range"
-                              min={70}
-                              max={90}
-                              step={0.5}
-                              value={fertility}
-                              onChange={e => setFertility(parseFloat(e.target.value))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">90%</span>
-                          </div>
+                    <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
+                      Índices Reprodutivos
+                    </h3>
+                    <div className="flex flex-col justify-between flex-1 gap-2">
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Fertilidade</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {fertility.toFixed(1)}%
+                          </span>
                         </div>
-
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Perda Pré Parto</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {prePartumLoss.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">3%</span>
-                            <input
-                              type="range"
-                              min={3}
-                              max={15}
-                              step={0.5}
-                              value={prePartumLoss}
-                              onChange={e => setPrePartumLoss(parseFloat(e.target.value))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">15%</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">70%</span>
+                          <input
+                            type="range"
+                            min={70}
+                            max={90}
+                            step={0.5}
+                            value={fertility}
+                            onChange={e => setFertility(parseFloat(e.target.value))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">90%</span>
                         </div>
+                      </div>
 
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Mortalidade de Bezerros</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {calfMortality.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">1,5%</span>
-                            <input
-                              type="range"
-                              min={1.5}
-                              max={7}
-                              step={0.1}
-                              value={calfMortality}
-                              onChange={e => setCalfMortality(parseFloat(e.target.value))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">7%</span>
-                          </div>
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Perda Pré Parto</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {prePartumLoss.toFixed(1)}%
+                          </span>
                         </div>
-
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Peso ao desmame de machos</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {maleWeaningWeight} kg
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">170 kg</span>
-                            <input
-                              type="range"
-                              min={170}
-                              max={260}
-                              step={1}
-                              value={maleWeaningWeight}
-                              onChange={e => setMaleWeaningWeight(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">260 kg</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">3%</span>
+                          <input
+                            type="range"
+                            min={3}
+                            max={15}
+                            step={0.5}
+                            value={prePartumLoss}
+                            onChange={e => setPrePartumLoss(parseFloat(e.target.value))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">15%</span>
                         </div>
+                      </div>
 
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Peso ao desmame de fêmeas</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {femaleWeaningWeight} kg
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">170 kg</span>
-                            <input
-                              type="range"
-                              min={170}
-                              max={260}
-                              step={1}
-                              value={femaleWeaningWeight}
-                              onChange={e => setFemaleWeaningWeight(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">260 kg</span>
-                          </div>
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Mortalidade de Bezerros</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {calfMortality.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0">1,5%</span>
+                          <input
+                            type="range"
+                            min={1.5}
+                            max={7}
+                            step={0.1}
+                            value={calfMortality}
+                            onChange={e => setCalfMortality(parseFloat(e.target.value))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-7 flex-shrink-0 text-right">7%</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Peso ao desmame de machos</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {maleWeaningWeight} kg
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">170 kg</span>
+                          <input
+                            type="range"
+                            min={170}
+                            max={260}
+                            step={1}
+                            value={maleWeaningWeight}
+                            onChange={e => setMaleWeaningWeight(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">260 kg</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Peso ao desmame de fêmeas</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {femaleWeaningWeight} kg
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">170 kg</span>
+                          <input
+                            type="range"
+                            min={170}
+                            max={260}
+                            step={1}
+                            value={femaleWeaningWeight}
+                            onChange={e => setFemaleWeaningWeight(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">260 kg</span>
                         </div>
                       </div>
                     </div>
+                  </div>
 
                   <div className="bg-white border border-ai-border/70 rounded-lg p-2 flex flex-col min-w-0 flex-1">
                     <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text pb-1.5 mb-2 border-b border-ai-border/60">
@@ -2801,123 +2801,123 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <div>
                         <div className="flex items-center justify-between text-[9px] mb-0.5">
                           <label className="text-ai-subtext">Idade a primeira monta</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {firstMatingAge} meses
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">12 meses</span>
-                            <input
-                              type="range"
-                              min={12}
-                              max={24}
-                              step={1}
-                              value={firstMatingAge}
-                              onChange={e => setFirstMatingAge(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">24 meses</span>
-                          </div>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {firstMatingAge} meses
+                          </span>
                         </div>
-
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Peso a primeira monta</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {pesoPrimeiraMonta} kg
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">270 kg</span>
-                            <input
-                              type="range"
-                              min={270}
-                              max={360}
-                              step={1}
-                              value={pesoPrimeiraMonta}
-                              onChange={e => setPesoPrimeiraMonta(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">360 kg</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">12 meses</span>
+                          <input
+                            type="range"
+                            min={12}
+                            max={24}
+                            step={1}
+                            value={firstMatingAge}
+                            onChange={e => setFirstMatingAge(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">24 meses</span>
                         </div>
+                      </div>
 
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <label className="text-ai-subtext">Tempo de monta</label>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {matingPeriodDays} dias
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">40 dias</span>
-                            <input
-                              type="range"
-                              min={40}
-                              max={120}
-                              step={1}
-                              value={matingPeriodDays}
-                              onChange={e => setMatingPeriodDays(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">120 dias</span>
-                          </div>
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Peso a primeira monta</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {pesoPrimeiraMonta} kg
+                          </span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">270 kg</span>
+                          <input
+                            type="range"
+                            min={270}
+                            max={360}
+                            step={1}
+                            value={pesoPrimeiraMonta}
+                            onChange={e => setPesoPrimeiraMonta(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">360 kg</span>
+                        </div>
+                      </div>
 
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] mb-0.5">
-                            <div
-                              className="flex items-center gap-1 relative"
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <label className="text-ai-subtext">Tempo de monta</label>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {matingPeriodDays} dias
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">40 dias</span>
+                          <input
+                            type="range"
+                            min={40}
+                            max={120}
+                            step={1}
+                            value={matingPeriodDays}
+                            onChange={e => setMatingPeriodDays(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">120 dias</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <div
+                            className="flex items-center gap-1 relative"
+                            ref={el => {
+                              weightInfoRefs.current['cowSlaughter'] = el;
+                            }}
+                          >
+                            <label className="text-ai-subtext">Dias para abate de vacas</label>
+                            <button
                               ref={el => {
-                                weightInfoRefs.current['cowSlaughter'] = el;
+                                weightButtonRefs.current['cowSlaughter'] = el;
                               }}
+                              type="button"
+                              onClick={() => handleWeightInfoToggle('cowSlaughter')}
+                              className="text-gray-300 hover:text-blue-500 transition-colors focus:outline-none"
+                              title="Mais informações"
+                              aria-label="Mais informações"
                             >
-                              <label className="text-ai-subtext">Dias para abate de vacas</label>
-                              <button
-                                ref={el => {
-                                  weightButtonRefs.current['cowSlaughter'] = el;
+                              <Info size={10} />
+                            </button>
+                            {weightCalculationInfoOpen === 'cowSlaughter' && popoverPositions.cowSlaughter && (
+                              <div
+                                className="fixed z-[100] w-56 p-2.5 bg-white rounded-lg shadow-2xl border border-gray-200 text-xs text-gray-600 leading-relaxed animate-in fade-in zoom-in-95 duration-200"
+                                style={{
+                                  top: popoverPositions.cowSlaughter.top,
+                                  left: popoverPositions.cowSlaughter.left,
                                 }}
-                                type="button"
-                                onClick={() => handleWeightInfoToggle('cowSlaughter')}
-                                className="text-gray-300 hover:text-blue-500 transition-colors focus:outline-none"
-                                title="Mais informações"
-                                aria-label="Mais informações"
                               >
-                                <Info size={10} />
-                              </button>
-                              {weightCalculationInfoOpen === 'cowSlaughter' && popoverPositions.cowSlaughter && (
-                                <div
-                                  className="fixed z-[100] w-56 p-2.5 bg-white rounded-lg shadow-2xl border border-gray-200 text-xs text-gray-600 leading-relaxed animate-in fade-in zoom-in-95 duration-200"
-                                  style={{
-                                    top: popoverPositions.cowSlaughter.top,
-                                    left: popoverPositions.cowSlaughter.left,
-                                  }}
-                                >
-                                  <p className="font-medium text-gray-800 mb-1 text-left">Dias para abate de vacas</p>
-                                  <p className="text-[10px] text-left">
-                                    Dias necessários para terminação das matrizes vazias após o desmame.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                            <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
-                              {cowSlaughterDays} dias
-                            </span>
+                                <p className="font-medium text-gray-800 mb-1 text-left">Dias para abate de vacas</p>
+                                <p className="text-[10px] text-left">
+                                  Dias necessários para terminação das matrizes vazias após o desmame.
+                                </p>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">0 dias</span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={90}
-                              step={1}
-                              value={cowSlaughterDays}
-                              onChange={e => setCowSlaughterDays(parseInt(e.target.value, 10))}
-                              className="flex-1 accent-ai-accent h-1.5"
-                            />
-                            <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">90 dias</span>
-                          </div>
+                          <span className="font-semibold text-ai-text bg-ai-surface2/70 border border-ai-border/70 rounded px-1.5 py-0.5">
+                            {cowSlaughterDays} dias
+                          </span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0">0 dias</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={90}
+                            step={1}
+                            value={cowSlaughterDays}
+                            onChange={e => setCowSlaughterDays(parseInt(e.target.value, 10))}
+                            className="flex-1 accent-ai-accent h-1.5"
+                          />
+                          <span className="text-[7px] text-ai-subtext w-9 flex-shrink-0 text-right">90 dias</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -3494,8 +3494,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         {averageHerdTable.vacas > 0
                           ? ((averageHerdTable.vacas * averageHerdTable.tempoVacas) / 12).toLocaleString('pt-BR', {
-                              maximumFractionDigits: 0,
-                            })
+                            maximumFractionDigits: 0,
+                          })
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -3585,9 +3585,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         {averageHerdTable.bezerrosMamando > 0
                           ? (
-                              (averageHerdTable.bezerrosMamando * averageHerdTable.tempoBezerros) /
-                              12
-                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                            (averageHerdTable.bezerrosMamando * averageHerdTable.tempoBezerros) /
+                            12
+                          ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -3708,9 +3708,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         {averageHerdTable.novilhas8a12 > 0
                           ? (
-                              (averageHerdTable.novilhas8a12 * averageHerdTable.tempoNovilhas8a12) /
-                              12
-                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                            (averageHerdTable.novilhas8a12 * averageHerdTable.tempoNovilhas8a12) /
+                            12
+                          ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -3811,9 +3811,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         {averageHerdTable.novilhas13a24 > 0
                           ? (
-                              (averageHerdTable.novilhas13a24 * averageHerdTable.tempoNovilhas13a24) /
-                              12
-                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                            (averageHerdTable.novilhas13a24 * averageHerdTable.tempoNovilhas13a24) /
+                            12
+                          ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -3972,9 +3972,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                             {averageHerdTable.machos8a12 > 0
                               ? (
-                                  (averageHerdTable.machos8a12 * averageHerdTable.tempoMachos8a12) /
-                                  12
-                                ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                                (averageHerdTable.machos8a12 * averageHerdTable.tempoMachos8a12) /
+                                12
+                              ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                               : '-'}
                           </td>
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -4049,9 +4049,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                             {averageHerdTable.machos13a24 > 0
                               ? (
-                                  (averageHerdTable.machos13a24 * averageHerdTable.tempoMachos13a24) /
-                                  12
-                                ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                                (averageHerdTable.machos13a24 * averageHerdTable.tempoMachos13a24) /
+                                12
+                              ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                               : '-'}
                           </td>
                           <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -4149,9 +4149,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
                         {averageHerdTable.touros > 0
                           ? (
-                              (averageHerdTable.touros * averageHerdTable.tempoTouros) /
-                              12
-                            ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                            (averageHerdTable.touros * averageHerdTable.tempoTouros) /
+                            12
+                          ).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-sm font-semibold text-ai-text">
@@ -4578,9 +4578,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     <tr>
                       <td className="px-2 py-1 text-ai-text font-bold text-xs">Total</td>
                       <td
-                        className={`px-2 py-1 text-center font-bold text-xs ${
-                          isPercentageSumValid ? 'text-ai-text' : 'text-red-600'
-                        }`}
+                        className={`px-2 py-1 text-center font-bold text-xs ${isPercentageSumValid ? 'text-ai-text' : 'text-red-600'
+                          }`}
                       >
                         {percentageSum.toFixed(1)}%
                         {!isPercentageSumValid && <span className="ml-1 text-[9px]">⚠️</span>}

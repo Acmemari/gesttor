@@ -27,6 +27,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
 import { db } from '../src/DB/index.js';
 import { userProfiles, farms as farmsTable } from '../src/DB/schema.js';
 import {
@@ -56,6 +57,11 @@ import {
   upsertPessoaPermissao,
   analystCanAccessOrg,
   analystCanAccessPessoa,
+  validateCPF,
+  validatePhotoUrl,
+  perfilExists,
+  cargoFuncaoExists,
+  farmExists,
   type CreatePessoaInput,
   type UpdatePessoaInput,
 } from '../src/DB/repositories/pessoas.js';
@@ -93,6 +99,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isAnalyst) {
     jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
     return;
+  }
+
+  // ─── Rate limiting ───────────────────────────────────────────────────────────
+  if (req.method !== 'GET') {
+    const rl = await checkCrudRateLimit({ userId });
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil((rl.retryAfterMs ?? 60000) / 1000)));
+      jsonError(res, 'Muitas requisições. Tente novamente em instantes.', { status: 429 });
+      return;
+    }
   }
 
   // ─── GET ────────────────────────────────────────────────────────────────────
@@ -157,7 +173,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         getPessoaFazendas(idParam),
         getPessoaPermissoes(idParam),
       ]);
-      jsonSuccess(res, { ...pessoa, perfis: pessoaPerfisRows, fazendas: pessoaFazendasRows, permissoes: pessoaPermissoesRows });
+      const perfis = pessoaPerfisRows.map(pp => ({
+        id: pp.id,
+        pessoaId: pp.pessoaId,
+        perfilId: pp.perfilId,
+        cargoFuncaoId: pp.cargoFuncaoId ?? null,
+        ativo: true,
+        createdAt: pp.createdAt,
+        perfilNome: pp.perfilNome ?? undefined,
+        cargoFuncaoNome: pp.cargoFuncaoNome ?? null,
+      }));
+      const fazendas = pessoaFazendasRows.map(pf => ({
+        id: pf.id,
+        pessoaId: pf.pessoaId,
+        farmId: pf.farmId,
+        farmName: pf.farmName ?? pf.farmId,
+        isPrimary: pf.primaryFarm ?? false,
+        createdAt: pf.createdAt,
+      }));
+      const permissoes = pessoaPermissoesRows.map(pp => ({
+        id: pp.id,
+        pessoaId: pp.pessoaId,
+        farmId: pp.farmId,
+        assumeTarefasFazenda: pp.assumeTarefasFazenda ?? false,
+        podeAlterarSemanaFechada: pp.podeAlterarSemanaFechada ?? false,
+        podeApagarSemana: pp.podeApagarSemana ?? false,
+        createdAt: pp.createdAt,
+        updatedAt: pp.updatedAt,
+      }));
+      jsonSuccess(res, { ...pessoa, perfis, fazendas, permissoes });
       return;
     }
 
@@ -169,10 +213,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const offset = Math.max(0, Number(req.query?.offset) || 0);
       const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
-      const search = typeof req.query?.search === 'string' ? req.query.search : undefined;
+      const search = typeof req.query?.search === 'string' ? req.query.search.trim() : undefined;
       const ativoParam = req.query?.ativo;
-      const ativo = ativoParam === 'false' ? false : ativoParam === 'true' ? true : true;
-      const perfilId = req.query?.perfilId ? Number(req.query.perfilId) : undefined;
+      const ativo = ativoParam === 'false' ? false : true;
+      const perfilId = typeof req.query?.perfilId === 'string' ? req.query.perfilId : undefined;
       const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : undefined;
 
       const { rows, hasMore } = await listPessoas(orgIdParam, { search, ativo, offset, limit, perfilId, farmId });
@@ -194,8 +238,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       switch (action) {
         case 'add-perfil': {
           const pessoaId = typeof body.pessoaId === 'string' ? body.pessoaId : null;
-          const perfilId = typeof body.perfilId === 'number' ? body.perfilId : null;
-          const cargoFuncaoId = typeof body.cargoFuncaoId === 'number' ? body.cargoFuncaoId : null;
+          const perfilId = typeof body.perfilId === 'string' ? body.perfilId : typeof body.perfilId === 'number' ? String(body.perfilId) : null;
+          const cargoFuncaoId = typeof body.cargoFuncaoId === 'string' ? body.cargoFuncaoId : typeof body.cargoFuncaoId === 'number' ? String(body.cargoFuncaoId) : null;
           if (!pessoaId || !perfilId) {
             jsonError(res, 'pessoaId e perfilId são obrigatórios', { code: 'VALIDATION', status: 400 });
             return;
@@ -204,7 +248,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
             return;
           }
-          await addPessoaPerfil(pessoaId, perfilId, cargoFuncaoId);
+          if (!(await perfilExists(perfilId))) {
+            jsonError(res, 'Perfil não encontrado ou inativo', { code: 'NOT_FOUND', status: 404 });
+            return;
+          }
+          if (cargoFuncaoId && !(await cargoFuncaoExists(cargoFuncaoId))) {
+            jsonError(res, 'Cargo/função não encontrado ou inativo', { code: 'NOT_FOUND', status: 404 });
+            return;
+          }
+          await addPessoaPerfil({ pessoaId, perfilId, cargoFuncaoId: cargoFuncaoId ?? undefined });
           jsonSuccess(res, { ok: true });
           return;
         }
@@ -236,7 +288,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
             return;
           }
-          await addPessoaFazenda(pessoaId, farmId);
+          if (!(await farmExists(farmId))) {
+            jsonError(res, 'Fazenda não encontrada ou inativa', { code: 'NOT_FOUND', status: 404 });
+            return;
+          }
+          await addPessoaFazenda({ pessoaId, farmId });
           jsonSuccess(res, { ok: true });
           return;
         }
@@ -284,7 +340,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
             return;
           }
-          await upsertPessoaPermissao(pessoaId, farmId, {
+          await upsertPessoaPermissao({
+            pessoaId,
+            farmId,
             assume_tarefas_fazenda: body.assume_tarefas_fazenda === true,
             pode_alterar_semana_fechada: body.pode_alterar_semana_fechada === true,
             pode_apagar_semana: body.pode_apagar_semana === true,
@@ -314,7 +372,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             jsonError(res, 'Apenas administradores podem editar perfis', { code: 'FORBIDDEN', status: 403 });
             return;
           }
-          const id = typeof body.id === 'number' ? body.id : null;
+          const id = body.id != null ? String(body.id) : null;
           if (!id) { jsonError(res, 'id é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
           const updated = await updatePerfil(id, {
             nome: typeof body.nome === 'string' ? body.nome : undefined,
@@ -347,7 +405,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             jsonError(res, 'Apenas administradores podem editar cargos', { code: 'FORBIDDEN', status: 403 });
             return;
           }
-          const id = typeof body.id === 'number' ? body.id : null;
+          const id = body.id != null ? String(body.id) : null;
           if (!id) { jsonError(res, 'id é obrigatório', { code: 'VALIDATION', status: 400 }); return; }
           const updated = await updateCargoFuncao(id, {
             nome: typeof body.nome === 'string' ? body.nome : undefined,
@@ -382,18 +440,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // Validate CPF if provided
+    const cpfRaw = typeof data.cpf === 'string' ? data.cpf.replace(/\D/g, '') : null;
+    if (cpfRaw && !validateCPF(cpfRaw)) {
+      jsonError(res, 'CPF inválido', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
+    // Validate photo_url if provided
+    const photoUrl = typeof data.photo_url === 'string' ? data.photo_url.trim() : null;
+    if (photoUrl && !validatePhotoUrl(photoUrl)) {
+      jsonError(res, 'photo_url deve ser uma URL válida (http/https)', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
+    // Normalize email
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : null;
+
+    // Validate full_name length
+    if (fullName.length > 255) {
+      jsonError(res, 'full_name deve ter no máximo 255 caracteres', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
     try {
       const input: CreatePessoaInput = {
         created_by: userId,
         full_name: fullName,
         preferred_name: data.preferred_name ?? null,
         phone_whatsapp: data.phone_whatsapp ?? null,
-        email: data.email ?? null,
+        email,
         location_city_uf: data.location_city_uf ?? null,
-        photo_url: data.photo_url ?? null,
+        photo_url: photoUrl,
         organization_id: orgId,
         user_id: data.user_id ?? null,
-        cpf: data.cpf ?? null,
+        cpf: cpfRaw || null,
         rg: data.rg ?? null,
         data_nascimento: data.data_nascimento ?? null,
         data_contratacao: data.data_contratacao ?? null,
@@ -403,7 +484,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const pessoa = await createPessoa(input);
       jsonSuccess(res, pessoa);
     } catch (err) {
-      console.error('[pessoas POST]', err);
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('unique') || msg.includes('duplicate')) {
+        jsonError(res, 'CPF já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      console.error('[pessoas POST] erro ao criar pessoa');
       jsonError(res, 'Erro ao criar pessoa', { status: 500 });
     }
     return;
@@ -423,6 +509,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { id: _id, ...updates } = body as { id: string } & UpdatePessoaInput;
+
+    // Validate CPF if being updated
+    if (updates.cpf !== undefined && updates.cpf !== null) {
+      const cpfRaw = updates.cpf.replace(/\D/g, '');
+      if (!validateCPF(cpfRaw)) {
+        jsonError(res, 'CPF inválido', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      updates.cpf = cpfRaw;
+    }
+
+    // Validate photo_url if being updated
+    if (updates.photo_url !== undefined && updates.photo_url !== null) {
+      const photoUrl = updates.photo_url.trim();
+      if (photoUrl && !validatePhotoUrl(photoUrl)) {
+        jsonError(res, 'photo_url deve ser uma URL válida (http/https)', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      updates.photo_url = photoUrl;
+    }
+
+    // Normalize email
+    if (updates.email !== undefined && updates.email !== null) {
+      updates.email = updates.email.trim().toLowerCase();
+    }
+
     try {
       const updated = await updatePessoa(pessoaId, updates);
       if (!updated) {
@@ -431,7 +543,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       jsonSuccess(res, updated);
     } catch (err) {
-      console.error('[pessoas PATCH]', err);
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('unique') || msg.includes('duplicate')) {
+        jsonError(res, 'CPF já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      console.error('[pessoas PATCH] erro ao atualizar pessoa');
       jsonError(res, 'Erro ao atualizar pessoa', { status: 500 });
     }
     return;
@@ -452,8 +569,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       await deactivatePessoa(pessoaId);
       jsonSuccess(res, { id: pessoaId, ativo: false });
-    } catch (err) {
-      console.error('[pessoas DELETE]', err);
+    } catch {
+      console.error('[pessoas DELETE] erro ao desativar pessoa');
       jsonError(res, 'Erro ao desativar pessoa', { status: 500 });
     }
     return;

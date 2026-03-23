@@ -1,9 +1,36 @@
-import { eq, and, ilike, or } from 'drizzle-orm';
+import { eq, and, ilike, or, inArray } from 'drizzle-orm';
 import { db } from '../index.js';
 import {
-  people, perfils, cargoFuncao, personPerfils, personFazendas, personPermissoes,
-  organizations, analystFarms, organizationAnalysts,
+  people, perfils, cargoFuncao, personProfiles, personFarms, personPermissions,
+  organizations, organizationAnalysts, farms,
 } from '../schema.js';
+
+// ── CPF validation ─────────────────────────────────────────────────────────────
+
+export function validateCPF(cpf: string): boolean {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+  let check = 11 - (sum % 11);
+  if (check >= 10) check = 0;
+  if (check !== parseInt(digits[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+  check = 11 - (sum % 11);
+  if (check >= 10) check = 0;
+  return check === parseInt(digits[10]);
+}
+
+export function validatePhotoUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
 
 export type CreatePessoaInput = {
   full_name: string;
@@ -31,39 +58,76 @@ export async function getPessoa(id: string) {
   return row;
 }
 
-export async function listPessoas(params: {
-  organizationId?: string;
-  search?: string;
-  offset?: number;
-  limit?: number;
-  ativo?: boolean;
-  perfilId?: string;
-  farmId?: string;
-} = {}) {
-  const conditions: ReturnType<typeof eq>[] = [];
-  if (params.ativo !== undefined) conditions.push(eq(people.ativo, params.ativo));
-  if (params.organizationId) conditions.push(eq(people.organizationId, params.organizationId));
-  let query = db.select().from(people).$dynamic();
-  if (conditions.length > 0) query = query.where(and(...conditions));
-  if (params.offset) query = query.offset(params.offset);
-  if (params.limit) query = query.limit(params.limit);
-  return query;
+export async function listPessoas(
+  organizationId: string,
+  opts: {
+    search?: string;
+    offset?: number;
+    limit?: number;
+    ativo?: boolean;
+    perfilId?: string;
+    farmId?: string;
+  } = {},
+): Promise<{ rows: typeof people.$inferSelect[]; hasMore: boolean }> {
+  const { search, offset = 0, limit = 50, farmId } = opts;
+  const ativo = opts.ativo !== undefined ? opts.ativo : true;
+
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(people.organizationId, organizationId),
+    eq(people.ativo, ativo),
+  ];
+  if (search) conditions.push(ilike(people.fullName, `%${search}%`));
+  if (farmId) conditions.push(eq(people.farmId, farmId));
+
+  // If filtering by perfilId, get matching person IDs first via junction table
+  if (opts.perfilId) {
+    const linked = await db
+      .select({ pessoaId: personProfiles.pessoaId })
+      .from(personProfiles)
+      .where(eq(personProfiles.perfilId, opts.perfilId as any));
+    const ids = linked.map((r) => r.pessoaId);
+    if (ids.length === 0) return { rows: [], hasMore: false };
+    conditions.push(inArray(people.id, ids as any));
+  }
+
+  const rows = await db
+    .select()
+    .from(people)
+    .where(and(...conditions))
+    .offset(offset)
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
-export async function listPessoasByFarm(farmId: string, params: { offset?: number; limit?: number } = {}) {
-  let query = db.select({ pessoa: people }).from(personFazendas)
-    .innerJoin(people, eq(personFazendas.pessoaId, people.id))
-    .where(eq(personFazendas.farmId, farmId))
+export async function listPessoasByFarm(
+  farmId: string,
+  params: { offset?: number; limit?: number; assumeTarefas?: boolean } = {},
+) {
+  let query = db.select({ pessoa: people }).from(personFarms)
+    .innerJoin(people, eq(personFarms.pessoaId, people.id))
+    .where(eq(personFarms.farmId, farmId))
     .$dynamic();
   if (params.offset) query = query.offset(params.offset);
   if (params.limit) query = query.limit(params.limit);
-  return query.then(rows => rows.map(r => r.pessoa));
+  const rows = await query;
+  let result = rows.map(r => r.pessoa);
+  if (params.assumeTarefas !== undefined) {
+    // filter via personPermissions - load separately for simplicity
+    const perms = await db.select({ pessoaId: personPermissions.pessoaId })
+      .from(personPermissions)
+      .where(and(eq(personPermissions.farmId, farmId), eq(personPermissions.assumeTarefasFazenda, true)));
+    const ids = new Set(perms.map(p => p.pessoaId));
+    result = params.assumeTarefas ? result.filter(p => ids.has(p.id)) : result;
+  }
+  return result;
 }
 
 export async function getPermsByEmail(email: string) {
   const [person] = await db.select().from(people).where(eq(people.email, email)).limit(1);
   if (!person) return null;
-  const perms = await db.select().from(personPermissoes).where(eq(personPermissoes.pessoaId, person.id));
+  const perms = await db.select().from(personPermissions).where(eq(personPermissions.pessoaId, person.id));
   return { person, perms };
 }
 
@@ -178,11 +242,27 @@ export async function updateCargoFuncao(id: string, data: { nome?: string; ativo
 // ── Pessoa perfis ──────────────────────────────────────────────────────────────
 
 export async function getPessoaPerfis(pessoaId: string) {
-  return db.select().from(personPerfils).where(eq(personPerfils.pessoaId, pessoaId as any));
+  return db
+    .select({
+      id: personProfiles.id,
+      pessoaId: personProfiles.pessoaId,
+      perfilId: personProfiles.perfilId,
+      cargoFuncaoId: personProfiles.cargoFuncaoId,
+      createdAt: personProfiles.createdAt,
+      perfilNome: perfils.nome,
+      cargoFuncaoNome: cargoFuncao.nome,
+    })
+    .from(personProfiles)
+    .leftJoin(perfils, eq(perfils.id, personProfiles.perfilId as any))
+    .leftJoin(cargoFuncao, eq(cargoFuncao.id, personProfiles.cargoFuncaoId as any))
+    .where(eq(personProfiles.pessoaId, pessoaId as any));
 }
 
 export async function addPessoaPerfil(data: { pessoaId: string; perfilId: string; cargoFuncaoId?: string }) {
-  const [row] = await db.insert(personPerfils).values({
+  // Enforce single profile: delete existing ones first
+  await db.delete(personProfiles).where(eq(personProfiles.pessoaId, data.pessoaId as any));
+
+  const [row] = await db.insert(personProfiles).values({
     pessoaId: data.pessoaId as any,
     perfilId: data.perfilId as any,
     cargoFuncaoId: data.cargoFuncaoId as any ?? null,
@@ -191,17 +271,28 @@ export async function addPessoaPerfil(data: { pessoaId: string; perfilId: string
 }
 
 export async function removePessoaPerfil(id: string) {
-  await db.delete(personPerfils).where(eq(personPerfils.id, id as any));
+  await db.delete(personProfiles).where(eq(personProfiles.id, id as any));
 }
 
 // ── Pessoa fazendas ────────────────────────────────────────────────────────────
 
 export async function getPessoaFazendas(pessoaId: string) {
-  return db.select().from(personFazendas).where(eq(personFazendas.pessoaId, pessoaId as any));
+  return db
+    .select({
+      id: personFarms.id,
+      pessoaId: personFarms.pessoaId,
+      farmId: personFarms.farmId,
+      primaryFarm: personFarms.primaryFarm,
+      createdAt: personFarms.createdAt,
+      farmName: farms.name,
+    })
+    .from(personFarms)
+    .leftJoin(farms, eq(farms.id, personFarms.farmId))
+    .where(eq(personFarms.pessoaId, pessoaId as any));
 }
 
 export async function addPessoaFazenda(data: { pessoaId: string; farmId: string }) {
-  const [row] = await db.insert(personFazendas).values({
+  const [row] = await db.insert(personFarms).values({
     pessoaId: data.pessoaId as any,
     farmId: data.farmId,
     primaryFarm: false,
@@ -210,22 +301,22 @@ export async function addPessoaFazenda(data: { pessoaId: string; farmId: string 
 }
 
 export async function setPrimaryFazenda(pessoaId: string, fazendaId: string) {
-  await db.update(personFazendas).set({ primaryFarm: false })
-    .where(eq(personFazendas.pessoaId, pessoaId as any));
-  const [row] = await db.update(personFazendas).set({ primaryFarm: true })
-    .where(and(eq(personFazendas.pessoaId, pessoaId as any), eq(personFazendas.id, fazendaId as any)))
+  await db.update(personFarms).set({ primaryFarm: false })
+    .where(eq(personFarms.pessoaId, pessoaId as any));
+  const [row] = await db.update(personFarms).set({ primaryFarm: true })
+    .where(and(eq(personFarms.pessoaId, pessoaId as any), eq(personFarms.id, fazendaId as any)))
     .returning();
   return row;
 }
 
 export async function removePessoaFazenda(id: string) {
-  await db.delete(personFazendas).where(eq(personFazendas.id, id as any));
+  await db.delete(personFarms).where(eq(personFarms.id, id as any));
 }
 
 // ── Pessoa permissoes ──────────────────────────────────────────────────────────
 
 export async function getPessoaPermissoes(pessoaId: string) {
-  return db.select().from(personPermissoes).where(eq(personPermissoes.pessoaId, pessoaId as any));
+  return db.select().from(personPermissions).where(eq(personPermissions.pessoaId, pessoaId as any));
 }
 
 export async function upsertPessoaPermissao(data: {
@@ -235,23 +326,23 @@ export async function upsertPessoaPermissao(data: {
   pode_alterar_semana_fechada?: boolean;
   pode_apagar_semana?: boolean;
 }) {
-  const [existing] = await db.select().from(personPermissoes)
-    .where(and(eq(personPermissoes.pessoaId, data.pessoaId as any), eq(personPermissoes.farmId, data.farmId)))
+  const [existing] = await db.select().from(personPermissions)
+    .where(and(eq(personPermissions.pessoaId, data.pessoaId as any), eq(personPermissions.farmId, data.farmId)))
     .limit(1);
 
   if (existing) {
-    const [row] = await db.update(personPermissoes)
+    const [row] = await db.update(personPermissions)
       .set({
         assumeTarefasFazenda: data.assume_tarefas_fazenda ?? existing.assumeTarefasFazenda ?? false,
         podeAlterarSemanaFechada: data.pode_alterar_semana_fechada ?? existing.podeAlterarSemanaFechada ?? false,
         podeApagarSemana: data.pode_apagar_semana ?? existing.podeApagarSemana ?? false,
         updatedAt: new Date(),
       })
-      .where(eq(personPermissoes.id, existing.id))
+      .where(eq(personPermissions.id, existing.id))
       .returning();
     return row;
   } else {
-    const [row] = await db.insert(personPermissoes).values({
+    const [row] = await db.insert(personPermissions).values({
       pessoaId: data.pessoaId as any,
       farmId: data.farmId,
       assumeTarefasFazenda: data.assume_tarefas_fazenda ?? false,
@@ -260,6 +351,26 @@ export async function upsertPessoaPermissao(data: {
     }).returning();
     return row;
   }
+}
+
+// ── Existence checks ───────────────────────────────────────────────────────────
+
+export async function perfilExists(perfilId: string): Promise<boolean> {
+  const [row] = await db.select({ id: perfils.id }).from(perfils)
+    .where(and(eq(perfils.id, perfilId as any), eq(perfils.ativo, true))).limit(1);
+  return !!row;
+}
+
+export async function cargoFuncaoExists(cargoId: string): Promise<boolean> {
+  const [row] = await db.select({ id: cargoFuncao.id }).from(cargoFuncao)
+    .where(and(eq(cargoFuncao.id, cargoId as any), eq(cargoFuncao.ativo, true))).limit(1);
+  return !!row;
+}
+
+export async function farmExists(farmId: string): Promise<boolean> {
+  const [row] = await db.select({ id: farms.id }).from(farms)
+    .where(and(eq(farms.id, farmId), eq(farms.ativo, true))).limit(1);
+  return !!row;
 }
 
 // ── Access checks ──────────────────────────────────────────────────────────────
@@ -278,9 +389,13 @@ export async function analystCanAccessPessoa(analystId: string, pessoaId: string
   if (!person) return false;
   if (person.organizationId) return analystCanAccessOrg(analystId, person.organizationId);
   if (person.farmId) {
-    const [af] = await db.select().from(analystFarms)
-      .where(and(eq(analystFarms.analystId, analystId), eq(analystFarms.farmId, person.farmId))).limit(1);
-    return !!af;
+    const [farm] = await db.select({ organizationId: farms.organizationId })
+      .from(farms)
+      .where(eq(farms.id, person.farmId))
+      .limit(1);
+    if (farm && farm.organizationId) {
+      return analystCanAccessOrg(analystId, farm.organizationId);
+    }
   }
   return false;
 }

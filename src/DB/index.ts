@@ -22,10 +22,13 @@ function init(): { pool: Pool; db: ReturnType<typeof drizzle<typeof schema>> } {
     throw new Error('[DB] DATABASE_URL não está definido. Verifique .env / .env.local');
   }
 
-  // Append sslmode=verify-full to suppress pg-connection-string SSL warning
-  const connStr = connectionString.includes('sslmode=')
-    ? connectionString
-    : connectionString + (connectionString.includes('?') ? '&' : '?') + 'sslmode=verify-full';
+  // Append or replace sslmode to suppress pg-connection-string SSL warning
+  let connStr = connectionString;
+  if (connStr.includes('sslmode=require')) {
+    connStr = connStr.replace('sslmode=require', 'sslmode=verify-full');
+  } else if (!connStr.includes('sslmode=')) {
+    connStr += (connStr.includes('?') ? '&' : '?') + 'sslmode=verify-full';
+  }
 
   _pool = new Pool({
     connectionString: connStr,

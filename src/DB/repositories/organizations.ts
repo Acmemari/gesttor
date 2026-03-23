@@ -1,6 +1,6 @@
 import { eq, ilike, and, ne } from 'drizzle-orm';
 import { db } from '../index.js';
-import { organizations, organizationAnalysts, organizationOwners, clientDocuments, userProfiles } from '../schema.js';
+import { organizations, organizationAnalysts, organizationOwners, organizationDocuments, userProfiles } from '../schema.js';
 import { randomUUID } from 'crypto';
 
 export type OrgOwnerInput = {
@@ -103,23 +103,23 @@ export async function getOrganizationDocuments(_orgId: string) {
 }
 
 export async function createOrganizationDocument(data: Record<string, unknown>) {
-  const [row] = await db.insert(clientDocuments).values(data as any).returning();
+  const [row] = await db.insert(organizationDocuments).values(data as any).returning();
   return row;
 }
 
 export async function deleteOrganizationDocument(id: string): Promise<string | null> {
   const [row] = await db
-    .delete(clientDocuments)
-    .where(eq(clientDocuments.id, id as any))
-    .returning({ storagePath: clientDocuments.storagePath });
+    .delete(organizationDocuments)
+    .where(eq(organizationDocuments.id, id as any))
+    .returning({ storagePath: organizationDocuments.storagePath });
   return row?.storagePath ?? null;
 }
 
 export async function updateOrganizationDocument(id: string, data: Record<string, unknown>) {
   const [row] = await db
-    .update(clientDocuments)
+    .update(organizationDocuments)
     .set({ ...data, updatedAt: new Date() } as any)
-    .where(eq(clientDocuments.id, id as any))
+    .where(eq(organizationDocuments.id, id as any))
     .returning();
   return row;
 }

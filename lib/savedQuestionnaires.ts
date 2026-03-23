@@ -27,6 +27,7 @@ function mapRow(row: Record<string, unknown>): SavedQuestionnaire {
     id: row.id as string,
     user_id: row.userId as string,
     client_id: (row.organizationId as string | null) ?? null,
+    organizationId: (row.organizationId as string | null) ?? null,
     name: row.name as string,
     farm_id: (row.farmId as string | null) ?? null,
     farm_name: (row.farmName as string | null) ?? null,
@@ -39,7 +40,7 @@ function mapRow(row: Record<string, unknown>): SavedQuestionnaire {
 }
 
 export interface QuestionnaireFilters {
-  clientId?: string | null;
+  organizationId?: string | null;
   farmId?: string | null;
 }
 
@@ -48,7 +49,7 @@ export const getSavedQuestionnaires = async (
   filters?: QuestionnaireFilters,
 ): Promise<SavedQuestionnaire[]> => {
   const params = new URLSearchParams({ userId });
-  if (filters?.clientId) params.set('orgId', filters.clientId);
+  if (filters?.organizationId) params.set('orgId', filters.organizationId);
   if (filters?.farmId) params.set('farmId', filters.farmId);
 
   const res = await apiFetch(`/api/saved-questionnaires?${params}`);
@@ -64,7 +65,7 @@ export const saveQuestionnaire = async (
   userId: string,
   name: string,
   payload: {
-    clientId?: string;
+    organizationId?: string;
     farmId: string;
     farmName: string;
     productionSystem: string;
@@ -81,7 +82,7 @@ export const saveQuestionnaire = async (
     method: 'POST',
     body: JSON.stringify({
       userId,
-      organizationId: payload.clientId || null,
+      organizationId: payload.organizationId || null,
       name: sanitizedName,
       farmId: payload.farmId,
       farmName: payload.farmName,

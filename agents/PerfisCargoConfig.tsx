@@ -22,7 +22,7 @@ interface PerfisCargoConfigProps {
 // ─── Sub-componente genérico de lista editável ────────────────────────────────
 
 interface ConfigItem {
-  id: number;
+  id: string;
   nome: string;
   descricao?: string | null;
   ativo: boolean;
@@ -35,7 +35,7 @@ interface EditableListProps<T extends ConfigItem> {
   loading: boolean;
   hasDescricao?: boolean;
   onCreate: (nome: string, descricao?: string) => Promise<void>;
-  onUpdate: (id: number, data: { nome?: string; descricao?: string | null; ativo?: boolean }) => Promise<void>;
+  onUpdate: (id: string, data: { nome?: string; descricao?: string | null; ativo?: boolean }) => Promise<void>;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -52,7 +52,7 @@ function EditableList<T extends ConfigItem>({
   const [newDescricao, setNewDescricao] = useState('');
   const [adding, setAdding] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState('');
   const [editDescricao, setEditDescricao] = useState('');
   const [saving, setSaving] = useState(false);
@@ -85,7 +85,7 @@ function EditableList<T extends ConfigItem>({
     setEditDescricao('');
   };
 
-  const handleSaveEdit = async (id: number) => {
+  const handleSaveEdit = async (id: string) => {
     if (!editNome.trim()) return;
     setSaving(true);
     try {
@@ -274,7 +274,7 @@ const PerfisCargoConfig: React.FC<PerfisCargoConfigProps> = ({ onToast }) => {
     await reloadPerfis();
   };
 
-  const handleUpdatePerfil = async (id: number, data: { nome?: string; descricao?: string | null; ativo?: boolean }) => {
+  const handleUpdatePerfil = async (id: string, data: { nome?: string; descricao?: string | null; ativo?: boolean }) => {
     await updatePerfil(id, data);
     await reloadPerfis();
   };
@@ -285,7 +285,7 @@ const PerfisCargoConfig: React.FC<PerfisCargoConfigProps> = ({ onToast }) => {
     await reloadCargos();
   };
 
-  const handleUpdateCargo = async (id: number, data: { nome?: string; ativo?: boolean }) => {
+  const handleUpdateCargo = async (id: string, data: { nome?: string; ativo?: boolean }) => {
     await updateCargoFuncao(id, data);
     await reloadCargos();
   };

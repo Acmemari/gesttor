@@ -50,20 +50,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // No Neon, role='cliente' identifica usuários do tipo cliente
   const isClientRole = (profile.role ?? '') === 'cliente';
-  const isAdmin = (profile.role ?? '') === 'administrador';
+  const isAdmin = (profile.role ?? '') === 'administrador' || (profile.role ?? '') === 'admin';
 
   if (req.method === 'GET') {
     const clientMode = req.query?.clientMode === 'true';
-    const clientId = typeof req.query?.clientId === 'string' ? req.query.clientId : undefined;
+    const organizationId = (typeof req.query?.organizationId === 'string' ? req.query.organizationId : undefined) || (typeof req.query?.clientId === 'string' ? req.query.clientId : undefined);
     const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : null;
 
-    if (clientMode && clientId && isClientRole) {
-      const rows = await fetchProjectsForClient(userId, clientId, farmId);
+    if (clientMode && organizationId && isClientRole) {
+      const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 100 });
       jsonSuccess(res, rows);
       return;
     }
 
-    const rows = await fetchProjectsByCreatedBy(userId, clientId);
+    const rows = await fetchProjectsByCreatedBy(userId, { organizationId });
     jsonSuccess(res, rows);
     return;
   }
@@ -87,15 +87,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? body.success_evidence.filter((s: unknown) => typeof s === 'string' && (s as string).trim())
       : [];
 
-    const orgIdForProject = (body?.client_id as string) || null;
-    if (orgIdForProject && !isAdmin) {
-      await assertOrgAccess(orgIdForProject, userId, profile.role ?? 'visitante');
+    const organizationIdForProject = (body?.organization_id as string) || (body?.client_id as string) || null;
+    if (organizationIdForProject && !isAdmin) {
+      await assertOrgAccess(organizationIdForProject, userId, profile.role ?? 'visitante');
     }
 
-    const nextOrder = await getNextSortOrder(userId, orgIdForProject);
+    const nextOrder = await getNextSortOrder(userId, organizationIdForProject);
     const row = await createProject({
       created_by: userId,
-      client_id: orgIdForProject,
+      organization_id: organizationIdForProject,
       name,
       description: body?.description ? sanitize(String(body.description)) : null,
       transformations_achievements: body?.transformations_achievements
@@ -135,7 +135,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body?.start_date !== undefined) payload.start_date = body.start_date ? String(body.start_date) : null;
     if (body?.end_date !== undefined) payload.end_date = body.end_date ? String(body.end_date) : null;
     if (stakeholder !== undefined) payload.stakeholder_matrix = stakeholder;
-    if (body?.client_id !== undefined) payload.client_id = body.client_id || null;
+    if (body?.organization_id !== undefined || body?.client_id !== undefined) {
+      payload.organization_id = body.organization_id || body.client_id || null;
+    }
     if (body?.sort_order !== undefined) payload.sort_order = Number(body.sort_order);
 
     if (!isAdmin) {

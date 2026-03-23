@@ -75,7 +75,7 @@ export interface InitiativeWithTeam extends InitiativeWithProgress {
 }
 
 export interface FetchInitiativesFilters {
-  clientId?: string;
+  organizationId?: string;
   farmId?: string;
   orgId?: string;
 }
@@ -90,8 +90,9 @@ export interface CreateInitiativePayload {
   leader?: string;
   internal_leader?: string;
   delivery_id: string;
-  client_id?: string | null;
   organization_id?: string | null;
+  /** @deprecated use organization_id */
+  client_id?: string | null;
   farm_id?: string | null;
   percent?: number;
   weight?: string | number;
@@ -161,7 +162,7 @@ export async function fetchInitiatives(
   _effectiveUserId: string,
   filters?: FetchInitiativesFilters,
 ): Promise<InitiativeWithProgress[]> {
-  const orgId = filters?.orgId ?? filters?.clientId;
+  const orgId = filters?.orgId ?? filters?.organizationId;
   if (!orgId?.trim()) return [];
   const rows = unwrap(await initiativesApi.listInitiativesByOrg(orgId), 'Erro ao carregar iniciativas.');
   return rows.map(r => ({ ...mapInitiativeRow(r), progress: r.percent }));

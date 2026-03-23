@@ -2,16 +2,19 @@ import { eq, max, and } from 'drizzle-orm';
 import { db } from '../index.js';
 import { projects } from '../schema.js';
 
-export async function fetchProjectsByCreatedBy(userId: string, params: { offset?: number; limit?: number } = {}) {
-  let query = db.select().from(projects).where(eq(projects.createdBy, userId))
+export async function fetchProjectsByCreatedBy(userId: string, params: { offset?: number; limit?: number; organizationId?: string | null } = {}) {
+  const conditions = [eq(projects.createdBy, userId)];
+  if (params.organizationId) conditions.push(eq(projects.organizationId, params.organizationId));
+  
+  let query = db.select().from(projects).where(and(...conditions))
     .orderBy(projects.sortOrder).$dynamic();
   if (params.offset) query = query.offset(params.offset);
   if (params.limit) query = query.limit(params.limit);
   return query;
 }
 
-export async function fetchProjectsForClient(clientId: string, params: { offset?: number; limit?: number } = {}) {
-  let query = db.select().from(projects).where(eq(projects.clientId, clientId as any))
+export async function fetchProjectsForOrganization(organizationId: string, params: { offset?: number; limit?: number } = {}) {
+  let query = db.select().from(projects).where(eq(projects.organizationId, organizationId))
     .orderBy(projects.sortOrder).$dynamic();
   if (params.offset) query = query.offset(params.offset);
   if (params.limit) query = query.limit(params.limit);
@@ -21,8 +24,7 @@ export async function fetchProjectsForClient(clientId: string, params: { offset?
 export async function createProject(data: {
   name: string;
   created_by?: string;
-  client_id?: string;
-  organization_id?: string;
+  organization_id?: string | null;
   description?: string;
   transformations_achievements?: string;
   success_evidence?: unknown;
@@ -34,7 +36,6 @@ export async function createProject(data: {
   const [row] = await db.insert(projects).values({
     name: data.name,
     createdBy: data.created_by ?? null,
-    clientId: data.client_id as any ?? null,
     organizationId: data.organization_id ?? null,
     description: data.description ?? null,
     transformationsAchievements: data.transformations_achievements ?? null,
@@ -57,7 +58,8 @@ export async function updateProject(id: string, data: Record<string, unknown>) {
   if (data.end_date !== undefined) mapped.endDate = data.end_date;
   if (data.stakeholder_matrix !== undefined) mapped.stakeholderMatrix = data.stakeholder_matrix;
   if (data.sort_order !== undefined) mapped.sortOrder = data.sort_order;
-  if (data.client_id !== undefined) mapped.clientId = data.client_id;
+  if (data.organization_id !== undefined) mapped.organizationId = data.organization_id;
+  
   const [row] = await db.update(projects).set(mapped).where(eq(projects.id, id as any)).returning();
   return row;
 }
@@ -66,8 +68,11 @@ export async function deleteProject(id: string) {
   await db.delete(projects).where(eq(projects.id, id as any));
 }
 
-export async function getNextSortOrder(userId: string): Promise<number> {
+export async function getNextSortOrder(userId: string, organizationId?: string | null): Promise<number> {
+  const conditions = [eq(projects.createdBy, userId)];
+  if (organizationId) conditions.push(eq(projects.organizationId, organizationId));
+  
   const [result] = await db.select({ maxOrder: max(projects.sortOrder) })
-    .from(projects).where(eq(projects.createdBy, userId));
+    .from(projects).where(and(...conditions));
   return (result?.maxOrder ?? -1) + 1;
 }
