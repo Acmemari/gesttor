@@ -8,7 +8,7 @@ const mockUser: User = {
   name: 'Test User',
   email: 'test@example.com',
   role: 'client',
-  plan: 'basic',
+  plan: 'essencial',
 };
 
 describe('SubscriptionPage', () => {
@@ -18,16 +18,16 @@ describe('SubscriptionPage', () => {
   it('should render all plans', () => {
     render(<SubscriptionPage user={mockUser} onUpgrade={mockOnUpgrade} onBack={mockOnBack} />);
 
-    expect(screen.getByText('Básico')).toBeInTheDocument();
-    expect(screen.getByText('Profissional')).toBeInTheDocument();
-    expect(screen.getByText('Enterprise')).toBeInTheDocument();
+    expect(screen.getByText('Essencial')).toBeInTheDocument();
+    expect(screen.getByText('Gestor')).toBeInTheDocument();
+    expect(screen.getByText('Pró')).toBeInTheDocument();
   });
 
   it('should highlight current plan', () => {
     render(<SubscriptionPage user={mockUser} onUpgrade={mockOnUpgrade} onBack={mockOnBack} />);
 
-    // Check that "Plano Atual" appears for basic plan
-    const basicPlanSection = screen.getByText('Básico').closest('div');
+    // Check that "Plano Atual" appears for essencial plan
+    const basicPlanSection = screen.getByText('Essencial').closest('div');
     expect(basicPlanSection).toBeInTheDocument();
     // The plan should be marked as current
     expect(screen.getByText('Plano Atual')).toBeInTheDocument();

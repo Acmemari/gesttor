@@ -127,13 +127,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return;
         }
 
-        // Não pode alterar outro administrador
+        // Não pode alterar outro administrador (mas pode alterar a si mesmo)
         const { rows: targetRows } = await pool.query(
           `SELECT role FROM user_profiles WHERE id = $1`,
           [targetUserId],
         );
         if (!targetRows.length) { jsonError(res, 'Usuário não encontrado', { status: 404 }); return; }
-        if (targetRows[0].role === 'administrador') {
+        if (targetRows[0].role === 'administrador' && targetUserId !== userId) {
           jsonError(res, 'Não é possível alterar outro administrador', { status: 403 });
           return;
         }

@@ -7,36 +7,36 @@ describe('Constants - PLANS', () => {
     expect(PLANS).toHaveLength(3);
   });
 
-  it('should have basic plan with correct structure', () => {
-    const basicPlan = PLANS.find(p => p.id === 'basic');
-    expect(basicPlan).toBeDefined();
-    expect(basicPlan?.name).toBe('Básico');
-    expect(basicPlan?.price).toBe(0);
-    expect(basicPlan?.features).toBeInstanceOf(Array);
-    expect(basicPlan?.limits).toBeDefined();
+  it('should have essencial plan with correct structure', () => {
+    const essencialPlan = PLANS.find(p => p.id === 'essencial');
+    expect(essencialPlan).toBeDefined();
+    expect(essencialPlan?.name).toBe('Essencial');
+    expect(essencialPlan?.price).toBe(0);
+    expect(essencialPlan?.features).toBeInstanceOf(Array);
+    expect(essencialPlan?.limits).toBeDefined();
+  });
+
+  it('should have gestor plan with correct structure', () => {
+    const gestorPlan = PLANS.find(p => p.id === 'gestor');
+    expect(gestorPlan).toBeDefined();
+    expect(gestorPlan?.name).toBe('Gestor');
+    expect(gestorPlan?.price).toBe(97);
+    expect(gestorPlan?.features).toBeInstanceOf(Array);
+    expect(gestorPlan?.limits).toBeDefined();
   });
 
   it('should have pro plan with correct structure', () => {
     const proPlan = PLANS.find(p => p.id === 'pro');
     expect(proPlan).toBeDefined();
-    expect(proPlan?.name).toBe('Profissional');
-    expect(proPlan?.price).toBe(97);
+    expect(proPlan?.name).toBe('Pró');
+    expect(proPlan?.price).toBe(299);
     expect(proPlan?.features).toBeInstanceOf(Array);
     expect(proPlan?.limits).toBeDefined();
   });
 
-  it('should have enterprise plan with correct structure', () => {
-    const enterprisePlan = PLANS.find(p => p.id === 'enterprise');
-    expect(enterprisePlan).toBeDefined();
-    expect(enterprisePlan?.name).toBe('Enterprise');
-    expect(enterprisePlan?.price).toBe(299);
-    expect(enterprisePlan?.features).toBeInstanceOf(Array);
-    expect(enterprisePlan?.limits).toBeDefined();
-  });
-
   it('should have valid plan IDs', () => {
     PLANS.forEach(plan => {
-      expect(['basic', 'pro', 'enterprise']).toContain(plan.id);
+      expect(['essencial', 'gestor', 'pro']).toContain(plan.id);
     });
   });
 
@@ -61,18 +61,18 @@ describe('Constants - PLANS', () => {
     });
   });
 
-  it('should have increasing limits from basic to enterprise', () => {
-    const basic = PLANS.find(p => p.id === 'basic')!;
+  it('should have increasing limits from essencial to pro', () => {
+    const essencial = PLANS.find(p => p.id === 'essencial')!;
+    const gestor = PLANS.find(p => p.id === 'gestor')!;
     const pro = PLANS.find(p => p.id === 'pro')!;
-    const enterprise = PLANS.find(p => p.id === 'enterprise')!;
 
-    expect(pro.limits.agents).toBeGreaterThan(basic.limits.agents);
-    expect(enterprise.limits.agents).toBeGreaterThan(pro.limits.agents);
+    expect(gestor.limits.agents).toBeGreaterThan(essencial.limits.agents);
+    expect(pro.limits.agents).toBeGreaterThan(gestor.limits.agents);
 
-    expect(pro.limits.historyDays).toBeGreaterThan(basic.limits.historyDays);
-    expect(enterprise.limits.historyDays).toBeGreaterThan(pro.limits.historyDays);
+    expect(gestor.limits.historyDays).toBeGreaterThan(essencial.limits.historyDays);
+    expect(pro.limits.historyDays).toBeGreaterThan(gestor.limits.historyDays);
 
-    expect(pro.limits.users).toBeGreaterThan(basic.limits.users);
-    expect(enterprise.limits.users).toBeGreaterThan(pro.limits.users);
+    expect(gestor.limits.users).toBeGreaterThan(essencial.limits.users);
+    expect(pro.limits.users).toBeGreaterThan(gestor.limits.users);
   });
 });

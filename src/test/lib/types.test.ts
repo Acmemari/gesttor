@@ -95,13 +95,13 @@ describe('Types - Interface Validation', () => {
         name: 'Test User',
         email: 'test@example.com',
         role: 'client',
-        plan: 'basic',
+        plan: 'essencial',
         status: 'active',
       };
 
       expect(['admin', 'client']).toContain(validUser.role);
       if (validUser.plan) {
-        expect(['basic', 'pro', 'enterprise']).toContain(validUser.plan);
+        expect(['essencial', 'gestor', 'pro']).toContain(validUser.plan);
       }
     });
   });
@@ -109,8 +109,8 @@ describe('Types - Interface Validation', () => {
   describe('Plan', () => {
     it('should accept valid plan structure', () => {
       const validPlan: Plan = {
-        id: 'pro',
-        name: 'Professional',
+        id: 'gestor',
+        name: 'Gestor',
         price: 97,
         features: ['Feature 1', 'Feature 2'],
         limits: {
@@ -120,7 +120,7 @@ describe('Types - Interface Validation', () => {
         },
       };
 
-      expect(['basic', 'pro', 'enterprise']).toContain(validPlan.id);
+      expect(['essencial', 'gestor', 'pro']).toContain(validPlan.id);
       expect(validPlan.limits).toHaveProperty('agents');
       expect(validPlan.limits).toHaveProperty('historyDays');
       expect(validPlan.limits).toHaveProperty('users');
@@ -132,12 +132,12 @@ describe('Types - Interface Validation', () => {
       const validOrg: Organization = {
         id: 'org-1',
         name: 'Test Org',
-        plan: 'pro',
+        plan: 'gestor',
         ownerId: 'user-1',
         createdAt: new Date().toISOString(),
       };
 
-      expect(['basic', 'pro', 'enterprise']).toContain(validOrg.plan);
+      expect(['essencial', 'gestor', 'pro']).toContain(validOrg.plan);
     });
   });
 });

@@ -43,8 +43,8 @@ function setCors(res: VercelResponse): void {
 }
 
 function normalizePlan(plan: string | null | undefined): PlanId {
-  if (plan === 'pro' || plan === 'enterprise') return plan;
-  return 'basic';
+  if (plan === 'gestor' || plan === 'pro') return plan;
+  return 'essencial';
 }
 
 type UserContext = {

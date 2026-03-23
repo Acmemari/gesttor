@@ -96,13 +96,17 @@ const FILTER_ST: React.CSSProperties = {
 
 function calcWeekNumber(date: Date, modo: 'ano' | 'safra'): number {
   if (modo === 'ano') {
-    const start = new Date(date.getFullYear(), 0, 1);
-    return Math.ceil((date.getTime() - start.getTime()) / (7 * 864e5) + 1);
+    // ISO week number (semana 1 = semana que contém a primeira quinta-feira do ano)
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   }
   const month = date.getMonth();
   const year = date.getFullYear();
   const safraStart = month >= 6 ? new Date(year, 6, 1) : new Date(year - 1, 6, 1);
-  return Math.ceil((date.getTime() - safraStart.getTime()) / (7 * 864e5) + 1);
+  return Math.floor((date.getTime() - safraStart.getTime()) / (7 * 864e5)) + 1;
 }
 
 function getMondayOfWeek(date: Date): Date {
@@ -271,7 +275,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         setAtividades([]);
       }
 
-      setNewForm(prev => ({ ...prev, pessoaId: prev.pessoaId || pessoasData[0]?.id || '' }));
+      setNewForm(prev => ({ ...prev, pessoaId: prev.pessoaId || '' }));
     } finally {
       setLoading(false);
     }
@@ -280,9 +284,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    if (pessoas.length > 0 && !newForm.pessoaId) {
-      setNewForm(prev => ({ ...prev, pessoaId: pessoas[0].id }));
-    }
+    // pessoaId inicia vazio — usuário seleciona manualmente
   }, [pessoas]);
 
   // ─── Computed ─────────────────────────────────────────────────────────────────
@@ -457,21 +459,27 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     if (operating || !semana?.aberta) return;
     setOperating(true);
     try {
-    const total = atividades.length;
-    const concluidas = atividades.filter(a => a.status === 'concluída').length;
-    const res1 = await semanasApi.updateSemana(semana.id, { aberta: false });
-    if (!res1.ok) { onToast?.('Erro ao fechar semana.', 'error'); return; }
-    const res2 = await semanasApi.createHistorico({
-      farm_id: semana.farm_id,
-      semana_id: semana.id,
-      semana_numero: semana.numero,
-      total,
-      concluidas,
-      pendentes: total - concluidas,
-    });
-    if (!res2.ok) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
-    onToast?.('Semana fechada com sucesso.', 'success');
-    await fetchData();
+      const total = atividades.length;
+      const concluidas = atividades.filter(a => a.status === 'concluída').length;
+      // Cria histórico primeiro; se falhar, não fecha a semana
+      const res2 = await semanasApi.createHistorico({
+        farm_id: semana.farm_id,
+        semana_id: semana.id,
+        semana_numero: semana.numero,
+        total,
+        concluidas,
+        pendentes: total - concluidas,
+      });
+      if (!res2.ok) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
+      const res1 = await semanasApi.updateSemana(semana.id, { aberta: false });
+      if (!res1.ok) {
+        // Rollback: deleta o histórico criado
+        await semanasApi.deleteHistorico((res2.data as { id: string }).id);
+        onToast?.('Erro ao fechar semana.', 'error');
+        return;
+      }
+      onToast?.('Semana fechada com sucesso.', 'success');
+      await fetchData();
     } finally {
       setOperating(false);
     }
@@ -512,8 +520,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setOperating(true);
     try {
     if (h.semana_id) {
-      await semanasApi.deleteAtividadesBySemana(h.semana_id);
-      await semanasApi.deleteSemana(h.semana_id);
+      await semanasApi.deleteSemana(h.semana_id); // atividades excluídas em cascade
     }
     await semanasApi.deleteHistorico(h.id);
     await fetchData();
@@ -530,7 +537,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     if (!carryOverModal) return;
     const chosen = carryOverModal.candidates.filter(a => selectedIds.has(a.id));
     if (chosen.length > 0) {
-      await semanasApi.createAtividadesBulk(
+      const res = await semanasApi.createAtividadesBulk(
         chosen.map(({ titulo, descricao, pessoa_id, data_termino, tag }) => ({
           semana_id: carryOverModal.pendingSemanaId,
           titulo,
@@ -538,14 +545,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           pessoa_id,
           data_termino,
           tag,
-          status: 'a fazer',
+          status: 'a fazer' as const,
         })),
       );
+      if (!res.ok) { onToast?.('Erro ao transferir atividades.', 'error'); return; }
     }
     setCarryOverModal(null);
     setSelectedCarryOver(new Set());
     await fetchData();
-  }, [carryOverModal, fetchData]);
+  }, [carryOverModal, fetchData, onToast]);
 
   const handleCancelCarryOver = useCallback(async () => {
     setCarryOverModal(null);
@@ -746,7 +754,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, marginTop: 4 }}>
               <h1 style={{ margin: 0, lineHeight: 1 }}>
                 <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.5px', color: '#0F172A', fontFamily: FONT }}>
-                  Semana {String(semana?.numero ?? 0).padStart(2, '0')}
+                  Semana {String(semana?.numero ?? calcWeekNumber(new Date(), modo)).padStart(2, '0')}
                 </span>
                 <span style={{ fontSize: 16, fontWeight: 400, color: '#94A3B8', fontFamily: FONT }}> de 53</span>
               </h1>
@@ -949,6 +957,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             <div style={{ flex: '0 1 140px', minWidth: 120 }}>
               <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Responsável</label>
               <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
+                <option value="">Selecione</option>
                 {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>

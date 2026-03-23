@@ -1,4 +1,4 @@
-import { eq, ilike, and, ne } from 'drizzle-orm';
+import { eq, ilike, and, ne, desc } from 'drizzle-orm';
 import { db } from '../index.js';
 import { organizations, organizationAnalysts, organizationOwners, organizationDocuments, userProfiles } from '../schema.js';
 import { randomUUID } from 'crypto';
@@ -98,8 +98,12 @@ export async function getOrganizationOwners(orgId: string) {
     .orderBy(organizationOwners.sortOrder);
 }
 
-export async function getOrganizationDocuments(_orgId: string) {
-  return [];
+export async function getOrganizationDocuments(orgId: string) {
+  return db
+    .select()
+    .from(organizationDocuments)
+    .where(eq(organizationDocuments.organizationId, orgId))
+    .orderBy(desc(organizationDocuments.createdAt));
 }
 
 export async function createOrganizationDocument(data: Record<string, unknown>) {
@@ -125,7 +129,39 @@ export async function updateOrganizationDocument(id: string, data: Record<string
 }
 
 export async function listOrgAnalysts(orgId: string) {
-  return db.select().from(organizationAnalysts).where(eq(organizationAnalysts.organizationId, orgId));
+  const [org, rows] = await Promise.all([
+    db.select({ analystId: organizations.analystId }).from(organizations).where(eq(organizations.id, orgId)).limit(1),
+    db.select().from(organizationAnalysts).where(eq(organizationAnalysts.organizationId, orgId)),
+  ]);
+  const primaryAnalystId = org[0]?.analystId ?? null;
+
+  const analystIds = rows.map(r => r.analystId);
+  const profileResults = analystIds.length > 0
+    ? await Promise.all(
+        analystIds.map(id =>
+          db.select({ id: userProfiles.id, name: userProfiles.name, email: userProfiles.email })
+            .from(userProfiles)
+            .where(eq(userProfiles.id, id))
+            .limit(1)
+            .then(r => r[0] ?? null)
+        )
+      )
+    : [];
+  const profileMap = Object.fromEntries(
+    profileResults.filter(Boolean).map(p => [p!.id, p!])
+  );
+
+  return rows.map(r => ({
+    id: r.id,
+    analyst_id: r.analystId,
+    organization_id: r.organizationId,
+    permissions: (r.permissions ?? {}) as Record<string, string>,
+    is_responsible: r.analystId === primaryAnalystId,
+    analyst_name: profileMap[r.analystId]?.name ?? null,
+    analyst_email: profileMap[r.analystId]?.email ?? null,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }));
 }
 
 export async function addOrgAnalyst(orgId: string, analystId: string, permissions: Record<string, unknown> = {}) {

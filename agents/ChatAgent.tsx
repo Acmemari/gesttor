@@ -115,14 +115,14 @@ const ChatAgent: React.FC = () => {
 
       if (!isLastMessageLimit) {
         let limitMessageText =
-          'Você atingiu seu limite de mensagens (10 mensagens/dia no plano básico). Faça upgrade do plano para continuar.';
+          'Você atingiu seu limite de mensagens (10 mensagens/dia no plano Essencial). Faça upgrade do plano para continuar.';
 
         // Mensagem diferente se for erro de conexão
         if (limitCheck.reason?.includes('Erro de conexão') || limitCheck.reason?.includes('Erro temporário')) {
           limitMessageText =
             'Não foi possível verificar seu limite de mensagens. A mensagem será enviada. Se atingir o limite, você será notificado.';
         } else if (limitCheck.reason?.includes('Limite atingido')) {
-          limitMessageText = `Você atingiu seu limite de mensagens (10 mensagens/dia no plano básico). Faça upgrade do plano para continuar.`;
+          limitMessageText = `Você atingiu seu limite de mensagens (10 mensagens/dia no plano Essencial). Faça upgrade do plano para continuar.`;
         }
 
         const limitMessage: ChatMessage = {

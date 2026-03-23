@@ -14,7 +14,7 @@ describe('AuthContext', () => {
       name: 'Test',
       email: 'test@example.com',
       role: 'client' as const,
-      plan: 'basic' as const,
+      plan: 'essencial' as const,
     };
 
     expect(typeof checkPermission).toBe('function');

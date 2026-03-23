@@ -245,7 +245,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     city: '',
     state: '',
     status: 'active',
-    plan: 'basic',
+    plan: 'essencial',
     ativo: true,
     analystId: currentUser?.id || '',
   });
@@ -451,7 +451,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       city: org.city || '',
       state: org.state || '',
       status: org.status || 'active',
-      plan: org.plan || 'basic',
+      plan: org.plan || 'essencial',
       ativo: org.ativo,
       analystId: org.analystId,
     });
@@ -532,7 +532,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       city: '',
       state: '',
       status: 'active',
-      plan: 'basic',
+      plan: 'essencial',
       ativo: true,
       analystId: currentUser?.id || '',
     });
@@ -693,8 +693,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
               <fieldset disabled={clientFormReadOnly} className={clientFormReadOnly ? 'opacity-75' : ''}>
 
                 {/* Nome */}
-                <div className="mb-4" data-error={formErrors.name || nameError ? 'true' : undefined}>
-                  <label className="block text-sm font-medium text-ai-text mb-2">
+                <div className={`mb-4 ${formErrors.name || nameError ? 'bg-red-500/5 rounded-lg px-3 pt-2 pb-1 -mx-3' : ''}`} data-error={formErrors.name || nameError ? 'true' : undefined}>
+                  <label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${formErrors.name || nameError ? 'text-ai-error' : 'text-ai-text'}`}>
+                    {(formErrors.name || nameError) && <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
                     Nome da Organização / Grupo Econômico <span className="text-ai-error">*</span>
                   </label>
                   <div className="relative">
@@ -727,8 +728,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                 </div>
 
                 {/* Email */}
-                <div className="mb-4" data-error={formErrors.email ? 'true' : undefined}>
-                  <label className="block text-sm font-medium text-ai-text mb-2">
+                <div className={`mb-4 ${formErrors.email ? 'bg-red-500/5 rounded-lg px-3 pt-2 pb-1 -mx-3' : ''}`} data-error={formErrors.email ? 'true' : undefined}>
+                  <label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${formErrors.email ? 'text-ai-error' : 'text-ai-text'}`}>
+                    {formErrors.email && <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
                     E-mail do Contato Administrativo <span className="text-ai-error">*</span>
                   </label>
                   <input
@@ -847,9 +849,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                       onChange={e => setFormData({ ...formData, plan: e.target.value })}
                       className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
                     >
-                      <option value="basic">Basic</option>
-                      <option value="pro">Pro</option>
-                      <option value="enterprise">Enterprise</option>
+                      <option value="essencial">Essencial</option>
+                      <option value="gestor">Gestor</option>
+                      <option value="pro">Pró</option>
                     </select>
                   </div>
                 </div>
@@ -1085,8 +1087,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
 
                 {/* Analista Responsável (somente admin) */}
                 {currentUser.role === 'admin' && (
-                  <div className="mb-4" data-error={formErrors.analystId ? 'true' : undefined}>
-                    <label className="block text-sm font-medium text-ai-text mb-2">
+                  <div className={`mb-4 ${formErrors.analystId ? 'bg-red-500/5 rounded-lg px-3 pt-2 pb-1 -mx-3' : ''}`} data-error={formErrors.analystId ? 'true' : undefined}>
+                    <label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${formErrors.analystId ? 'text-ai-error' : 'text-ai-text'}`}>
+                      {formErrors.analystId && <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
                       Analista Responsável <span className="text-ai-error">*</span>
                     </label>
                     <select

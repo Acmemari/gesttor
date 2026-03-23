@@ -24,12 +24,12 @@
  *   'update-cargo'         → { id, nome?, ativo?, sortOrder? }       (admin only)
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
 import { db } from '../src/DB/index.js';
-import { userProfiles, farms as farmsTable } from '../src/DB/schema.js';
+import { userProfiles, farms as farmsTable, personProfiles, perfils, cargoFuncao } from '../src/DB/schema.js';
 import {
   getPessoa,
   listPessoas,
@@ -76,6 +76,7 @@ async function getUserRole(userId: string): Promise<string | null> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') {
     res.status(204).end();
@@ -139,7 +140,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const assumeTarefas = req.query?.assumeTarefas === 'true';
       const rows = await listPessoasByFarm(farmIdParam, { assumeTarefas });
-      jsonSuccess(res, rows);
+
+      // Fetch primary profile (person_type) and job role for each person
+      const personIds = rows.map(r => r.id);
+      const profileMap = new Map<string, { perfilNome: string; cargoNome: string | null }>();
+      if (personIds.length > 0) {
+        const profileRows = await db
+          .select({
+            pessoaId: personProfiles.pessoaId,
+            perfilNome: perfils.nome,
+            cargoNome: cargoFuncao.nome,
+          })
+          .from(personProfiles)
+          .innerJoin(perfils, eq(personProfiles.perfilId, perfils.id))
+          .leftJoin(cargoFuncao, eq(personProfiles.cargoFuncaoId, cargoFuncao.id))
+          .where(inArray(personProfiles.pessoaId, personIds as [string, ...string[]]));
+        for (const pr of profileRows) {
+          if (!profileMap.has(pr.pessoaId)) {
+            profileMap.set(pr.pessoaId, { perfilNome: pr.perfilNome, cargoNome: pr.cargoNome ?? null });
+          }
+        }
+      }
+
+      const formatted = rows.map(r => {
+        const profile = profileMap.get(r.id);
+        return {
+          id: r.id,
+          full_name: r.fullName,
+          preferred_name: r.preferredName ?? null,
+          email: r.email ?? null,
+          phone_whatsapp: r.phoneWhatsapp ?? null,
+          photo_url: r.photoUrl ?? null,
+          location_city_uf: r.locationCityUf ?? null,
+          person_type: profile?.perfilNome ?? '',
+          job_role: profile?.cargoNome ?? null,
+          farm_id: farmIdParam,
+          assume_tarefas_fazenda: assumeTarefas,
+          pode_alterar_semana_fechada: r.podeAlterarSemanaFechada ?? false,
+          pode_apagar_semana: r.podeApagarSemana ?? false,
+        };
+      });
+      jsonSuccess(res, formatted);
       return;
     }
 
@@ -343,9 +384,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await upsertPessoaPermissao({
             pessoaId,
             farmId,
-            assume_tarefas_fazenda: body.assume_tarefas_fazenda === true,
-            pode_alterar_semana_fechada: body.pode_alterar_semana_fechada === true,
-            pode_apagar_semana: body.pode_apagar_semana === true,
+            assume_tarefas_fazenda: typeof body.assume_tarefas_fazenda === 'boolean' ? body.assume_tarefas_fazenda : undefined,
+            pode_alterar_semana_fechada: typeof body.pode_alterar_semana_fechada === 'boolean' ? body.pode_alterar_semana_fechada : undefined,
+            pode_apagar_semana: typeof body.pode_apagar_semana === 'boolean' ? body.pode_apagar_semana : undefined,
           });
           jsonSuccess(res, { ok: true });
           return;
@@ -440,6 +481,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // Validate phone_whatsapp (required)
+    const phoneRaw = typeof data.phone_whatsapp === 'string' ? data.phone_whatsapp.replace(/\D/g, '') : '';
+    if (!phoneRaw) {
+      jsonError(res, 'Campo phone_whatsapp é obrigatório', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    if (phoneRaw.length < 10 || phoneRaw.length > 11) {
+      jsonError(res, 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos)', { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
     // Validate CPF if provided
     const cpfRaw = typeof data.cpf === 'string' ? data.cpf.replace(/\D/g, '') : null;
     if (cpfRaw && !validateCPF(cpfRaw)) {
@@ -468,7 +520,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         created_by: userId,
         full_name: fullName,
         preferred_name: data.preferred_name ?? null,
-        phone_whatsapp: data.phone_whatsapp ?? null,
+        phone_whatsapp: phoneRaw,
         email,
         location_city_uf: data.location_city_uf ?? null,
         photo_url: photoUrl,
@@ -484,8 +536,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const pessoa = await createPessoa(input);
       jsonSuccess(res, pessoa);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('unique') || msg.includes('duplicate')) {
+      const msg = (err instanceof Error ? err.message : '') + String((err as Record<string, unknown>)?.detail ?? '');
+      if (msg.toLowerCase().includes('idx_people_phone_org') || (msg.toLowerCase().includes('unique') && msg.toLowerCase().includes('phone'))) {
+        jsonError(res, 'Telefone já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      if (msg.toLowerCase().includes('unique') || msg.toLowerCase().includes('duplicate')) {
         jsonError(res, 'CPF já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
         return;
       }
@@ -509,6 +565,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { id: _id, ...updates } = body as { id: string } & UpdatePessoaInput;
+
+    // Validate phone_whatsapp if being updated
+    if (updates.phone_whatsapp !== undefined && updates.phone_whatsapp !== null) {
+      const phoneRaw = updates.phone_whatsapp.replace(/\D/g, '');
+      if (phoneRaw && (phoneRaw.length < 10 || phoneRaw.length > 11)) {
+        jsonError(res, 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos)', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      updates.phone_whatsapp = phoneRaw || null;
+    }
 
     // Validate CPF if being updated
     if (updates.cpf !== undefined && updates.cpf !== null) {
@@ -543,8 +609,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       jsonSuccess(res, updated);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('unique') || msg.includes('duplicate')) {
+      const msg = (err instanceof Error ? err.message : '') + String((err as Record<string, unknown>)?.detail ?? '');
+      if (msg.toLowerCase().includes('idx_people_phone_org') || (msg.toLowerCase().includes('unique') && msg.toLowerCase().includes('phone'))) {
+        jsonError(res, 'Telefone já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      if (msg.toLowerCase().includes('unique') || msg.toLowerCase().includes('duplicate')) {
         jsonError(res, 'CPF já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
         return;
       }
@@ -577,4 +647,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   jsonError(res, 'Método não permitido', { status: 405 });
+  } catch (err) {
+    console.error('[pessoas] erro não tratado:', err);
+    if (!res.headersSent) {
+      jsonError(res, 'Erro interno do servidor', { status: 500 });
+    }
+  }
 }

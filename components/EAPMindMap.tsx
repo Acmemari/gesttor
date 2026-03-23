@@ -697,6 +697,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
             onClose={closeModal}
             saving={saving}
             mode={modalMode}
+            people={people}
           />
         )}
       </>

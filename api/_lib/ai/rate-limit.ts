@@ -41,11 +41,11 @@ async function getPlanRates(plan: PlanId): Promise<PlanLimitRates> {
   if (!data) {
     console.warn(`[rate-limit] plan_limits not found for "${plan}", using hardcoded defaults`);
     const defaults: Record<string, PlanLimitRates> = {
-      basic:      { max_requests_per_minute_org: 20,  max_requests_per_minute_user: 10  },
-      pro:        { max_requests_per_minute_org: 60,  max_requests_per_minute_user: 30  },
-      enterprise: { max_requests_per_minute_org: 200, max_requests_per_minute_user: 100 },
+      essencial: { max_requests_per_minute_org: 20,  max_requests_per_minute_user: 10  },
+      gestor:    { max_requests_per_minute_org: 60,  max_requests_per_minute_user: 30  },
+      pro:       { max_requests_per_minute_org: 200, max_requests_per_minute_user: 100 },
     };
-    return defaults[plan] ?? defaults['basic'];
+    return defaults[plan] ?? defaults['essencial'];
   }
 
   return {

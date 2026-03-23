@@ -20,7 +20,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onUpgrade, on
       <div className="grid md:grid-cols-3 gap-6">
         {PLANS.map(plan => {
           const isCurrent = user.plan === plan.id;
-          const isPopular = plan.id === 'pro';
+          const isPopular = plan.id === 'gestor';
 
           return (
             <div
@@ -43,9 +43,9 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onUpgrade, on
 
               <div className="mb-5">
                 <h3 className="text-lg font-bold text-ai-text flex items-center gap-2">
-                  {plan.id === 'enterprise' && <Crown size={18} className="text-amber-500" />}
-                  {plan.id === 'pro' && <Zap size={18} className="text-ai-accent" />}
-                  {plan.id === 'basic' && <Shield size={18} className="text-ai-subtext" />}
+                  {plan.id === 'pro' && <Crown size={18} className="text-amber-500" />}
+                  {plan.id === 'gestor' && <Zap size={18} className="text-ai-accent" />}
+                  {plan.id === 'essencial' && <Shield size={18} className="text-ai-subtext" />}
                   {plan.name}
                 </h3>
                 <div className="mt-2 flex items-baseline gap-1">
@@ -71,7 +71,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onUpgrade, on
                   ${
                     isCurrent
                       ? 'bg-transparent text-ai-accent border border-ai-accent cursor-default'
-                      : plan.id === 'pro'
+                      : plan.id === 'gestor'
                         ? 'bg-ai-accent text-white hover:bg-ai-accentHover'
                         : 'bg-ai-text text-white hover:bg-black'
                   }

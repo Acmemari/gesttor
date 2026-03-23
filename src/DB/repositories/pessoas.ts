@@ -105,22 +105,42 @@ export async function listPessoasByFarm(
   farmId: string,
   params: { offset?: number; limit?: number; assumeTarefas?: boolean } = {},
 ) {
-  let query = db.select({ pessoa: people }).from(personFarms)
+  // Query 1: pessoas vinculadas via tabela de junção (abordagem nova)
+  const fromJunction = await db.select({ pessoa: people }).from(personFarms)
     .innerJoin(people, eq(personFarms.pessoaId, people.id))
-    .where(eq(personFarms.farmId, farmId))
-    .$dynamic();
-  if (params.offset) query = query.offset(params.offset);
-  if (params.limit) query = query.limit(params.limit);
-  const rows = await query;
-  let result = rows.map(r => r.pessoa);
-  if (params.assumeTarefas !== undefined) {
-    // filter via personPermissions - load separately for simplicity
-    const perms = await db.select({ pessoaId: personPermissions.pessoaId })
-      .from(personPermissions)
-      .where(and(eq(personPermissions.farmId, farmId), eq(personPermissions.assumeTarefasFazenda, true)));
-    const ids = new Set(perms.map(p => p.pessoaId));
-    result = params.assumeTarefas ? result.filter(p => ids.has(p.id)) : result;
+    .where(eq(personFarms.farmId, farmId));
+
+  // Query 2: pessoas vinculadas via coluna direta people.farmId (abordagem legada)
+  const fromDirect = await db.select().from(people)
+    .where(and(eq(people.farmId, farmId), eq(people.ativo, true)));
+
+  // Mescla e deduplica por id
+  const seen = new Set<string>();
+  const merged: (typeof people.$inferSelect)[] = [];
+  for (const p of [...fromJunction.map(r => r.pessoa), ...fromDirect]) {
+    if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
   }
+
+  let result = merged;
+
+  if (params.assumeTarefas !== undefined) {
+    // Carrega permissões explícitas para esta fazenda
+    const allPerms = await db.select({
+      pessoaId: personPermissions.pessoaId,
+      assume: personPermissions.assumeTarefasFazenda,
+    })
+      .from(personPermissions)
+      .where(eq(personPermissions.farmId, farmId));
+
+    const explicitAllow = new Set(allPerms.filter(p => p.assume).map(p => p.pessoaId));
+    const managed = new Set(allPerms.map(p => p.pessoaId));
+
+    if (params.assumeTarefas) {
+      // Inclui pessoas explicitamente autorizadas OU sem registro de permissão (legadas)
+      result = result.filter(p => explicitAllow.has(p.id) || !managed.has(p.id));
+    }
+  }
+
   return result;
 }
 

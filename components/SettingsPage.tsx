@@ -11,7 +11,7 @@ interface Company {
   state?: string;
   zip_code?: string;
   description?: string;
-  plan?: 'basic' | 'pro' | 'enterprise';
+  plan?: 'essencial' | 'gestor' | 'pro';
   status?: 'active' | 'inactive' | 'pending';
 }
 import { useAuth } from '../contexts/AuthContext';
@@ -105,7 +105,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
     state: '',
     zip_code: '',
     description: '',
-    plan: 'basic' as 'basic' | 'pro' | 'enterprise',
+    plan: 'essencial' as 'essencial' | 'gestor' | 'pro',
     status: 'active' as 'active' | 'inactive' | 'pending',
   });
 
@@ -766,7 +766,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       state: company.state || '',
       zip_code: company.zip_code ? formatCEP(company.zip_code) : '',
       description: company.description || '',
-      plan: company.plan || 'basic',
+      plan: company.plan || 'essencial',
       status: company.status || 'active',
     });
     setShowCompanyForm(true);
@@ -807,7 +807,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       state: '',
       zip_code: '',
       description: '',
-      plan: 'basic',
+      plan: 'essencial',
       status: 'active',
     });
     setEditingCompany(null);
@@ -945,9 +945,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
                     onChange={e => handleCompanyFormChange('plan', e.target.value)}
                     className="w-full px-4 py-2 border border-ai-border rounded-lg bg-white text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
                   >
-                    <option value="basic">Básico</option>
-                    <option value="pro">Profissional</option>
-                    <option value="enterprise">Enterprise</option>
+                    <option value="essencial">Essencial</option>
+                    <option value="gestor">Gestor</option>
+                    <option value="pro">Pró</option>
                   </select>
                 </div>
                 <div>
@@ -1041,18 +1041,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
                   <td className="px-4 py-3 text-sm text-ai-subtext">
                     <span
                       className={`px-2 py-1 rounded text-xs ${
-                        company.plan === 'enterprise'
+                        company.plan === 'pro'
                           ? 'bg-purple-100 text-purple-700'
-                          : company.plan === 'pro'
+                          : company.plan === 'gestor'
                             ? 'bg-blue-100 text-blue-700'
                             : 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {company.plan === 'enterprise'
-                        ? 'Enterprise'
-                        : company.plan === 'pro'
-                          ? 'Profissional'
-                          : 'Básico'}
+                      {company.plan === 'pro'
+                        ? 'Pró'
+                        : company.plan === 'gestor'
+                          ? 'Gestor'
+                          : 'Essencial'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-ai-subtext">

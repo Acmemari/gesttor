@@ -13,7 +13,7 @@ import { eq, and } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { db } from '../src/DB/index.js';
-import { userProfiles, organizations, organizationAnalysts } from '../src/DB/schema.js';
+import { userProfiles, organizations, organizationAnalysts, people } from '../src/DB/schema.js';
 import {
   checkOrganizationNameExists,
   listOrganizations,
@@ -54,6 +54,35 @@ async function getUserRole(userId: string): Promise<string | null> {
     .where(eq(userProfiles.id, userId))
     .limit(1);
   return p?.role ?? null;
+}
+
+/** Cria automaticamente um registro incompleto em `people` para um analista vinculado a uma org. */
+async function autoCreatePessoaForAnalyst(analystUserId: string, organizationId: string): Promise<void> {
+  const [profile] = await db
+    .select({ name: userProfiles.name, email: userProfiles.email })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, analystUserId))
+    .limit(1);
+  if (!profile) return;
+
+  const [existing] = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(and(eq(people.userId, analystUserId), eq(people.organizationId, organizationId)))
+    .limit(1);
+  if (existing) return;
+
+  await db.insert(people).values({
+    id: crypto.randomUUID(),
+    fullName: profile.name ?? 'Analista',
+    email: profile.email ?? null,
+    phoneWhatsapp: null,
+    organizationId,
+    userId: analystUserId,
+    ativo: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 }
 
 /** Verifica se o analista (não-admin) tem acesso à organização: principal ou secundário. */
@@ -235,6 +264,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       const row = await addOrgAnalyst(organizationId, analystId, permissions ?? {});
+      await autoCreatePessoaForAnalyst(analystId, organizationId);
       jsonSuccess(res, row);
       return;
     }
@@ -261,13 +291,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         address: body.address ?? null,
         city: body.city ?? null,
         state: body.state ?? null,
-        plan: body.plan ?? 'basic',
+        plan: body.plan ?? 'essencial',
         analystId: userId,
       });
 
       if (body.owners?.length) {
         await saveOrganizationOwners(org.id, body.owners);
       }
+
+      await autoCreatePessoaForAnalyst(userId, org.id);
 
       const savedOwners = await getOrganizationOwners(org.id);
       jsonSuccess(res, {

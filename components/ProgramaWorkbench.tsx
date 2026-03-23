@@ -1210,6 +1210,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           onClose={closeModal}
           saving={saving}
           mode={modalMode}
+          people={people}
         />
       )}
 

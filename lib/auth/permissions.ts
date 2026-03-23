@@ -8,8 +8,10 @@ import { PLANS } from '../../constants';
  * @returns true se tem permissão, false caso contrário
  */
 export const checkPermission = (user: User | null, feature: string): boolean => {
-  if (!user || !user.plan) return false;
+  if (!user) return false;
   if (user.role === 'admin') return true;
+  if (user.qualification === 'analista') return true;
+  if (!user.plan) return false;
 
   const userPlan = PLANS.find(p => p.id === user.plan);
   if (!userPlan) return false;
@@ -18,7 +20,7 @@ export const checkPermission = (user: User | null, feature: string): boolean => 
   const hasWildcard = userPlan.features.some(f => f.toLowerCase().includes('todos os agentes'));
   if (hasWildcard) return true;
 
-  return userPlan.features.some(f => f.toLowerCase().includes(feature.toLowerCase())) || userPlan.id === 'enterprise';
+  return userPlan.features.some(f => f.toLowerCase().includes(feature.toLowerCase())) || userPlan.id === 'pro';
 };
 
 /**

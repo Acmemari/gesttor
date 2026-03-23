@@ -161,7 +161,12 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiSucce
     if (typeof window !== 'undefined') { clearToken(); window.location.replace('/sign-in'); }
     return { ok: false, error: 'Não autorizado' };
   }
-  const json = (await res.json()) as ApiSuccess<T> | ApiError;
+  let json: ApiSuccess<T> | ApiError;
+  try {
+    json = (await res.json()) as ApiSuccess<T> | ApiError;
+  } catch {
+    return { ok: false, error: `Erro na resposta do servidor (HTTP ${res.status})` };
+  }
   if (!res.ok && json && typeof json === 'object' && 'error' in json) {
     return json as ApiError;
   }

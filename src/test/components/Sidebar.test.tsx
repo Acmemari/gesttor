@@ -28,7 +28,7 @@ const mockUser: User = {
   name: 'Test User',
   email: 'test@example.com',
   role: 'client',
-  plan: 'basic',
+  plan: 'essencial',
 };
 
 describe('Sidebar', () => {

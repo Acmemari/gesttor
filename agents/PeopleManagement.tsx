@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Plus, ArrowLeft, Search, Trash2, Edit2, Loader2, User, Camera, X,
-  Move, ZoomIn, Building2, Star, Shield, Check, Info,
+  Plus, ArrowLeft, ArrowRight, Search, Trash2, Edit2, Loader2, User, Camera, X,
+  Move, ZoomIn, Building2, Star, Shield, Check,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useHierarchy } from '../contexts/HierarchyContext';
@@ -31,19 +31,17 @@ import {
   type PessoaPermissao,
 } from '../lib/api/pessoasClient';
 import { storageUpload, storageGetPublicUrl, storageResolveUrl } from '../lib/storage';
+import DateInputBR from '../components/DateInputBR';
 
 interface PeopleManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-type TabId = 'dados' | 'perfis' | 'fazendas' | 'permissoes' | 'outras';
+type TabId = 'nome' | 'detalhes';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; editingOnly?: boolean }[] = [
-  { id: 'dados', label: 'Dados Pessoais', icon: <User size={14} /> },
-  { id: 'perfis', label: 'Perfis e Cargos', icon: <Building2 size={14} />, editingOnly: true },
-  { id: 'fazendas', label: 'Fazendas', icon: <Star size={14} />, editingOnly: true },
-  { id: 'permissoes', label: 'Permissões', icon: <Shield size={14} />, editingOnly: true },
-  { id: 'outras', label: 'Outras Informações', icon: <Info size={14} />, editingOnly: true },
+  { id: 'nome', label: 'Nome, Cargo e Fazenda', icon: <User size={14} /> },
+  { id: 'detalhes', label: 'Permissões e Informações', icon: <Shield size={14} /> },
 ];
 
 const STORAGE_PREFIX = 'people-photos';
@@ -72,7 +70,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── View State ──────────────────────────────────────────────────────────────
   const [view, setView] = useState<'list' | 'form'>('list');
-  const [activeTab, setActiveTab] = useState<TabId>('dados');
+  const [activeTab, setActiveTab] = useState<TabId>('nome');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isNewPerson, setIsNewPerson] = useState(false);
 
@@ -194,7 +192,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     setNewPerfilId('');
     setNewCargoId('');
     setNewFarmId('');
-    setActiveTab('dados');
+    setActiveTab('nome');
     setIsNewPerson(true);
     setView('form');
   };
@@ -221,7 +219,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     setNewPerfilId('');
     setNewCargoId('');
     setNewFarmId('');
-    setActiveTab('dados');
+    setActiveTab('nome');
     setIsNewPerson(false);
     setView('form');
 
@@ -341,27 +339,44 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   const onCropMouseUp = () => { cropDragRef.current = null; };
 
+  // ─── Troca de aba com auto-criação ────────────────────────────────────────────
+  const handleTabChange = async (tab: TabId) => {
+    if (!editingId && dados.full_name.trim() && tab !== activeTab) {
+      await handleSaveDados();
+    }
+    setActiveTab(tab);
+  };
+
   // ─── Salvar dados da pessoa ────────────────────────────────────────────────────
-  const handleSaveDados = async () => {
+  // Retorna o id da pessoa (criada ou existente), ou null em caso de erro.
+  const handleSaveDados = async (): Promise<string | null> => {
     if (!dados.full_name.trim()) {
       onToast?.('Nome completo é obrigatório', 'error');
-      return;
+      return null;
+    }
+    const phoneDigits = dados.phone_whatsapp.replace(/\D/g, '');
+    if (!phoneDigits) {
+      onToast?.('Telefone (WhatsApp) é obrigatório', 'error');
+      return null;
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      onToast?.('Telefone inválido. Informe DDD + número', 'error');
+      return null;
     }
     if (dados.cpf && !validateCPF(dados.cpf)) {
       onToast?.('CPF inválido', 'error');
-      return;
+      return null;
     }
     if (!organizationId) {
       onToast?.('Selecione uma organização antes de cadastrar uma pessoa', 'error');
-      return;
+      return null;
     }
 
     setSaving(true);
     try {
       let photoUrl = dados.photo_url;
 
-      // Upload de foto se houver arquivo novo
-      if (photoFile && (editingId || !editingId)) {
+      if (photoFile) {
         const ext = photoFile.name.split('.').pop() || 'jpg';
         const tempId = editingId ?? `new-${Date.now()}`;
         const path = `${user?.id ?? 'unknown'}/${tempId}-${Date.now()}.${ext}`;
@@ -388,17 +403,23 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       if (editingId) {
         await updatePessoa(editingId, payload);
         onToast?.('Pessoa atualizada com sucesso', 'success');
+        loadPessoas();
+        backToList();
+        return editingId;
       } else {
         const created = await createPessoa({ ...payload, organization_id: organizationId });
         if (created) {
           setEditingId(created.id);
-          onToast?.('Pessoa criada com sucesso', 'success');
+          setIsNewPerson(false);
+          onToast?.('Pessoa criada! Agora vincule o perfil e as fazendas.', 'success');
+          loadPessoas();
+          return created.id;
         }
+        return null;
       }
-      loadPessoas();
-      backToList();
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao salvar pessoa', 'error');
+      return null;
     } finally {
       setSaving(false);
     }
@@ -406,11 +427,16 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Perfis ───────────────────────────────────────────────────────────────────
   const handleAddPerfil = async () => {
-    if (!editingId || !newPerfilId) return;
+    if (!newPerfilId) return;
+    let id = editingId;
+    if (!id) {
+      id = await handleSaveDados();
+      if (!id) return;
+    }
     setAddingPerfil(true);
     try {
-      await addPessoaPerfil(editingId, newPerfilId, newCargoId || null);
-      const completa = await getPessoa(editingId);
+      await addPessoaPerfil(id, newPerfilId, newCargoId || null);
+      const completa = await getPessoa(id);
       if (completa) setPessoaPerfis(completa.perfis);
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao adicionar perfil', 'error');
@@ -431,11 +457,16 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Fazendas ─────────────────────────────────────────────────────────────────
   const handleAddFazenda = async () => {
-    if (!editingId || !newFarmId) return;
+    if (!newFarmId) return;
+    let id = editingId;
+    if (!id) {
+      id = await handleSaveDados();
+      if (!id) return;
+    }
     setAddingFazenda(true);
     try {
-      await addPessoaFazenda(editingId, newFarmId);
-      const completa = await getPessoa(editingId);
+      await addPessoaFazenda(id, newFarmId);
+      const completa = await getPessoa(id);
       if (completa) setPessoaFazendas(completa.fazendas);
       setNewFarmId('');
     } catch (e) {
@@ -524,7 +555,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Fazendas disponíveis para vincular (da organização) ──────────────────────
   const farmsDisponiveis = useMemo(
-    () => farms.filter(f => !pessoaFazendas.some(pf => pf.farmId === f.id)),
+    () => farms.filter(f => f.ativo && !pessoaFazendas.some(pf => pf.farmId === f.id)),
     [farms, pessoaFazendas],
   );
 
@@ -702,409 +733,503 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Render: Formulário ───────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <h1 className="text-xl font-bold text-gray-900 mb-4">
-        {editingId ? 'Editar Pessoa' : 'Nova Pessoa'}
-      </h1>
+    <div className="min-h-screen bg-gray-50">
+      {/* ─── Header ─── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-3xl mx-auto px-6">
+          {/* Linha superior: voltar + identidade */}
+          <div className="flex items-center gap-3 py-4">
+            <button
+              onClick={backToList}
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <ArrowLeft size={18} />
+            </button>
 
-      {/* ─── Barra de abas ─── */}
-      <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
-        {TABS.filter(t => !t.editingOnly || editingId).map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${
-              activeTab === tab.id
-                ? 'bg-white text-emerald-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {photoPreview ? (
+                <img src={photoPreview} className="w-9 h-9 rounded-full object-cover border border-gray-200 shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                  <User size={16} className="text-emerald-600" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <h1 className="text-base font-bold text-gray-900 leading-tight truncate">
+                  {dados.full_name || (editingId ? 'Editar Pessoa' : 'Nova Pessoa')}
+                </h1>
+                {(dados.preferred_name || pessoaPerfis[0]?.perfilNome) && (
+                  <p className="text-xs text-gray-400 truncate">
+                    {[dados.preferred_name, pessoaPerfis[0]?.perfilNome].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {!dados.ativo && (
+              <span className="shrink-0 text-xs font-medium text-gray-400 bg-gray-100 rounded-full px-2.5 py-1">
+                Inativo
+              </span>
+            )}
+          </div>
+
+          {/* Abas */}
+          <div className="flex gap-0 -mb-px">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* ─── Aba 1: Dados Pessoais ─── */}
-      {activeTab === 'dados' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          {/* Foto */}
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              {photoPreview ? (
-                <img src={photoPreview} className="w-20 h-20 rounded-full object-cover border-2 border-gray-200" />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
-                  <User size={28} className="text-gray-400" />
-                </div>
-              )}
-              <label className="absolute -bottom-1 -right-1 p-1.5 bg-emerald-600 rounded-full cursor-pointer hover:bg-emerald-700 transition-colors">
-                <Camera size={12} className="text-white" />
-                <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-              </label>
-            </div>
-            {photoPreview && (
-              <button
-                onClick={handleAdjustPhoto}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors"
-              >
-                <Move size={14} />
-                Ajustar foto
-              </button>
-            )}
-          </div>
+      {/* ─── Conteúdo ─── */}
+      <div className="max-w-3xl mx-auto px-6 pt-6 pb-6">
 
-          {/* Nome */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-              <input
-                value={dados.full_name}
-                onChange={e => setDados(d => ({ ...d, full_name: e.target.value }))}
-                placeholder="Nome completo"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apelido / Nome Preferido</label>
-              <input
-                value={dados.preferred_name}
-                onChange={e => setDados(d => ({ ...d, preferred_name: e.target.value }))}
-                placeholder="Apelido"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-          </div>
+        {/* ══ Aba 1: Nome, Cargo e Fazenda ══ */}
+        {activeTab === 'nome' && (
+          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
 
-          {/* Contato */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
-              <input
-                value={dados.phone_whatsapp}
-                onChange={e => setDados(d => ({ ...d, phone_whatsapp: formatPhone(e.target.value) }))}
-                placeholder="(00) 00000-0000"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={dados.email}
-                onChange={e => setDados(d => ({ ...d, email: e.target.value }))}
-                placeholder="email@exemplo.com"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-          </div>
-
-          {/* Ativo */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setDados(d => ({ ...d, ativo: !d.ativo }))}
-              className={`relative w-11 h-6 rounded-full transition-colors ${dados.ativo ? 'bg-emerald-600' : 'bg-gray-200'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${dados.ativo ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
-            <span className="text-sm text-gray-700">Pessoa ativa</span>
-          </div>
-
-          {/* Botão salvar */}
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={handleSaveDados}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              {editingId ? 'Salvar Alterações' : 'Criar Pessoa'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Aba 2: Perfis e Cargos ─── */}
-      {activeTab === 'perfis' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-3">Vínculo de Perfil e Cargo</p>
-            <div className="flex gap-3">
-              <select
-                value={newPerfilId}
-                onChange={e => { setNewPerfilId(e.target.value); setNewCargoId(''); }}
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Selecionar perfil...</option>
-                {perfisDisponiveis.map(p => (
-                  <option key={p.id} value={p.id}>{p.nome}</option>
-                ))}
-              </select>
-
-              {/* Cargo disponível quando perfil "Colaborador Fazenda" selecionado */}
-              {newPerfilId && perfisDisponiveis.find(p => p.id === newPerfilId)?.nome === 'Colaborador Fazenda' && (
-                <select
-                  value={newCargoId}
-                  onChange={e => setNewCargoId(e.target.value)}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">Cargo (opcional)...</option>
-                  {cargosDisponiveis.map(c => (
-                    <option key={c.id} value={c.id}>{c.nome}</option>
-                  ))}
-                </select>
-              )}
-
-              <button
-                onClick={handleAddPerfil}
-                disabled={!newPerfilId || addingPerfil}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
-              >
-                {addingPerfil ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                {pessoaPerfis.length > 0 ? 'Atualizar Perfil' : 'Vincular Perfil'}
-              </button>
-            </div>
-            
-            {pessoaPerfis.length > 0 && (
-              <div className="mt-4 flex items-center gap-2">
-                <span className="text-xs text-gray-400">Perfil atual:</span>
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">
-                  <span className="text-xs font-medium text-emerald-700">
-                    {pessoaPerfis[0].perfilNome}
-                    {pessoaPerfis[0].cargoFuncaoNome && ` — ${pessoaPerfis[0].cargoFuncaoNome}`}
-                  </span>
-                  <button
-                    onClick={() => handleRemovePerfil(pessoaPerfis[0].id)}
-                    className="text-emerald-400 hover:text-red-500 transition-colors ml-1"
-                    title="Remover vínculo"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── Aba 3: Fazendas ─── */}
-      {activeTab === 'fazendas' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          {fazendasComNome.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhuma fazenda vinculada ainda.</p>
-          ) : (
-            <div className="space-y-2">
-              {fazendasComNome.map(pf => (
-                <div key={pf.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50">
-                  <button
-                    onClick={() => handleSetPrimary(pf.id)}
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      pf.isPrimary
-                        ? 'border-emerald-600 bg-emerald-600'
-                        : 'border-gray-300 hover:border-emerald-400'
-                    }`}
-                    title={pf.isPrimary ? 'Fazenda principal' : 'Definir como principal'}
-                  >
-                    {pf.isPrimary && <span className="w-2 h-2 bg-white rounded-full" />}
-                  </button>
-                  <span className="flex-1 text-sm font-medium text-gray-800">{pf.farmName}</span>
-                  {pf.isPrimary && (
-                    <span className="text-xs text-emerald-600 font-medium">Principal</span>
+            {/* ── Dados Pessoais ── */}
+            <div className="p-6">
+              <div className="flex gap-5 items-start">
+                {/* Foto */}
+                <div className="shrink-0 flex flex-col items-center gap-2">
+                  <div className="relative">
+                    {photoPreview ? (
+                      <img src={photoPreview} className="w-24 h-24 rounded-xl object-cover border border-gray-200" />
+                    ) : (
+                      <div className="w-24 h-24 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300">
+                        <User size={30} className="text-gray-300" />
+                      </div>
+                    )}
+                    <label className="absolute -bottom-2 -right-2 p-1.5 bg-emerald-600 rounded-full cursor-pointer hover:bg-emerald-700 transition-colors shadow-md">
+                      <Camera size={12} className="text-white" />
+                      <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+                    </label>
+                  </div>
+                  {photoPreview && (
+                    <button
+                      onClick={handleAdjustPhoto}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
+                    >
+                      <Move size={11} />
+                      Ajustar
+                    </button>
                   )}
-                  <button
-                    onClick={() => handleRemoveFazenda(pf.id)}
-                    className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                    title="Desvincular"
-                  >
-                    <X size={14} />
-                  </button>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Vincular nova fazenda */}
-          {farmsDisponiveis.length > 0 && (
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-sm font-medium text-gray-700 mb-3">Vincular Fazenda</p>
-              <div className="flex gap-3">
-                <select
-                  value={newFarmId}
-                  onChange={e => setNewFarmId(e.target.value)}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">Selecionar fazenda...</option>
-                  {farmsDisponiveis.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleAddFazenda}
-                  disabled={!newFarmId || addingFazenda}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
-                >
-                  {addingFazenda ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  Vincular
-                </button>
+                {/* Campos de nome */}
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Nome Completo *</label>
+                    <input
+                      value={dados.full_name}
+                      onChange={e => setDados(d => ({ ...d, full_name: e.target.value }))}
+                      placeholder="Nome completo da pessoa"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Apelido / Nome Preferido</label>
+                    <input
+                      value={dados.preferred_name}
+                      onChange={e => setDados(d => ({ ...d, preferred_name: e.target.value }))}
+                      placeholder="Como é chamado"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ─── Aba 4: Permissões ─── */}
-      {activeTab === 'permissoes' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          <h3 className="font-semibold text-gray-800">Permissões por Fazenda</h3>
-          {fazendasComNome.length === 0 ? (
-            <p className="text-sm text-gray-400">Vincule fazendas primeiro para configurar permissões.</p>
-          ) : (
-            <div className="space-y-5">
-              {fazendasComNome.map(pf => {
-                const farmId = pf.farmId;
-                const perm = getPermissao(farmId);
-                const isSaving = savingPerm === farmId;
-                return (
-                  <div key={farmId} className="border border-gray-100 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <h4 className="font-medium text-gray-800">{pf.farmName}</h4>
-                      {pf.isPrimary && (
-                        <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                          Principal
-                        </span>
-                      )}
-                      {isSaving && <Loader2 size={14} className="animate-spin text-gray-400" />}
+              {/* Contato */}
+              <div className="grid grid-cols-2 gap-4 mt-5">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">WhatsApp <span className="text-red-500">*</span></label>
+                  <input
+                    value={dados.phone_whatsapp}
+                    onChange={e => setDados(d => ({ ...d, phone_whatsapp: formatPhone(e.target.value) }))}
+                    placeholder="(00) 00000-0000"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Email</label>
+                  <input
+                    type="email"
+                    value={dados.email}
+                    onChange={e => setDados(d => ({ ...d, email: e.target.value }))}
+                    placeholder="email@exemplo.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            {/* ── Perfil e Cargo ── */}
+            <div className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 size={14} className="text-gray-400" />
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Perfil e Cargo</span>
+              </div>
+
+              {!dados.full_name.trim() ? (
+                <p className="text-sm text-gray-400">Preencha o nome para ativar este campo.</p>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <select
+                      value={newPerfilId}
+                      onChange={e => { setNewPerfilId(e.target.value); setNewCargoId(''); }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    >
+                      <option value="">Selecionar perfil...</option>
+                      {perfisDisponiveis.map(p => (
+                        <option key={p.id} value={p.id}>{p.nome}</option>
+                      ))}
+                    </select>
+
+                    {newPerfilId && perfisDisponiveis.find(p => p.id === newPerfilId)?.nome === 'Colaborador Fazenda' && (
+                      <select
+                        value={newCargoId}
+                        onChange={e => setNewCargoId(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      >
+                        <option value="">Cargo (opcional)...</option>
+                        {cargosDisponiveis.map(c => (
+                          <option key={c.id} value={c.id}>{c.nome}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    <button
+                      onClick={handleAddPerfil}
+                      disabled={!newPerfilId || addingPerfil}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
+                    >
+                      {addingPerfil ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      {pessoaPerfis.length > 0 ? 'Atualizar' : 'Vincular'}
+                    </button>
+                  </div>
+
+                  {pessoaPerfis.length > 0 && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <span className="text-xs text-gray-400">Perfil atual:</span>
+                      <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-medium rounded-full px-3 py-1">
+                        {pessoaPerfis[0].perfilNome}
+                        {pessoaPerfis[0].cargoFuncaoNome && (
+                          <span className="text-emerald-400">· {pessoaPerfis[0].cargoFuncaoNome}</span>
+                        )}
+                        <button
+                          onClick={() => handleRemovePerfil(pessoaPerfis[0].id)}
+                          className="text-emerald-300 hover:text-red-400 transition-colors ml-0.5"
+                          title="Remover vínculo"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
                     </div>
-                    <div className="space-y-3">
-                      {([
-                        { key: 'assumeTarefasFazenda' as const, internalKey: 'assume_tarefas_fazenda' as const, label: 'Pode assumir tarefas da fazenda' },
-                        { key: 'podeAlterarSemanaFechada' as const, internalKey: 'pode_alterar_semana_fechada' as const, label: 'Pode alterar semana fechada' },
-                        { key: 'podeApagarSemana' as const, internalKey: 'pode_apagar_semana' as const, label: 'Pode apagar semana' },
-                      ]).map(({ key, internalKey, label }) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <span className="text-sm text-gray-700">{label}</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── Fazendas ── */}
+            <div className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Star size={14} className="text-gray-400" />
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Fazendas</span>
+              </div>
+
+              {!dados.full_name.trim() ? (
+                <p className="text-sm text-gray-400">Preencha o nome para ativar este campo.</p>
+              ) : (
+                <>
+                  {fazendasComNome.length > 0 && (
+                    <div className="space-y-1.5 mb-4">
+                      {fazendasComNome.map(pf => (
+                        <div
+                          key={pf.id}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                            pf.isPrimary
+                              ? 'border-emerald-200 bg-emerald-50/60'
+                              : 'border-gray-100 bg-gray-50/60 hover:bg-gray-50'
+                          }`}
+                        >
                           <button
-                            onClick={() => handleTogglePerm(farmId, key, internalKey)}
-                            disabled={isSaving}
-                            className={`relative w-10 h-5.5 rounded-full transition-colors disabled:opacity-50 ${
-                              perm?.[key] ? 'bg-emerald-600' : 'bg-gray-200'
+                            onClick={() => handleSetPrimary(pf.id)}
+                            className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                              pf.isPrimary
+                                ? 'border-emerald-500 bg-emerald-500'
+                                : 'border-gray-300 hover:border-emerald-400'
                             }`}
-                            style={{ height: '22px' }}
+                            title={pf.isPrimary ? 'Fazenda principal' : 'Definir como principal'}
                           >
-                            <span className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform ${
-                              perm?.[key] ? 'translate-x-4' : 'translate-x-0'
-                            }`} style={{ width: '18px', height: '18px' }} />
+                            {pf.isPrimary && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
+                          </button>
+                          <span className="flex-1 text-sm text-gray-800 font-medium">{pf.farmName}</span>
+                          {pf.isPrimary && (
+                            <span className="text-xs font-medium text-emerald-600 bg-emerald-100 rounded-md px-2 py-0.5">
+                              Principal
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleRemoveFazenda(pf.id)}
+                            className="p-1 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+                            title="Desvincular"
+                          >
+                            <X size={13} />
                           </button>
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {farmsDisponiveis.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={newFarmId}
+                        onChange={e => setNewFarmId(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      >
+                        <option value="">Selecionar fazenda para vincular...</option>
+                        {farmsDisponiveis.map(f => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleAddFazenda}
+                        disabled={!newFarmId || addingFazenda}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
+                      >
+                        {addingFazenda ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                        Vincular
+                      </button>
+                    </div>
+                  ) : fazendasComNome.length === 0 && (
+                    <p className="text-sm text-gray-400">Nenhuma fazenda disponível para vincular.</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── Ações ── */}
+            <div className="p-6 flex items-center justify-between">
+              <button
+                onClick={() => setDados(d => ({ ...d, ativo: !d.ativo }))}
+                className="flex items-center gap-2.5 group"
+              >
+                <span className={`relative inline-block w-10 h-[22px] rounded-full transition-colors ${dados.ativo ? 'bg-emerald-500' : 'bg-gray-200'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform ${dados.ativo ? 'translate-x-[18px]' : 'translate-x-0'}`} />
+                </span>
+                <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors">Pessoa ativa</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveDados}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                >
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                  {editingId ? 'Salvar Alterações' : 'Adicionar Pessoa'}
+                </button>
+                <button
+                  onClick={() => handleTabChange('detalhes')}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm font-medium"
+                >
+                  Próximo
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ══ Aba 2: Permissões e Informações ══ */}
+        {activeTab === 'detalhes' && (
+          <div className="space-y-4">
+
+            {/* Permissões */}
+            {editingId && (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h2 className="text-sm font-semibold text-gray-700">Permissões por Fazenda</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Configure o que esta pessoa pode fazer em cada fazenda.</p>
+                </div>
+
+                {fazendasComNome.length === 0 ? (
+                  <div className="py-14 text-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                      <Star size={20} className="text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-400">Nenhuma fazenda vinculada</p>
+                    <p className="text-xs text-gray-300 mt-1">Vincule fazendas na aba anterior para configurar permissões.</p>
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {fazendasComNome.map(pf => {
+                      const farmId = pf.farmId;
+                      const perm = getPermissao(farmId);
+                      const isSaving = savingPerm === farmId;
+                      return (
+                        <div key={farmId}>
+                          <div className="flex items-center gap-2 px-6 py-3 bg-gray-50/70">
+                            <span className="text-sm font-semibold text-gray-700 flex-1">{pf.farmName}</span>
+                            {pf.isPrimary && (
+                              <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                                Principal
+                              </span>
+                            )}
+                            {isSaving && <Loader2 size={13} className="animate-spin text-gray-400" />}
+                          </div>
+                          <div className="divide-y divide-gray-50">
+                            {([
+                              { key: 'assumeTarefasFazenda' as const, internalKey: 'assume_tarefas_fazenda' as const, label: 'Pode assumir tarefas da fazenda' },
+                              { key: 'podeAlterarSemanaFechada' as const, internalKey: 'pode_alterar_semana_fechada' as const, label: 'Pode alterar semana fechada' },
+                              { key: 'podeApagarSemana' as const, internalKey: 'pode_apagar_semana' as const, label: 'Pode apagar semana' },
+                            ]).map(({ key, internalKey, label }) => (
+                              <div key={key} className="flex items-center justify-between px-6 py-3">
+                                <span className="text-sm text-gray-600">{label}</span>
+                                <button
+                                  onClick={() => handleTogglePerm(farmId, key, internalKey)}
+                                  disabled={isSaving}
+                                  className={`relative w-10 h-[22px] rounded-full transition-colors disabled:opacity-50 shrink-0 ${
+                                    perm?.[key] ? 'bg-emerald-500' : 'bg-gray-200'
+                                  }`}
+                                >
+                                  <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform ${
+                                    perm?.[key] ? 'translate-x-[18px]' : 'translate-x-0'
+                                  }`} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Outras Informações */}
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+
+              {/* Documentos */}
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Documentos</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">CPF</label>
+                    <input
+                      value={dados.cpf}
+                      onChange={e => setDados(d => ({ ...d, cpf: formatCPF(e.target.value) }))}
+                      placeholder="000.000.000-00"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">RG</label>
+                    <input
+                      value={dados.rg}
+                      onChange={e => setDados(d => ({ ...d, rg: e.target.value }))}
+                      placeholder="Documento de identidade"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Datas */}
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Datas</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Nascimento</label>
+                    <DateInputBR
+                      value={dados.data_nascimento}
+                      onChange={v => setDados(d => ({ ...d, data_nascimento: v }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Contratação</label>
+                    <DateInputBR
+                      value={dados.data_contratacao}
+                      onChange={v => setDados(d => ({ ...d, data_contratacao: v }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Localização */}
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Localização</p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Cidade / UF</label>
+                  <input
+                    value={dados.location_city_uf}
+                    onChange={e => setDados(d => ({ ...d, location_city_uf: e.target.value }))}
+                    placeholder="Ex: Goiânia / GO"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Endereço</label>
+                  <textarea
+                    value={dados.endereco}
+                    onChange={e => setDados(d => ({ ...d, endereco: e.target.value }))}
+                    rows={2}
+                    placeholder="Endereço completo"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Observações</p>
+                <textarea
+                  value={dados.observacoes}
+                  onChange={e => setDados(d => ({ ...d, observacoes: e.target.value }))}
+                  rows={4}
+                  placeholder="Anotações livres sobre esta pessoa..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {/* Salvar Tab 2 */}
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
+                <button
+                  onClick={handleSaveDados}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                >
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                  Salvar Alterações
+                </button>
+              </div>
+
             </div>
-          )}
-        </div>
-      )}
 
-      {/* ─── Aba 5: Outras Informações ─── */}
-      {activeTab === 'outras' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          <p className="text-xs text-gray-400">Todos os campos desta aba são opcionais.</p>
-
-          {/* Documentos */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
-              <input
-                value={dados.cpf}
-                onChange={e => setDados(d => ({ ...d, cpf: formatCPF(e.target.value) }))}
-                placeholder="000.000.000-00"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">RG</label>
-              <input
-                value={dados.rg}
-                onChange={e => setDados(d => ({ ...d, rg: e.target.value }))}
-                placeholder="Documento de identidade"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
           </div>
+        )}
 
-          {/* Datas */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
-              <input
-                type="date"
-                value={dados.data_nascimento}
-                onChange={e => setDados(d => ({ ...d, data_nascimento: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Contratação</label>
-              <input
-                type="date"
-                value={dados.data_contratacao}
-                onChange={e => setDados(d => ({ ...d, data_contratacao: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-          </div>
+      </div>{/* /content */}
 
-          {/* Localização */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cidade / UF</label>
-            <input
-              value={dados.location_city_uf}
-              onChange={e => setDados(d => ({ ...d, location_city_uf: e.target.value }))}
-              placeholder="Ex: Goiânia / GO"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-
-          {/* Endereço */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-            <textarea
-              value={dados.endereco}
-              onChange={e => setDados(d => ({ ...d, endereco: e.target.value }))}
-              rows={2}
-              placeholder="Endereço completo"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-            />
-          </div>
-
-          {/* Observações */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
-            <textarea
-              value={dados.observacoes}
-              onChange={e => setDados(d => ({ ...d, observacoes: e.target.value }))}
-              rows={3}
-              placeholder="Observações livres"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-            />
-          </div>
-
-          {/* Botão salvar */}
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={handleSaveDados}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Salvar Alterações
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ─── Modal de Crop ──────────────────────────────────────────────────────── */}
       {showCropModal && cropSourceUrl && (

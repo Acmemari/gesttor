@@ -24,6 +24,8 @@ import {
   Tag,
   MoreVertical,
   Eye,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useClient } from '../contexts/ClientContext';
@@ -71,6 +73,11 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
   // Menu de ações
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+
+  // Edição de categoria
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [editCategory, setEditCategory] = useState<DocumentCategory>('geral');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -282,6 +289,20 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
     }
   };
 
+  // Salvar edição de categoria
+  const handleSaveEdit = async (doc: ClientDocument) => {
+    setIsSavingEdit(true);
+    const result = await updateDocument(doc.id, { category: editCategory });
+    if (result.success) {
+      setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, category: editCategory } : d));
+      onToast?.('Categoria atualizada com sucesso', 'success');
+      setEditingDocId(null);
+    } else {
+      onToast?.(result.error || 'Erro ao atualizar categoria', 'error');
+    }
+    setIsSavingEdit(false);
+  };
+
   // Ícone do tipo de arquivo
   const FileIcon = ({ type }: { type: DocumentFileType }) => {
     const colorClass = getFileTypeColor(type);
@@ -426,10 +447,26 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
                     {doc.originalName}
                   </h3>
                   <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-ai-subtext">
-                    <span className="flex items-center gap-1">
-                      <Tag size={12} />
-                      {CATEGORY_LABELS[doc.category]}
-                    </span>
+                    {editingDocId === doc.id ? (
+                      <span className="flex items-center gap-1">
+                        <Tag size={12} />
+                        <select
+                          value={editCategory}
+                          onChange={e => setEditCategory(e.target.value as DocumentCategory)}
+                          className="text-xs border border-ai-border rounded px-1 py-0.5 bg-white text-ai-text focus:outline-none focus:ring-1 focus:ring-ai-accent"
+                          autoFocus
+                        >
+                          {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <Tag size={12} />
+                        {CATEGORY_LABELS[doc.category]}
+                      </span>
+                    )}
                     <span className="flex items-center gap-1">
                       <Calendar size={12} />
                       {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
@@ -447,23 +484,52 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
                 {/* Ações */}
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownload(doc)}
-                    className="p-2 text-ai-subtext hover:text-ai-accent hover:bg-ai-surface rounded-lg transition-colors"
-                    title="Baixar"
-                  >
-                    <Download size={18} />
-                  </button>
-
-                  {canDelete && (
-                    <button
-                      onClick={() => handleDelete(doc)}
-                      disabled={deletingId === doc.id}
-                      className="p-2 text-ai-subtext hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                      title="Excluir"
-                    >
-                      {deletingId === doc.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                    </button>
+                  {editingDocId === doc.id ? (
+                    <>
+                      <button
+                        onClick={() => handleSaveEdit(doc)}
+                        disabled={isSavingEdit}
+                        className="p-2 text-white bg-ai-accent hover:bg-ai-accent/90 rounded-lg transition-colors disabled:opacity-50"
+                        title="Salvar"
+                      >
+                        {isSavingEdit ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                      </button>
+                      <button
+                        onClick={() => setEditingDocId(null)}
+                        disabled={isSavingEdit}
+                        className="p-2 text-ai-subtext hover:text-ai-text hover:bg-ai-surface rounded-lg transition-colors disabled:opacity-50"
+                        title="Cancelar"
+                      >
+                        <X size={18} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setEditingDocId(doc.id); setEditCategory(doc.category); }}
+                        className="p-2 text-ai-subtext hover:text-ai-accent hover:bg-ai-surface rounded-lg transition-colors"
+                        title="Editar categoria"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        className="p-2 text-ai-subtext hover:text-ai-accent hover:bg-ai-surface rounded-lg transition-colors"
+                        title="Baixar"
+                      >
+                        <Download size={18} />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(doc)}
+                          disabled={deletingId === doc.id}
+                          className="p-2 text-ai-subtext hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Excluir"
+                        >
+                          {deletingId === doc.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

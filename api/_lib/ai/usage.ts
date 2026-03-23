@@ -49,11 +49,11 @@ async function loadPlanLimits(plan: PlanId): Promise<PlanLimitsResult> {
   if (!data) {
     console.warn(`[usage] plan_limits not found for "${plan}", using hardcoded defaults`);
     const defaults: Record<string, PlanLimitsResult> = {
-      basic:      { monthly_token_limit: 500_000,    monthly_cost_limit_usd: 0.75  },
-      pro:        { monthly_token_limit: 2_000_000,  monthly_cost_limit_usd: 3.00  },
-      enterprise: { monthly_token_limit: 10_000_000, monthly_cost_limit_usd: 15.00 },
+      essencial: { monthly_token_limit: 500_000,    monthly_cost_limit_usd: 0.75  },
+      gestor:    { monthly_token_limit: 2_000_000,  monthly_cost_limit_usd: 3.00  },
+      pro:       { monthly_token_limit: 10_000_000, monthly_cost_limit_usd: 15.00 },
     };
-    return defaults[plan] ?? defaults['basic'];
+    return defaults[plan] ?? defaults['essencial'];
   }
 
   return {

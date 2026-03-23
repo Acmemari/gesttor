@@ -11,8 +11,10 @@ import {
   Trash2,
   Edit2,
   Eye,
+  EyeOff,
   CheckCircle2,
   XCircle,
+  X,
   Info,
   Users,
   Loader2,
@@ -180,6 +182,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     refreshCurrentLevel,
   } = useHierarchy();
   const [farms, setFarms] = useState<Farm[]>([]);
+  const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [view, setView] = useState<'list' | 'form'>('list');
   const availableClientsCount = hierarchyClients.length;
   const loadingClientsAvailability = hierarchyLoading.clients;
@@ -998,6 +1001,9 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     );
   }
 
+  const activeFarms = farms.filter(f => f.ativo !== false);
+  const inactiveFarms = farms.filter(f => f.ativo === false);
+
   // List View
   if (view === 'list') {
     return (
@@ -1023,7 +1029,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto content-start">
-            {farms.map(farm => (
+            {activeFarms.map(farm => (
               <FarmCard
                 key={farm.id}
                 farm={farm}
@@ -1036,6 +1042,17 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
               />
             ))}
           </div>
+          {inactiveFarms.length > 0 && (
+            <div className="flex justify-center pt-4 pb-2">
+              <button
+                onClick={() => setShowInactiveModal(true)}
+                className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 hover:border-gray-400 rounded-full px-3 py-1 transition-colors flex items-center gap-1"
+              >
+                <EyeOff size={12} />
+                desativadas ({inactiveFarms.length})
+              </button>
+            </div>
+          )}
         </div>
         {permissionsModalFarm && (
           <FarmPermissionsModal
@@ -1047,6 +1064,38 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
             isCurrentUserResponsible={effectiveBatchPerms[permissionsModalFarm.id]?.isResponsible ?? false}
             onToast={onToast}
           />
+        )}
+        {showInactiveModal && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+            onClick={() => setShowInactiveModal(false)}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-700">Fazendas Desativadas ({inactiveFarms.length})</h2>
+                <button onClick={() => setShowInactiveModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {inactiveFarms.map(farm => (
+                  <FarmCard
+                    key={farm.id}
+                    farm={farm}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onToggleActive={handleToggleActive}
+                    onOpenPermissions={setPermissionsModalFarm}
+                    canManagePermissions={effectiveBatchPerms[farm.id]?.isResponsible ?? false}
+                    perms={effectiveBatchPerms[farm.id] ?? (isCliente ? CLIENTE_ACCESS : NO_ACCESS)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </>
     );

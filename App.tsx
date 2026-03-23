@@ -402,6 +402,13 @@ const AppContent: React.FC = () => {
       setActiveAgentId('cattle-profit');
       return;
     }
+
+    // Plano essencial: Assistentes e Meus Salvos não estão disponíveis
+    const isEssencial = user?.plan === 'essencial' && user?.role !== 'admin';
+    if (isEssencial && (activeAgentId === 'cattle-profit' || activeAgentId === 'saved-scenarios')) {
+      setActiveAgentId('ask-antonio');
+      return;
+    }
   }, [user, activeAgentId, isLoading, canAccessFeedbackAgent]);
 
   // Agents devem sempre estar preenchidos aqui (user existe, isLoading é false).

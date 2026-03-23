@@ -67,11 +67,11 @@ export const mapUserProfile = (input: unknown): User | null => {
 
   const { role, qualification } = deriveRoleAndQualification(profile.role ?? 'visitante');
 
-  const validPlans = ['basic', 'pro', 'enterprise'] as const;
-  let plan: 'basic' | 'pro' | 'enterprise' | undefined = undefined;
+  const validPlans = ['essencial', 'gestor', 'pro'] as const;
+  let plan: 'essencial' | 'gestor' | 'pro' | undefined = undefined;
   if (profile.plan) {
     if (validPlans.includes(profile.plan as (typeof validPlans)[number])) {
-      plan = profile.plan as 'basic' | 'pro' | 'enterprise';
+      plan = profile.plan as 'essencial' | 'gestor' | 'pro';
     } else {
       log.warn('Invalid plan value, defaulting to undefined');
     }

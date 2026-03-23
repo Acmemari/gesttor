@@ -193,7 +193,7 @@ async function handleGetStats(_req: VercelRequest, res: VercelResponse, userId: 
       (SELECT ROUND(AVG(latency_ms)) FROM knowledge_retrieval_logs WHERE latency_ms IS NOT NULL) AS avg_latency_ms,
       (SELECT ROUND(AVG(rating), 2) FROM knowledge_feedback WHERE rating IS NOT NULL) AS avg_rating,
       (SELECT COUNT(*) FROM knowledge_retrieval_logs WHERE created_at > now() - interval '7 days') AS queries_last_7d,
-      (SELECT COALESCE(SUM(embedding_tokens_used), 0) FROM knowledge_ingestion_jobs WHERE status = 'done') AS total_embedding_tokens,
+      (SELECT COALESCE(SUM(embedding_tokens_used), 0) FROM knowledge_ingestion_jobs WHERE status = 'completed') AS total_embedding_tokens,
       (SELECT COALESCE(SUM(tokens_used), 0) FROM knowledge_retrieval_logs WHERE tokens_used IS NOT NULL) AS total_query_tokens
   `);
   return ok(res, rows[0]);
@@ -246,8 +246,27 @@ async function handleProcess(req: VercelRequest, res: VercelResponse, userId: st
 
 // ─── POST: ask (RAG Q&A) ─────────────────────────────────────────────────────
 
+type HistoryEntry = { role: 'user' | 'assistant'; text: string };
+
+function buildUserPrompt(
+  context: string,
+  history: HistoryEntry[],
+  question: string,
+): string {
+  const historyBlock =
+    history.length > 0
+      ? history
+          .map(m => `${m.role === 'user' ? 'Usuário' : 'Antonio'}: ${m.text}`)
+          .join('\n') + '\n\n'
+      : '';
+  return `Contexto da base de conhecimento:\n${context}\n\n${historyBlock}Usuário: ${question}`;
+}
+
 async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string) {
-  const { question, topK } = req.body ?? {};
+  const { question, topK, history } = req.body ?? {};
+  const conversationHistory: HistoryEntry[] = Array.isArray(history)
+    ? (history as HistoryEntry[]).slice(-6)
+    : [];
   if (!question || typeof question !== 'string' || !question.trim()) {
     return fail(res, 'Campo obrigatório: question');
   }
@@ -255,8 +274,8 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
   const k = Math.min(parseInt(String(topK ?? '6'), 10), 12);
   const startMs = Date.now();
 
-  // 1. Embed da pergunta
-  const { embedding: queryEmbedding, tokens: queryEmbeddingTokens } = await embedSingleWithUsage(question.trim());
+  // 1. Embed da pergunta (inputType='query' — otimizado para busca semântica)
+  const { embedding: queryEmbedding, tokens: queryEmbeddingTokens } = await embedSingleWithUsage(question.trim(), 'query');
 
   // 2. Busca semântica
   const chunks = await semanticSearch(queryEmbedding, k);
@@ -280,7 +299,7 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
     model: 'claude-sonnet-4-6',
     request: {
       systemPrompt: ANTONIO_SYSTEM_PROMPT,
-      userPrompt: `Contexto:\n${context}\n\nPergunta: ${question}`,
+      userPrompt: buildUserPrompt(context, conversationHistory, question),
       maxTokens: 1024,
       temperature: 0.3,
     },

@@ -1,14 +1,14 @@
 import type { AgentManifest, PlanId, RoutedModel } from './types.js';
 
-const BASIC_MODEL_OVERRIDES: Partial<Record<'gemini' | 'openai' | 'anthropic', string>> = {
+const ESSENCIAL_MODEL_OVERRIDES: Partial<Record<'gemini' | 'openai' | 'anthropic', string>> = {
   gemini: 'gemini-2.0-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
 };
 
 export function routeAgent(manifest: AgentManifest, userPlan: PlanId): RoutedModel {
-  if (userPlan === 'basic') {
-    const basicModel = BASIC_MODEL_OVERRIDES[manifest.modelPolicy.provider];
+  if (userPlan === 'essencial') {
+    const basicModel = ESSENCIAL_MODEL_OVERRIDES[manifest.modelPolicy.provider];
     if (basicModel) {
       return {
         provider: manifest.modelPolicy.provider,

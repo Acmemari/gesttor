@@ -1,11 +1,13 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, isNull } from 'drizzle-orm';
 import { db } from '../index.js';
-import { semanas, atividades, historicoSemanas, pessoas } from '../schema.js';
+import { semanas, atividades, historicoSemanas } from '../schema.js';
 
 // ── Semanas ────────────────────────────────────────────────────────────────────
 
-export async function getCurrentSemana(farmId?: string) {
-  const conditions = farmId ? and(eq(semanas.aberta, true), eq(semanas.farmId, farmId)) : eq(semanas.aberta, true);
+export async function getCurrentSemana(modo: string, farmId?: string | null) {
+  const conditions = farmId
+    ? and(eq(semanas.aberta, true), eq(semanas.modo, modo), eq(semanas.farmId, farmId))
+    : and(eq(semanas.aberta, true), eq(semanas.modo, modo));
   const [row] = await db.select().from(semanas).where(conditions).orderBy(desc(semanas.numero)).limit(1);
   return row;
 }
@@ -15,10 +17,10 @@ export async function getSemanaById(id: string) {
   return row;
 }
 
-export async function getSemanaByNumero(numero: number, farmId?: string) {
+export async function getSemanaByNumero(numero: number, modo: string, farmId?: string | null) {
   const conditions = farmId
-    ? and(eq(semanas.numero, numero), eq(semanas.farmId, farmId))
-    : eq(semanas.numero, numero);
+    ? and(eq(semanas.numero, numero), eq(semanas.modo, modo), eq(semanas.farmId, farmId))
+    : and(eq(semanas.numero, numero), eq(semanas.modo, modo));
   const [row] = await db.select().from(semanas).where(conditions).limit(1);
   return row;
 }
@@ -85,17 +87,18 @@ export async function createAtividade(data: {
   return row;
 }
 
-export async function createAtividadesBulk(semanaId: string, items: Array<{
+export async function createAtividadesBulk(items: Array<{
+  semana_id: string;
   titulo: string;
   descricao?: string;
-  pessoa_id?: string;
-  data_termino?: string;
+  pessoa_id?: string | null;
+  data_termino?: string | null;
   tag?: string;
   status?: string;
 }>) {
   if (items.length === 0) return [];
   return db.insert(atividades).values(items.map(item => ({
-    semanaId,
+    semanaId: item.semana_id,
     titulo: item.titulo,
     descricao: item.descricao ?? '',
     pessoaId: item.pessoa_id ?? null,
@@ -134,9 +137,12 @@ export async function deleteAtividadesBySemana(semanaId: string) {
 
 // ── Historico ──────────────────────────────────────────────────────────────────
 
-export async function listHistoricoByFarm(farmId: string) {
+export async function listHistoricoByFarm(farmId: string | null) {
+  const condition = farmId
+    ? eq(historicoSemanas.farmId, farmId)
+    : isNull(historicoSemanas.farmId);
   return db.select().from(historicoSemanas)
-    .where(eq(historicoSemanas.farmId, farmId))
+    .where(condition)
     .orderBy(desc(historicoSemanas.closedAt));
 }
 

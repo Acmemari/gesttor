@@ -107,8 +107,8 @@ export const organizations = pgTable('organizations', {
   status: text('status').default('active'),
   plan: text('plan'),
   ativo: boolean('ativo').default(true),
-  ownerId: uuid('owner_id'),
-  analystId: uuid('analyst_id'),
+  ownerId: text('owner_id'),
+  analystId: text('analyst_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -116,7 +116,7 @@ export const organizations = pgTable('organizations', {
 export const organizationAnalysts = pgTable('organization_analysts', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
-  analystId: uuid('analyst_id').notNull(),
+  analystId: text('analyst_id').notNull(),
   permissions: jsonb('permissions').default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -188,7 +188,7 @@ export const people = pgTable('people', {
   email: text('email'),
   locationCityUf: text('location_city_uf'),
   photoUrl: text('photo_url'),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   userId: text('user_id'),
   cpf: text('cpf'),
   rg: text('rg'),
@@ -273,19 +273,25 @@ export const semanas = pgTable('work_weeks', {
   dataFim: date('data_fim').notNull(),
   farmId: text('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_work_weeks_farm_modo_aberta').on(t.farmId, t.modo, t.aberta),
+  index('idx_work_weeks_numero_modo_farm').on(t.numero, t.modo, t.farmId),
+]);
 
 export const atividades = pgTable('activities', {
   id: uuid('id').primaryKey().defaultRandom(),
   semanaId: uuid('semana_id').notNull().references(() => semanas.id, { onDelete: 'cascade' }),
   titulo: text('titulo').notNull(),
   descricao: text('descricao').default(''),
-  pessoaId: uuid('pessoa_id').references(() => pessoas.id),
+  pessoaId: uuid('pessoa_id').references(() => people.id, { onDelete: 'set null' }),
   dataTermino: date('data_termino'),
   tag: text('tag').default('#planejamento'),
   status: text('status').notNull().default('a fazer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_activities_semana_id').on(t.semanaId),
+  index('idx_activities_status').on(t.status),
+]);
 
 export const historicoSemanas = pgTable('week_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -338,7 +344,7 @@ export const initiatives = pgTable('initiatives', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdBy: text('created_by'),
   deliveryId: uuid('delivery_id').references(() => deliveries.id, { onDelete: 'restrict' }),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   description: text('description'),

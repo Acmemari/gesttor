@@ -64,9 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       numero: Number(numero),
       modo: String(modo),
       aberta: aberta !== undefined ? Boolean(aberta) : true,
-      data_inicio: String(data_inicio),
-      data_fim: String(data_fim),
-      farm_id: farm_id ? String(farm_id) : null,
+      dataInicio: String(data_inicio),
+      dataFim: String(data_fim),
+      farmId: farm_id ? String(farm_id) : undefined,
     });
     jsonSuccess(res, row);
     return;
@@ -78,8 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = (req.body || {}) as Record<string, unknown>;
     const partial: Record<string, unknown> = {};
     if (body.aberta !== undefined) partial.aberta = Boolean(body.aberta);
-    if (body.data_inicio !== undefined) partial.data_inicio = String(body.data_inicio);
-    if (body.data_fim !== undefined) partial.data_fim = String(body.data_fim);
+    if (body.data_inicio !== undefined) partial.dataInicio = String(body.data_inicio);
+    if (body.data_fim !== undefined) partial.dataFim = String(body.data_fim);
     const row = await updateSemana(id, partial);
     jsonSuccess(res, row);
     return;

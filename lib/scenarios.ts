@@ -15,6 +15,12 @@ function validateUUID(id: string, fieldName: string): void {
   }
 }
 
+function validateUserId(id: string): void {
+  if (!id || typeof id !== 'string' || id.trim() === '') {
+    throw new Error('ID do usuário inválido.');
+  }
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = await getAuthHeaders();
   return fetch(path, {
@@ -156,7 +162,7 @@ export const saveReportPdf = async (
   reportType: string,
   options?: SaveScenarioOptions,
 ): Promise<CattleScenario> => {
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   const sanitizedName = sanitizeText(name);
   if (!sanitizedName) {
@@ -217,7 +223,7 @@ export const saveComparatorReport = async (
   comparatorResult: ComparatorResult,
   options?: SaveScenarioOptions,
 ): Promise<CattleScenario> => {
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   const sanitizedName = sanitizeText(name);
   if (!sanitizedName) {
@@ -289,7 +295,7 @@ export const saveScenario = async (
   results?: CalculationResults,
   options?: SaveScenarioOptions,
 ): Promise<CattleScenario> => {
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   const sanitizedName = sanitizeText(name);
   const normalizedInputs = normalizeCattleCalculatorInputs(inputs);
@@ -348,7 +354,7 @@ export const updateScenario = async (
   },
 ): Promise<CattleScenario> => {
   validateUUID(scenarioId, 'ID do cenário');
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   if (updates.name) updates.name = sanitizeText(updates.name);
   if (updates.inputs) {
@@ -387,7 +393,7 @@ export const updateScenario = async (
  */
 export const deleteScenario = async (scenarioId: string, userId: string): Promise<void> => {
   validateUUID(scenarioId, 'ID do cenário');
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   const res = await apiFetch(
     `/api/cattle-scenarios?id=${encodeURIComponent(scenarioId)}&userId=${encodeURIComponent(userId)}`,
@@ -405,7 +411,7 @@ export const deleteScenario = async (scenarioId: string, userId: string): Promis
  */
 export const getScenario = async (scenarioId: string, userId: string): Promise<CattleScenario | null> => {
   validateUUID(scenarioId, 'ID do cenário');
-  validateUUID(userId, 'ID do usuário');
+  validateUserId(userId);
 
   const res = await apiFetch(
     `/api/cattle-scenarios?id=${encodeURIComponent(scenarioId)}&userId=${encodeURIComponent(userId)}`,

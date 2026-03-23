@@ -108,16 +108,25 @@ export async function runIngestionPipeline(documentId: string): Promise<void> {
       const { embeddings, totalTokens } = await embedTexts(texts);
       totalEmbTokens += totalTokens;
 
-      // Inserir chunks com embeddings
-      for (let j = 0; j < batchChunks.length; j++) {
-        const c = batchChunks[j];
-        const vectorStr = `[${embeddings[j].join(',')}]`;
-        await pool.query(
-          `INSERT INTO knowledge_chunks (document_id, chunk_index, content, token_count, metadata, embedding)
-           VALUES ($1, $2, $3, $4, $5, $6::vector)`,
-          [documentId, c.index, c.content, c.tokenCount, JSON.stringify(c.metadata), vectorStr],
-        );
-      }
+      // Inserir todos os chunks do batch em uma única query (bulk INSERT com unnest)
+      const docIds      = batchChunks.map(() => documentId);
+      const indexes     = batchChunks.map(c => c.index);
+      const contents    = batchChunks.map(c => c.content);
+      const tokenCounts = batchChunks.map(c => c.tokenCount);
+      const metadatas   = batchChunks.map(c => JSON.stringify(c.metadata));
+      const vectors     = embeddings.map(e => `[${e.join(',')}]`);
+
+      await pool.query(
+        `INSERT INTO knowledge_chunks (document_id, chunk_index, content, token_count, metadata, embedding)
+         SELECT
+           unnest($1::text[]),
+           unnest($2::int[]),
+           unnest($3::text[]),
+           unnest($4::int[]),
+           unnest($5::jsonb[]),
+           unnest($6::text[])::vector`,
+        [docIds, indexes, contents, tokenCounts, metadatas, vectors],
+      );
 
       totalDone += batchChunks.length;
       await pool.query(

@@ -55,7 +55,7 @@ export interface User {
   email: string;
   role: 'admin' | 'client';
   avatar?: string;
-  plan?: 'basic' | 'pro' | 'enterprise';
+  plan?: 'essencial' | 'gestor' | 'pro';
   status?: 'active' | 'inactive';
   lastLogin?: string;
   organizationId?: string;
@@ -65,7 +65,7 @@ export interface User {
 }
 
 export interface Plan {
-  id: 'basic' | 'pro' | 'enterprise';
+  id: 'essencial' | 'gestor' | 'pro';
   name: string;
   price: number;
   features: string[];

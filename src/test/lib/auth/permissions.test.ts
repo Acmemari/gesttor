@@ -23,23 +23,35 @@ describe('checkPermission', () => {
       name: 'Admin',
       email: 'admin@example.com',
       role: 'admin',
-      plan: 'basic',
+      plan: 'essencial',
     };
     expect(checkPermission(user, 'Any Feature')).toBe(true);
   });
 
-  it('should return true for basic plan with Calculadora feature', () => {
+  it('should return true for essencial plan with Calculadora feature', () => {
     const user: User = {
       id: '1',
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'basic',
+      plan: 'essencial',
     };
     expect(checkPermission(user, 'Calculadora')).toBe(true);
   });
 
-  it('should return true for pro plan with wildcard feature', () => {
+  it('should return true for gestor plan with wildcard feature', () => {
+    const user: User = {
+      id: '1',
+      name: 'Test',
+      email: 'test@example.com',
+      role: 'client',
+      plan: 'gestor',
+    };
+    // Gestor plan has "Todos os Agentes" feature
+    expect(checkPermission(user, 'Any Feature')).toBe(true);
+  });
+
+  it('should return true for pro plan', () => {
     const user: User = {
       id: '1',
       name: 'Test',
@@ -47,28 +59,16 @@ describe('checkPermission', () => {
       role: 'client',
       plan: 'pro',
     };
-    // Pro plan has "Todos os Agentes" feature
     expect(checkPermission(user, 'Any Feature')).toBe(true);
   });
 
-  it('should return true for enterprise plan', () => {
+  it('should return false for essencial plan without feature', () => {
     const user: User = {
       id: '1',
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'enterprise',
-    };
-    expect(checkPermission(user, 'Any Feature')).toBe(true);
-  });
-
-  it('should return false for basic plan without feature', () => {
-    const user: User = {
-      id: '1',
-      name: 'Test',
-      email: 'test@example.com',
-      role: 'client',
-      plan: 'basic',
+      plan: 'essencial',
     };
     expect(checkPermission(user, 'Tendências')).toBe(false);
   });
@@ -95,7 +95,7 @@ describe('checkLimit', () => {
       name: 'Admin',
       email: 'admin@example.com',
       role: 'admin',
-      plan: 'basic',
+      plan: 'essencial',
     };
     expect(checkLimit(user, 'agents', 999)).toBe(true);
   });
@@ -106,9 +106,9 @@ describe('checkLimit', () => {
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'basic',
+      plan: 'essencial',
     };
-    // Basic plan has 1 agent limit
+    // Essencial plan has 1 agent limit
     expect(checkLimit(user, 'agents', 0)).toBe(true);
   });
 
@@ -118,9 +118,9 @@ describe('checkLimit', () => {
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'basic',
+      plan: 'essencial',
     };
-    // Basic plan has 1 agent limit
+    // Essencial plan has 1 agent limit
     expect(checkLimit(user, 'agents', 1)).toBe(false);
     expect(checkLimit(user, 'agents', 2)).toBe(false);
   });
@@ -131,9 +131,9 @@ describe('checkLimit', () => {
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'basic',
+      plan: 'essencial',
     };
-    // Basic plan has 7 days limit
+    // Essencial plan has 7 days limit
     expect(checkLimit(user, 'historyDays', 6)).toBe(true);
     expect(checkLimit(user, 'historyDays', 7)).toBe(false);
   });
@@ -144,9 +144,9 @@ describe('checkLimit', () => {
       name: 'Test',
       email: 'test@example.com',
       role: 'client',
-      plan: 'pro',
+      plan: 'gestor',
     };
-    // Pro plan has 3 users limit
+    // Gestor plan has 3 users limit
     expect(checkLimit(user, 'users', 2)).toBe(true);
     expect(checkLimit(user, 'users', 3)).toBe(false);
   });

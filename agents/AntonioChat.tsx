@@ -55,10 +55,16 @@ const AntonioChat: React.FC = () => {
 
     try {
       const headers = await getAuthHeaders();
+      // Inclui as últimas 3 trocas (6 mensagens) para follow-ups contextuais
+      const history = messages
+        .filter(m => m.id !== 'welcome')
+        .slice(-6)
+        .map(m => ({ role: m.role, text: m.text }));
+
       const res = await fetch('/api/knowledge?action=ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
       });
 
       const json = await res.json();

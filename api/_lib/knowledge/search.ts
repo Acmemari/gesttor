@@ -17,10 +17,12 @@ export interface SearchResult {
 /**
  * Busca os top-k chunks mais relevantes para um embedding de consulta.
  * Filtra apenas documentos com status 'published'.
+ * @param minScore Threshold mínimo de similaridade cosine (0-1). Chunks abaixo são descartados.
  */
 export async function semanticSearch(
   queryEmbedding: number[],
   topK = 6,
+  minScore = 0.5,
 ): Promise<SearchResult[]> {
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
@@ -37,10 +39,11 @@ export async function semanticSearch(
     JOIN knowledge_documents kd ON kd.id = kc.document_id
     WHERE kd.status = 'published'
       AND kc.embedding IS NOT NULL
+      AND 1 - (kc.embedding <=> $1::vector) >= $3
     ORDER BY kc.embedding <=> $1::vector
     LIMIT $2
     `,
-    [vectorStr, topK],
+    [vectorStr, topK, minScore],
   );
 
   return rows.map((r: Record<string, unknown>) => ({

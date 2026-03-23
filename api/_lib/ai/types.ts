@@ -1,7 +1,7 @@
 import type { ZodTypeAny } from 'zod';
 
 export type AIProviderName = 'gemini' | 'openai' | 'anthropic';
-export type PlanId = 'basic' | 'pro' | 'enterprise';
+export type PlanId = 'essencial' | 'gestor' | 'pro';
 
 export interface AIUsage {
   inputTokens: number;

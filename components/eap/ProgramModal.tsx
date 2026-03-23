@@ -4,6 +4,7 @@ import { ModalShell, SectionHeader } from './ModalShell';
 import DateInputBR from '../DateInputBR';
 import type { ProgramFormState } from './types';
 import { removeAtIndex, updateAtIndex } from './types';
+import type { Person } from '../../lib/people';
 
 interface ProgramModalProps {
   form: ProgramFormState;
@@ -12,9 +13,10 @@ interface ProgramModalProps {
   onClose: () => void;
   saving: boolean;
   mode: 'create' | 'edit';
+  people?: Person[];
 }
 
-export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSave, onClose, saving, mode }) => (
+export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSave, onClose, saving, mode, people = [] }) => (
   <ModalShell
     title={mode === 'create' ? 'Novo Programa' : 'Editar Programa'}
     subtitle="Preencha os detalhes para criar uma nova atividade."
@@ -130,18 +132,44 @@ export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSa
       </div>
       {form.stakeholder_matrix.map((row, idx) => (
         <div key={`sh-${idx}`} className="flex items-center gap-2">
-          <input
-            type="text"
-            value={row.name}
-            onChange={e =>
-              onChange({
-                ...form,
-                stakeholder_matrix: updateAtIndex(form.stakeholder_matrix, idx, r => ({ ...r, name: e.target.value })),
-              })
-            }
-            placeholder="Nome / Cargo"
-            className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text placeholder:text-ai-subtext/50"
-          />
+          {people.length > 0 ? (
+            <select
+              value={row.name}
+              onChange={e => {
+                const selected = people.find(p => (p.preferred_name || p.full_name) === e.target.value);
+                const name = e.target.value;
+                const activity = selected?.job_role && !row.activity ? selected.job_role : row.activity;
+                onChange({
+                  ...form,
+                  stakeholder_matrix: updateAtIndex(form.stakeholder_matrix, idx, r => ({ ...r, name, activity })),
+                });
+              }}
+              className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text"
+            >
+              <option value="">Selecione uma pessoa...</option>
+              {people.map(p => {
+                const label = p.preferred_name || p.full_name;
+                return (
+                  <option key={p.id} value={label}>
+                    {label}{p.job_role ? ` — ${p.job_role}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={row.name}
+              onChange={e =>
+                onChange({
+                  ...form,
+                  stakeholder_matrix: updateAtIndex(form.stakeholder_matrix, idx, r => ({ ...r, name: e.target.value })),
+                })
+              }
+              placeholder="Nome / Cargo"
+              className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text placeholder:text-ai-subtext/50"
+            />
+          )}
           <input
             type="text"
             value={row.activity}
