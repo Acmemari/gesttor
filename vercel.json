@@ -14,5 +14,8 @@
       ]
     }
   ],
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "routes": [
+    { "src": "/api/auth/(.*)", "dest": "/api/auth/[...all]" },
+    { "src": "/((?!api/).*)", "dest": "/index.html" }
+  ]
 }
