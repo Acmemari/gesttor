@@ -6,11 +6,11 @@ import HierarchyCombobox from './hierarchy/HierarchyCombobox';
 
 const FarmSelector: React.FC = () => {
   const { user } = useAuth();
-  const { selectedClient, selectedFarm, farms, setSelectedFarm, searchFarms, loadMoreFarms, hasMore, loading, errors } =
+  const { organizationId, selectedOrganization, selectedFarm, farms, setSelectedFarm, searchFarms, loadMoreFarms, hasMore, loading, errors } =
     useHierarchy();
 
-  // Não mostrar se não houver cliente selecionado
-  if (!selectedClient) {
+  // Não mostrar se não houver organização selecionada (usa organizationId para evitar flicker durante carregamento)
+  if (!organizationId) {
     return null;
   }
 

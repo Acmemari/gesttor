@@ -101,7 +101,7 @@ export async function updateDelivery(deliveryId: string, payload: Partial<Delive
 }
 
 export interface FetchDeliveriesFilters {
-  clientId?: string;
+  organizationId?: string;
   farmId?: string;
 }
 
@@ -111,7 +111,7 @@ export interface FetchDeliveriesFilters {
  */
 export async function fetchDeliveries(createdBy: string, filters?: FetchDeliveriesFilters): Promise<DeliveryRow[]> {
   const { fetchProjects } = await import('./projects');
-  const projectFilters = filters?.clientId ? { clientId: filters.clientId } : undefined;
+  const projectFilters = filters?.organizationId ? { organizationId: filters.organizationId } : undefined;
   const projects = await fetchProjects(createdBy, projectFilters);
   if (!projects.length) return [];
   return fetchDeliveriesByProjects(projects.map(p => p.id));

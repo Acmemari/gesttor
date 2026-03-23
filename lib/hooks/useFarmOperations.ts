@@ -26,9 +26,9 @@ export function useFarmOperations() {
   /**
    * Busca fazendas vinculadas a uma organização (anteriormente cliente)
    */
-  const getClientFarms = useCallback(async (clientId: string): Promise<Farm[]> => {
+  const getOrganizationFarms = useCallback(async (organizationId: string): Promise<Farm[]> => {
     try {
-      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(clientId)}`);
+      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(organizationId)}`);
 
       if (!res.ok) {
         log.error('Error loading farms by organizationId', new Error(`HTTP ${res.status}`));
@@ -41,7 +41,7 @@ export function useFarmOperations() {
       const data: Array<Record<string, unknown>> = json.data ?? [];
       return data.length > 0 ? mapFarmsFromDatabase(data) : [];
     } catch (err: unknown) {
-      log.error('Exception loading client farms', err instanceof Error ? err : new Error(String(err)));
+      log.error('Exception loading organization farms', err instanceof Error ? err : new Error(String(err)));
       return [];
     }
   }, []);
@@ -78,9 +78,9 @@ export function useFarmOperations() {
   /**
    * Conta fazendas vinculadas a uma organização
    */
-  const countClientFarms = useCallback(async (clientId: string): Promise<number> => {
+  const countOrganizationFarms = useCallback(async (organizationId: string): Promise<number> => {
     try {
-      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(clientId)}`);
+      const res = await apiFetch(`/api/farms?organizationId=${encodeURIComponent(organizationId)}`);
 
       if (!res.ok) {
         log.error('Error counting farms', new Error(`HTTP ${res.status}`));
@@ -98,8 +98,8 @@ export function useFarmOperations() {
   }, []);
 
   return {
-    getClientFarms,
+    getOrganizationFarms,
     deleteFarm,
-    countClientFarms,
+    countOrganizationFarms,
   };
 }

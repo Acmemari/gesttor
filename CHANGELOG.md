@@ -12,7 +12,6 @@
   - Timeout de 60 segundos para chamadas ao webhook
   - Tratamento robusto de erros e diferentes formatos de resposta
 - **Configuração de ambiente:**
-  - Adicionada variável `N8N_WEBHOOK_URL` para configuração do webhook (obrigatória)
   - Alternativa `WEBHOOK_URL` para desenvolvimento local
   - Removida dependência de `OPENAI_API_KEY` e `GEMINI_API_KEY` do servidor
 - Arquivo `index.css` para corrigir erro 404 de carregamento
@@ -80,7 +79,6 @@
 - `package.json` - Faixa de engines ajustada para `>=20 <25`, evitando aviso EBADENGINE em ambientes com Node 24.
 - **Documentação atualizada:**
   - `README.md` - Atualizado com informações sobre integração n8n webhook
-  - `docs/ENVIRONMENT.md` - Atualizado com variável `N8N_WEBHOOK_URL`
   - Adicionadas instruções de configuração no Vercel
 - `index.html` - Removido CDN do Tailwind e scripts inline de configuração
 - `index.tsx` - Adicionado import do CSS e registro do Service Worker

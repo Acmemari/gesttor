@@ -45,7 +45,7 @@ No dashboard do Supabase, vá para:
    - Acesse [GitHub Developer Settings](https://github.com/settings/developers)
    - Clique em **New OAuth App**
    - Configure:
-     - **Application name**: PecuarIA (ou seu nome)
+     - **Application name**: Gesttor (ou seu nome)
      - **Homepage URL**: Sua URL de produção
      - **Authorization callback URL**: `https://gtfjaggtgyoldovcmyqh.supabase.co/auth/v1/callback`
    - Copie o **Client ID** e gere um **Client Secret**

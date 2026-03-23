@@ -69,14 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
-    // 4. n8n webhook
-    const webhookUrl = trimOrNull(process.env.N8N_WEBHOOK_URL) ?? trimOrNull(process.env.WEBHOOK_URL);
-    checks.n8n_webhook = {
-      ok: !!webhookUrl,
-      message: webhookUrl ? 'ok' : 'N8N_WEBHOOK_URL not configured (chat will not work)',
-    };
-
-    // 5. DB Connectivity & Tables (via Drizzle)
+    // 4. DB Connectivity & Tables (via Drizzle)
     if (databaseUrl) {
       try {
         const { db } = await import('../src/DB/index.js');

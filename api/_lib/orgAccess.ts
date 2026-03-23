@@ -38,7 +38,7 @@ export async function getUserRole(userId: string): Promise<string> {
  * Admin passa direto. Analista deve ser principal ou secundário.
  */
 export async function assertOrgAccess(orgId: string, userId: string, role: string): Promise<void> {
-  if (role === 'administrador') return;
+  if (role === 'admin' || role === 'administrador') return;
 
   const [org] = await db
     .select({ analystId: organizations.analystId })
@@ -82,7 +82,7 @@ export async function assertProjectAccess(
   userId: string,
   role: string,
 ): Promise<string> {
-  if (role === 'administrador') {
+  if (role === 'admin' || role === 'administrador') {
     const [proj] = await db
       .select({ organizationId: projectsTable.organizationId })
       .from(projectsTable)
@@ -113,7 +113,7 @@ export async function assertDeliveryAccess(
   userId: string,
   role: string,
 ): Promise<void> {
-  if (role === 'administrador') return;
+  if (role === 'admin' || role === 'administrador') return;
 
   const [delivery] = await db
     .select({ projectId: deliveriesTable.projectId })
@@ -135,7 +135,7 @@ export async function assertInitiativeAccess(
   userId: string,
   role: string,
 ): Promise<void> {
-  if (role === 'administrador') return;
+  if (role === 'admin' || role === 'administrador') return;
 
   const [initiative] = await db
     .select({ deliveryId: initiativesTable.deliveryId })
@@ -157,7 +157,7 @@ export async function assertMilestoneAccess(
   userId: string,
   role: string,
 ): Promise<void> {
-  if (role === 'administrador') return;
+  if (role === 'admin' || role === 'administrador') return;
 
   const [milestone] = await db
     .select({ initiativeId: initiativeMilestones.initiativeId })
@@ -179,7 +179,7 @@ export async function assertTaskAccess(
   userId: string,
   role: string,
 ): Promise<void> {
-  if (role === 'administrador') return;
+  if (role === 'admin' || role === 'administrador') return;
 
   const [task] = await db
     .select({ milestoneId: initiativeTasks.milestoneId })

@@ -1,0 +1,9 @@
+# REGRAS DO CLAUDE / AI (Critical Rules)
+
+A regra abaixo deve ser estritamente seguida em todas as interações e de forma inegociável.
+
+## PROIBIÇÃO DE CRIAÇÃO DE BRANCHES
+- **Você (a IA) está ESTRITAMENTE PROIBIDA de criar novas branches.**
+- Não execute comandos como `git checkout -b`, `git switch -c`, `git branch` ou similares.
+- Todos os commits, alterações, e implementações de funcionalidades devem ser feitos e enviados (push) única e exclusivamente na branch em que você se encontrar no momento (normalmente `main` ou `dev`).
+- Não pergunte ao usuário se ele quer isolar a funcionalidade em uma nova branch. Faça o trabalho diretamente na branch atual.

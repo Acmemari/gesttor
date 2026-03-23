@@ -1,7 +1,7 @@
 /**
  * API de hierarquia: analistas, clientes, fazendas.
- * GET ?level=analysts|clients|farms & offset, limit, search, analystId (opcional), clientId (para farms)
- * POST (validate) body: { analystId, clientId, farmId }
+ * GET ?level=analysts|organizations|farms & offset, limit, search, analystId (opcional), organizationId (para farms)
+ * POST (validate) body: { analystId, organizationId, farmId }
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { and, eq, exists, or } from 'drizzle-orm';
@@ -16,17 +16,17 @@ import {
   validateHierarchy,
   type AnalystRow,
   type OrganizationRow,
-  type FarmRow,
 } from '../src/DB/repositories/hierarchy.js';
 import { mapFarmsFromDatabase } from '../lib/utils/farmMapper.js';
 
 function mapAnalystRow(r: AnalystRow) {
+  const { role, qualification } = deriveProfile(r.role ?? 'visitante');
   return {
     id: r.id,
     name: r.name,
     email: r.email,
-    role: (r.role as 'admin' | 'client') || 'client',
-    qualification: (r.qualification as 'visitante' | 'cliente' | 'analista') || 'visitante',
+    role: role as 'admin' | 'client',
+    qualification: qualification as 'visitante' | 'cliente' | 'analista',
   };
 }
 
@@ -36,9 +36,9 @@ function mapOrganizationRow(r: OrganizationRow) {
     name: r.name,
     phone: r.phone || '',
     email: r.email,
-    analystId: r.analyst_id,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
+    analystId: r.analystId,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
   };
 }
 
@@ -62,30 +62,19 @@ function deriveProfile(dbRole: string): { role: string; qualification: string } 
 async function loadUserProfile(userId: string): Promise<{
   role: string;
   qualification: string;
-  clientId: string | null;
+  organizationId: string | null;
 } | null> {
   const [p] = await db
-    .select({ role: userProfiles.role })
+    .select({ role: userProfiles.role, organizationId: userProfiles.organizationId })
     .from(userProfiles)
     .where(eq(userProfiles.id, userId))
     .limit(1);
   if (!p) return null;
   const derived = deriveProfile(p.role ?? 'visitante');
-
-  let clientId: string | null = null;
-  if ((p.role ?? '') === 'cliente') {
-    const [org] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.ownerId, userId))
-      .limit(1);
-    clientId = org?.id ?? null;
-  }
-
   return {
     role: derived.role,
     qualification: derived.qualification,
-    clientId,
+    organizationId: p.organizationId ?? null,
   };
 }
 
@@ -103,9 +92,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
-    const body = req.body as { analystId?: string | null; clientId?: string | null; farmId?: string | null } | undefined;
+    const body = req.body as { analystId?: string | null; organizationId?: string | null; farmId?: string | null } | undefined;
     const analystId = body?.analystId ?? null;
-    const clientId = body?.clientId ?? null;
+    const organizationId = body?.organizationId ?? null;
     const farmId = body?.farmId ?? null;
 
     // Carrega perfil para verificar autorização dos IDs enviados
@@ -116,17 +105,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (postProfile.qualification === 'cliente') {
-      if (clientId && postProfile.clientId && clientId !== postProfile.clientId) {
+      if (organizationId && postProfile.organizationId && organizationId !== postProfile.organizationId) {
         jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
         return;
       }
     } else if (postProfile.qualification === 'analista' && postProfile.role !== 'admin') {
-      if (clientId) {
+      if (organizationId) {
         const [org] = await db
           .select({ id: organizations.id })
           .from(organizations)
           .where(and(
-            eq(organizations.id, clientId),
+            eq(organizations.id, organizationId),
             or(
               eq(organizations.analystId, userId),
               exists(
@@ -147,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     // admin: acesso irrestrito
 
-    const result = await validateHierarchy({ analystId, clientId, farmId });
+    const result = await validateHierarchy({ analystId, organizationId, farmId });
     jsonSuccess(res, result);
     return;
   }
@@ -158,8 +147,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const level = typeof req.query?.level === 'string' ? req.query.level : '';
-  if (!['analysts', 'clients', 'farms'].includes(level)) {
-    jsonError(res, 'Parâmetro level inválido (analysts|clients|farms)', { status: 400 });
+  if (!['analysts', 'organizations', 'farms'].includes(level)) {
+    jsonError(res, 'Parâmetro level inválido (analysts|organizations|farms)', { status: 400 });
     return;
   }
 
@@ -173,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
   const search = (typeof req.query?.search === 'string' ? req.query.search : '').trim() || null;
   const analystIdParam = typeof req.query?.analystId === 'string' ? req.query.analystId : null;
-  const clientIdParam = typeof req.query?.clientId === 'string' ? req.query.clientId : null;
+  const organizationIdParam = typeof req.query?.organizationId === 'string' ? req.query.organizationId : null;
 
   if (level === 'analysts') {
     if (profile.role !== 'admin') {
@@ -186,12 +175,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (level === 'clients') {
-    const isClientUser = profile.qualification === 'cliente' || !!profile.clientId;
+  if (level === 'organizations') {
+    const isClientUser = profile.qualification === 'cliente' || !!profile.organizationId;
     let analystId: string | null = null;
     let organizationId: string | null = null;
-    if (isClientUser && profile.clientId) {
-      organizationId = profile.clientId;
+    if (isClientUser && profile.organizationId) {
+      organizationId = profile.organizationId;
     } else if (profile.role === 'admin' && analystIdParam) {
       analystId = analystIdParam;
     } else if (profile.qualification === 'analista') {
@@ -204,15 +193,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // level === 'farms'
-  const clientIdForFarms = clientIdParam;
-  if (!clientIdForFarms) {
-    jsonError(res, 'clientId obrigatório para listar fazendas', { status: 400 });
+  const organizationIdForFarms = organizationIdParam;
+  if (!organizationIdForFarms) {
+    jsonError(res, 'organizationId obrigatório para listar fazendas', { status: 400 });
     return;
   }
 
   // Verifica que o usuário tem acesso à organização solicitada
   if (profile.qualification === 'cliente') {
-    if (!profile.clientId || clientIdForFarms !== profile.clientId) {
+    if (!profile.organizationId || organizationIdForFarms !== profile.organizationId) {
       jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
       return;
     }
@@ -221,7 +210,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select({ id: organizations.id })
       .from(organizations)
       .where(and(
-        eq(organizations.id, clientIdForFarms),
+        eq(organizations.id, organizationIdForFarms),
         or(
           eq(organizations.analystId, userId),
           exists(
@@ -242,7 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // admin: acesso irrestrito
 
   const includeInactive = req.query?.includeInactive === 'true';
-  const { rows, hasMore } = await getFarms(clientIdForFarms, { offset, limit, search, includeInactive });
+  const { rows, hasMore } = await getFarms(organizationIdForFarms, { offset, limit, search, includeInactive });
   const data = mapFarmsFromDatabase(rows as Parameters<typeof mapFarmsFromDatabase>[0]);
   jsonSuccess(res, data, { offset, limit, hasMore });
 }

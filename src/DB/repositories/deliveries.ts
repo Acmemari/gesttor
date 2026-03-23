@@ -11,7 +11,6 @@ export async function listDeliveriesByProject(projectId: string) {
 export async function createDelivery(data: {
   name: string;
   project_id?: string;
-  client_id?: string;
   organization_id?: string;
   description?: string;
   transformations_achievements?: string;
@@ -25,7 +24,6 @@ export async function createDelivery(data: {
   const [row] = await db.insert(deliveries).values({
     name: data.name,
     projectId: data.project_id as any ?? null,
-    clientId: data.client_id as any ?? null,
     organizationId: data.organization_id ?? null,
     description: data.description ?? null,
     transformationsAchievements: data.transformations_achievements ?? null,
@@ -50,7 +48,7 @@ export async function updateDelivery(id: string, data: Record<string, unknown>) 
   if (data.sort_order !== undefined) mapped.sortOrder = data.sort_order;
   if (data.stakeholder_matrix !== undefined) mapped.stakeholderMatrix = data.stakeholder_matrix;
   if (data.project_id !== undefined) mapped.projectId = data.project_id;
-  if (data.client_id !== undefined) mapped.clientId = data.client_id;
+  if (data.organization_id !== undefined) mapped.organizationId = data.organization_id;
   mapped.updatedAt = new Date();
   const [row] = await db.update(deliveries).set(mapped).where(eq(deliveries.id, id as any)).returning();
   return row;

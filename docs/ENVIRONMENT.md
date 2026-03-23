@@ -8,7 +8,7 @@ VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 
 # Backend (Vercel Serverless Functions) - Obrigatórias
-N8N_WEBHOOK_URL=https://pecuaria-n8n.tcvxzi.easypanel.host/webhook/fala-antonio
+# N8N_WEBHOOK_URL=... (Removido)
 SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
 
 # IA - Providers (obtenha as chaves nos respectivos painéis)
@@ -38,8 +38,7 @@ STORAGE_ALLOWED_ORIGINS=https://seu-app.vercel.app,https://seu-dominio.com
 | `GEMINI_API_KEY`            | Sim\*\*     | Backend              | Todos os endpoints de IA (provider principal)         |
 | `OPENAI_API_KEY`            | Recomendada | Backend              | Fallback quando Gemini falha                          |
 | `ANTHROPIC_API_KEY`         | Recomendada | Backend              | Fallback quando Gemini e OpenAI falham                |
-| `N8N_WEBHOOK_URL`           | Sim         | Backend              | `/api/ask-assistant` (chat)                           |
-| `WEBHOOK_URL`               | Opcional    | Backend              | Alias local para `N8N_WEBHOOK_URL`                    |
+
 | `STORAGE_ALLOWED_ORIGINS`   | Produção    | Backend              | `/api/storage` (CORS; upload/delete de arquivos)      |
 
 > \* O backend aceita tanto `SUPABASE_URL` quanto `VITE_SUPABASE_URL` (prioridade para `SUPABASE_URL`). Isso permite configurar sem o prefixo `VITE_` no Vercel.
@@ -55,7 +54,6 @@ STORAGE_ALLOWED_ORIGINS=https://seu-app.vercel.app,https://seu-dominio.com
 
 ### Backend (Vercel)
 
-- `N8N_WEBHOOK_URL` - URL do webhook n8n para processamento do chat (obrigatória)
   - **Produção:** https://pecuaria-n8n.tcvxzi.easypanel.host/webhook/fala-antonio
   - Esta URL aponta para a automação n8n que processa as mensagens do chat
 
@@ -77,7 +75,6 @@ O pipeline de agentes (`/api/agents-run`) usa as tabelas: `plan_limits`, `rate_l
 
 ### Opcional
 
-- `WEBHOOK_URL` - Alternativa para `N8N_WEBHOOK_URL` (desenvolvimento local)
 
 ### Storage API (upload de arquivos B2)
 

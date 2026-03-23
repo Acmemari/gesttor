@@ -40,8 +40,8 @@ type TabId = 'dados' | 'perfis' | 'fazendas' | 'permissoes' | 'outras';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; editingOnly?: boolean }[] = [
   { id: 'dados', label: 'Dados Pessoais', icon: <User size={14} /> },
-  { id: 'perfis', label: 'Perfis e Cargos', icon: <Building2 size={14} /> },
-  { id: 'fazendas', label: 'Fazendas', icon: <Star size={14} /> },
+  { id: 'perfis', label: 'Perfis e Cargos', icon: <Building2 size={14} />, editingOnly: true },
+  { id: 'fazendas', label: 'Fazendas', icon: <Star size={14} />, editingOnly: true },
   { id: 'permissoes', label: 'Permissões', icon: <Shield size={14} />, editingOnly: true },
   { id: 'outras', label: 'Outras Informações', icon: <Info size={14} />, editingOnly: true },
 ];
@@ -68,7 +68,7 @@ const initialDados = {
 
 const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const { user } = useAuth();
-  const { selectedClient, selectedFarm, farms } = useHierarchy();
+  const { selectedOrganization: selectedClient, selectedFarm, farms } = useHierarchy();
 
   // ─── View State ──────────────────────────────────────────────────────────────
   const [view, setView] = useState<'list' | 'form'>('list');
@@ -81,7 +81,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterAtivo, setFilterAtivo] = useState<boolean | undefined>(true);
-  const [filterPerfilId, setFilterPerfilId] = useState<number | null>(null);
+  const [filterPerfilId, setFilterPerfilId] = useState<string | null>(null);
   const [filterFarmId, setFilterFarmId] = useState<string | null>(null);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
@@ -106,8 +106,8 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const [perfisDisponiveis, setPerfisDisponiveis] = useState<Perfil[]>([]);
   const [cargosDisponiveis, setCargosDisponiveis] = useState<CargoFuncao[]>([]);
   const [addingPerfil, setAddingPerfil] = useState(false);
-  const [newPerfilId, setNewPerfilId] = useState<number | ''>('');
-  const [newCargoId, setNewCargoId] = useState<number | ''>('');
+  const [newPerfilId, setNewPerfilId] = useState<string>('');
+  const [newCargoId, setNewCargoId] = useState<string>('');
 
   // ─── Form — Fazendas ─────────────────────────────────────────────────────────
   const [pessoaFazendas, setPessoaFazendas] = useState<PessoaFazenda[]>([]);
@@ -162,9 +162,9 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       const urls: Record<string, string> = {};
       await Promise.all(
         pessoas
-          .filter(p => p.photo_url)
+          .filter(p => p.photoUrl)
           .map(async p => {
-            try { urls[p.id] = await storageResolveUrl(p.photo_url!); } catch { /* silent */ }
+            try { urls[p.id] = await storageResolveUrl(p.photoUrl!); } catch { /* silent */ }
           }),
       );
       if (!cancelled) setSignedUrls(urls);
@@ -202,21 +202,21 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const openEdit = async (p: Pessoa) => {
     setEditingId(p.id);
     setDados({
-      full_name: p.full_name,
-      preferred_name: p.preferred_name ?? '',
+      full_name: p.fullName,
+      preferred_name: p.preferredName ?? '',
       cpf: formatCPF(p.cpf ?? ''),
       rg: p.rg ?? '',
-      data_nascimento: p.data_nascimento ?? '',
-      data_contratacao: p.data_contratacao ?? '',
+      data_nascimento: p.dataNascimento ?? '',
+      data_contratacao: p.dataContratacao ?? '',
       email: p.email ?? '',
-      phone_whatsapp: formatPhone(p.phone_whatsapp ?? ''),
-      location_city_uf: p.location_city_uf ?? '',
+      phone_whatsapp: formatPhone(p.phoneWhatsapp ?? ''),
+      location_city_uf: p.locationCityUf ?? '',
       endereco: p.endereco ?? '',
       observacoes: p.observacoes ?? '',
-      photo_url: p.photo_url ?? '',
+      photo_url: p.photoUrl ?? '',
       ativo: p.ativo,
     });
-    setPhotoPreview(signedUrls[p.id] ?? p.photo_url ?? null);
+    setPhotoPreview(signedUrls[p.id] ?? p.photoUrl ?? null);
     setPhotoFile(null);
     setNewPerfilId('');
     setNewCargoId('');
@@ -231,6 +231,16 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       setPessoaPerfis(completa.perfis);
       setPessoaFazendas(completa.fazendas);
       setPermissoes(completa.permissoes);
+      
+      // Inicializar seleção com o perfil atual (se houver)
+      if (completa.perfis.length > 0) {
+        const p0 = completa.perfis[0];
+        setNewPerfilId(p0.perfilId);
+        setNewCargoId(p0.cargoFuncaoId || '');
+      } else {
+        setNewPerfilId('');
+        setNewCargoId('');
+      }
     }
   };
 
@@ -386,6 +396,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
         }
       }
       loadPessoas();
+      backToList();
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao salvar pessoa', 'error');
     } finally {
@@ -398,11 +409,9 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     if (!editingId || !newPerfilId) return;
     setAddingPerfil(true);
     try {
-      await addPessoaPerfil(editingId, Number(newPerfilId), newCargoId ? Number(newCargoId) : null);
+      await addPessoaPerfil(editingId, newPerfilId, newCargoId || null);
       const completa = await getPessoa(editingId);
       if (completa) setPessoaPerfis(completa.perfis);
-      setNewPerfilId('');
-      setNewCargoId('');
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao adicionar perfil', 'error');
     } finally {
@@ -441,7 +450,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     try {
       await setPrimaryFazenda(editingId, pessoaFazendaId);
       setPessoaFazendas(prev =>
-        prev.map(f => ({ ...f, is_primary: f.id === pessoaFazendaId })),
+        prev.map(f => ({ ...f, isPrimary: f.id === pessoaFazendaId })),
       );
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao definir fazenda principal', 'error');
@@ -454,8 +463,8 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       await removePessoaFazenda(pessoaFazendaId, editingId);
       setPessoaFazendas(prev => prev.filter(f => f.id !== pessoaFazendaId));
       setPermissoes(prev => {
-        const removedFarm = pessoaFazendas.find(f => f.id === pessoaFazendaId)?.farm_id;
-        return removedFarm ? prev.filter(p => p.farm_id !== removedFarm) : prev;
+        const removedFarmId = pessoaFazendas.find(f => f.id === pessoaFazendaId)?.farmId;
+        return removedFarmId ? prev.filter(p => p.farmId !== removedFarmId) : prev;
       });
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao desvincular fazenda', 'error');
@@ -464,27 +473,35 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Permissões ───────────────────────────────────────────────────────────────
   const getPermissao = (farmId: string): PessoaPermissao | undefined =>
-    permissoes.find(p => p.farm_id === farmId);
+    permissoes.find(p => p.farmId === farmId);
 
   const handleTogglePerm = async (
     farmId: string,
-    key: 'assume_tarefas_fazenda' | 'pode_alterar_semana_fechada' | 'pode_apagar_semana',
+    key: 'assumeTarefasFazenda' | 'podeAlterarSemanaFechada' | 'podeApagarSemana',
+    internalKey: 'assume_tarefas_fazenda' | 'pode_alterar_semana_fechada' | 'pode_apagar_semana',
   ) => {
     if (!editingId) return;
     const current = getPermissao(farmId);
     const next = {
-      assume_tarefas_fazenda: current?.assume_tarefas_fazenda ?? false,
-      pode_alterar_semana_fechada: current?.pode_alterar_semana_fechada ?? false,
-      pode_apagar_semana: current?.pode_apagar_semana ?? false,
+      assumeTarefasFazenda: current?.assumeTarefasFazenda ?? false,
+      podeAlterarSemanaFechada: current?.podeAlterarSemanaFechada ?? false,
+      podeApagarSemana: current?.podeApagarSemana ?? false,
       [key]: !(current?.[key] ?? false),
     };
     setSavingPerm(farmId);
     try {
-      await upsertPessoaPermissao(editingId, farmId, next);
+      await upsertPessoaPermissao(editingId, farmId, { [internalKey]: next[key] });
       setPermissoes(prev => {
-        const exists = prev.find(p => p.farm_id === farmId);
-        if (exists) return prev.map(p => p.farm_id === farmId ? { ...p, ...next } : p);
-        return [...prev, { id: `${editingId}-${farmId}`, pessoa_id: editingId, farm_id: farmId, ...next, created_at: '', updated_at: '' }];
+        const exists = prev.find(p => p.farmId === farmId);
+        if (exists) return prev.map(p => p.farmId === farmId ? { ...p, ...next } : p);
+        return [...prev, {
+          id: `${editingId}-${farmId}`,
+          pessoaId: editingId,
+          farmId: farmId,
+          ...next,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        } as PessoaPermissao];
       });
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao salvar permissão', 'error');
@@ -507,16 +524,25 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── Fazendas disponíveis para vincular (da organização) ──────────────────────
   const farmsDisponiveis = useMemo(
-    () => farms.filter(f => !pessoaFazendas.some(pf => pf.farm_id === f.id)),
+    () => farms.filter(f => !pessoaFazendas.some(pf => pf.farmId === f.id)),
     [farms, pessoaFazendas],
   );
 
-  // ─── Fazendas vinculadas com nome ─────────────────────────────────────────────
+  // ─── Fazendas vinculadas com nome (deduplicadas por farmId) ──────────────────
   const fazendasComNome = useMemo(
-    () => pessoaFazendas.map(pf => ({
-      ...pf,
-      farm_name: farms.find(f => f.id === pf.farm_id)?.name ?? pf.farm_id,
-    })),
+    () => {
+      const seen = new Set<string>();
+      return pessoaFazendas
+        .filter(pf => {
+          if (seen.has(pf.farmId)) return false;
+          seen.add(pf.farmId);
+          return true;
+        })
+        .map(pf => ({
+          ...pf,
+          farm_name: pf.farmName ?? farms.find(f => f.id === pf.farmId)?.name ?? pf.farmId,
+        }));
+    },
     [pessoaFazendas, farms],
   );
 
@@ -564,7 +590,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
               </div>
               <select
                 value={filterPerfilId ?? ''}
-                onChange={e => setFilterPerfilId(e.target.value ? Number(e.target.value) : null)}
+                onChange={e => setFilterPerfilId(e.target.value || null)}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Todos os perfis</option>
@@ -628,14 +654,14 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                               </div>
                             )}
                             <div>
-                              <div className="font-medium text-gray-900">{p.preferred_name || p.full_name}</div>
-                              {p.preferred_name && (
-                                <div className="text-xs text-gray-400">{p.full_name}</div>
+                              <div className="font-medium text-gray-900">{p.preferredName || p.fullName}</div>
+                              {p.preferredName && (
+                                <div className="text-xs text-gray-400">{p.fullName}</div>
                               )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{p.phone_whatsapp ? formatPhone(p.phone_whatsapp) : '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{p.phoneWhatsapp ? formatPhone(p.phoneWhatsapp) : '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{p.email ?? '—'}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${p.ativo ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -803,49 +829,25 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       {/* ─── Aba 2: Perfis e Cargos ─── */}
       {activeTab === 'perfis' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-          {/* Lista de perfis */}
-          {pessoaPerfis.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhum perfil vinculado ainda.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {pessoaPerfis.map(pp => (
-                <div key={pp.id} className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
-                  <span className="text-sm font-medium text-emerald-800">{pp.perfil_nome ?? `Perfil #${pp.perfil_id}`}</span>
-                  {pp.cargo_funcao_nome && (
-                    <span className="text-xs text-emerald-600">— {pp.cargo_funcao_nome}</span>
-                  )}
-                  <button
-                    onClick={() => handleRemovePerfil(pp.id)}
-                    className="text-emerald-400 hover:text-red-500 transition-colors ml-1"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Adicionar perfil */}
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-sm font-medium text-gray-700 mb-3">Adicionar Perfil</p>
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-3">Vínculo de Perfil e Cargo</p>
             <div className="flex gap-3">
               <select
                 value={newPerfilId}
-                onChange={e => { setNewPerfilId(e.target.value ? Number(e.target.value) : ''); setNewCargoId(''); }}
+                onChange={e => { setNewPerfilId(e.target.value); setNewCargoId(''); }}
                 className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Selecionar perfil...</option>
-                {perfisDisponiveis
-                  .filter(p => !pessoaPerfis.some(pp => pp.perfil_id === p.id))
-                  .map(p => (
-                    <option key={p.id} value={p.id}>{p.nome}</option>
-                  ))}
+                {perfisDisponiveis.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
               </select>
-              {/* Cargo apenas se perfil for "Colaborador" (id=3) */}
-              {newPerfilId && Number(newPerfilId) === 3 && (
+
+              {/* Cargo disponível quando perfil "Colaborador Fazenda" selecionado */}
+              {newPerfilId && perfisDisponiveis.find(p => p.id === newPerfilId)?.nome === 'Colaborador Fazenda' && (
                 <select
                   value={newCargoId}
-                  onChange={e => setNewCargoId(e.target.value ? Number(e.target.value) : '')}
+                  onChange={e => setNewCargoId(e.target.value)}
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="">Cargo (opcional)...</option>
@@ -854,15 +856,35 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                   ))}
                 </select>
               )}
+
               <button
                 onClick={handleAddPerfil}
                 disabled={!newPerfilId || addingPerfil}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
               >
-                {addingPerfil ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Adicionar
+                {addingPerfil ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {pessoaPerfis.length > 0 ? 'Atualizar Perfil' : 'Vincular Perfil'}
               </button>
             </div>
+            
+            {pessoaPerfis.length > 0 && (
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-xs text-gray-400">Perfil atual:</span>
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">
+                  <span className="text-xs font-medium text-emerald-700">
+                    {pessoaPerfis[0].perfilNome}
+                    {pessoaPerfis[0].cargoFuncaoNome && ` — ${pessoaPerfis[0].cargoFuncaoNome}`}
+                  </span>
+                  <button
+                    onClick={() => handleRemovePerfil(pessoaPerfis[0].id)}
+                    className="text-emerald-400 hover:text-red-500 transition-colors ml-1"
+                    title="Remover vínculo"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -879,16 +901,16 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                   <button
                     onClick={() => handleSetPrimary(pf.id)}
                     className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      pf.is_primary
+                      pf.isPrimary
                         ? 'border-emerald-600 bg-emerald-600'
                         : 'border-gray-300 hover:border-emerald-400'
                     }`}
-                    title={pf.is_primary ? 'Fazenda principal' : 'Definir como principal'}
+                    title={pf.isPrimary ? 'Fazenda principal' : 'Definir como principal'}
                   >
-                    {pf.is_primary && <span className="w-2 h-2 bg-white rounded-full" />}
+                    {pf.isPrimary && <span className="w-2 h-2 bg-white rounded-full" />}
                   </button>
-                  <span className="flex-1 text-sm font-medium text-gray-800">{pf.farm_name}</span>
-                  {pf.is_primary && (
+                  <span className="flex-1 text-sm font-medium text-gray-800">{pf.farmName}</span>
+                  {pf.isPrimary && (
                     <span className="text-xs text-emerald-600 font-medium">Principal</span>
                   )}
                   <button
@@ -941,13 +963,14 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
           ) : (
             <div className="space-y-5">
               {fazendasComNome.map(pf => {
-                const perm = getPermissao(pf.farm_id);
-                const isSaving = savingPerm === pf.farm_id;
+                const farmId = pf.farmId;
+                const perm = getPermissao(farmId);
+                const isSaving = savingPerm === farmId;
                 return (
-                  <div key={pf.farm_id} className="border border-gray-100 rounded-xl p-4">
+                  <div key={farmId} className="border border-gray-100 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-4">
-                      <h4 className="font-medium text-gray-800">{pf.farm_name}</h4>
-                      {pf.is_primary && (
+                      <h4 className="font-medium text-gray-800">{pf.farmName}</h4>
+                      {pf.isPrimary && (
                         <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
                           Principal
                         </span>
@@ -956,14 +979,14 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                     </div>
                     <div className="space-y-3">
                       {([
-                        { key: 'assume_tarefas_fazenda' as const, label: 'Pode assumir tarefas da fazenda' },
-                        { key: 'pode_alterar_semana_fechada' as const, label: 'Pode alterar semana fechada' },
-                        { key: 'pode_apagar_semana' as const, label: 'Pode apagar semana' },
-                      ]).map(({ key, label }) => (
+                        { key: 'assumeTarefasFazenda' as const, internalKey: 'assume_tarefas_fazenda' as const, label: 'Pode assumir tarefas da fazenda' },
+                        { key: 'podeAlterarSemanaFechada' as const, internalKey: 'pode_alterar_semana_fechada' as const, label: 'Pode alterar semana fechada' },
+                        { key: 'podeApagarSemana' as const, internalKey: 'pode_apagar_semana' as const, label: 'Pode apagar semana' },
+                      ]).map(({ key, internalKey, label }) => (
                         <div key={key} className="flex items-center justify-between">
                           <span className="text-sm text-gray-700">{label}</span>
                           <button
-                            onClick={() => handleTogglePerm(pf.farm_id, key)}
+                            onClick={() => handleTogglePerm(farmId, key, internalKey)}
                             disabled={isSaving}
                             className={`relative w-10 h-5.5 rounded-full transition-colors disabled:opacity-50 ${
                               perm?.[key] ? 'bg-emerald-600' : 'bg-gray-200'

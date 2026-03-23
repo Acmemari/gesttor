@@ -9,7 +9,7 @@ export interface ProjectStakeholderRow {
 export interface ProjectRow {
   id: string;
   created_by: string;
-  client_id: string | null;
+  organization_id: string | null;
   name: string;
   description: string | null;
   transformations_achievements: string | null;
@@ -25,7 +25,7 @@ export interface ProjectRow {
 export interface ProjectPayload {
   name: string;
   description?: string | null;
-  client_id?: string | null;
+  organization_id?: string | null;
   transformations_achievements?: string | null;
   success_evidence?: string[] | null;
   start_date?: string | null;
@@ -34,9 +34,9 @@ export interface ProjectPayload {
 }
 
 export interface FetchProjectsFilters {
-  clientId?: string;
+  organizationId?: string;
   farmId?: string;
-  /** Quando presente, busca projetos vinculados ao client_id sem filtrar por created_by (modo cliente). */
+  /** Quando presente, busca projetos vinculados ao organization_id sem filtrar por created_by (modo cliente). */
   clientMode?: boolean;
 }
 

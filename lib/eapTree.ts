@@ -49,7 +49,7 @@ function formatDateBR(raw: string | null): string {
  * Carrega a árvore completa EAP para um analista de forma otimizada (Bulk Fetch).
  */
 export interface LoadFullEAPTreeOptions {
-  clientId?: string | null;
+  organizationId?: string | null;
   farmId?: string | null;
   clientMode?: boolean;
 }
@@ -58,8 +58,8 @@ export async function loadFullEAPTree(
   effectiveUserId: string,
   options?: LoadFullEAPTreeOptions,
 ): Promise<WBSNode[]> {
-  const filters = options?.clientId
-    ? { clientId: options.clientId, farmId: options.farmId ?? undefined, clientMode: options.clientMode }
+  const filters = options?.organizationId
+    ? { organizationId: options.organizationId, farmId: options.farmId ?? undefined, clientMode: options.clientMode }
     : undefined;
     
   // Nível 1: Projetos

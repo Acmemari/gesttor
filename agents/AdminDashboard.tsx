@@ -383,10 +383,10 @@ const AdminDashboard: React.FC = () => {
                     setEditingClientData(prev =>
                       prev
                         ? {
-                            ...prev,
-                            qualification: newQualification,
-                            clientId: newQualification === 'cliente' ? prev.clientId : null,
-                          }
+                          ...prev,
+                          qualification: newQualification,
+                          clientId: newQualification === 'cliente' ? prev.clientId : null,
+                        }
                         : null,
                     );
                     if (newQualification === 'cliente') {
@@ -412,9 +412,9 @@ const AdminDashboard: React.FC = () => {
                     setEditingClientData(prev =>
                       prev
                         ? {
-                            ...prev,
-                            status: e.target.value as 'active' | 'inactive',
-                          }
+                          ...prev,
+                          status: e.target.value as 'active' | 'inactive',
+                        }
                         : null,
                     )
                   }
@@ -699,9 +699,8 @@ const AdminDashboard: React.FC = () => {
                 <button
                   key={opt.key}
                   onClick={() => setQualificationFilter(opt.key)}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                    qualificationFilter === opt.key ? opt.activeColor : opt.color
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${qualificationFilter === opt.key ? opt.activeColor : opt.color
+                    }`}
                 >
                   {opt.label} ({count})
                 </button>

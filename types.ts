@@ -59,7 +59,6 @@ export interface User {
   status?: 'active' | 'inactive';
   lastLogin?: string;
   organizationId?: string;
-  clientId?: string;
   phone?: string;
   qualification?: 'visitante' | 'cliente' | 'analista' | 'administrador';
   full_name?: string;
@@ -80,10 +79,17 @@ export interface Plan {
 export interface Organization {
   id: string;
   name: string;
-  plan: Plan['id'];
-  ownerId: string;
+  phone?: string;
+  email?: string;
+  analystId?: string | null;
+  ownerId?: string | null;
+  plan?: string;
+  ativo?: boolean;
   createdAt: string;
+  updatedAt: string;
 }
+
+export type Client = Organization;
 
 export interface AuthContextType {
   user: User | null;
@@ -132,7 +138,7 @@ export type ScenarioResult = CalculationResults | ComparatorResult | Initiatives
 export interface CattleScenario {
   id: string;
   user_id: string;
-  client_id?: string | null;
+  organization_id?: string | null;
   farm_id?: string | null;
   farm_name?: string | null;
   name: string;
@@ -151,7 +157,7 @@ export interface SavedQuestionnaireAnswer {
 export interface SavedQuestionnaire {
   id: string;
   user_id: string;
-  client_id?: string | null;
+  organization_id?: string | null;
   name: string;
   farm_id?: string;
   farm_name?: string;
@@ -204,33 +210,29 @@ export interface Farm {
   updatedAt: string;
 }
 
-export interface Client {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  analystId: string; // ID do analista responsável
-  createdAt: string;
-  updatedAt: string;
-}
+// Client alias is kept above as Organization
 
-export interface ClientFarm {
+export interface OrganizationFarm {
   id: string;
-  clientId: string;
+  organizationId: string;
   farmId: string;
   createdAt: string;
 }
 
-export interface ClientAnalyst {
+export type ClientFarm = OrganizationFarm;
+
+export interface OrganizationAnalyst {
   id: string;
-  clientId: string;
-  analystId: string; // ID do usuário analista
+  organizationId: string;
+  analystId: string;
   createdAt: string;
 }
 
-export interface ClientOwner {
+export type ClientAnalyst = OrganizationAnalyst;
+
+export interface OrganizationOwner {
   id: string;
-  clientId: string;
+  organizationId: string;
   name: string;
   email: string | null;
   phone: string | null;
@@ -238,6 +240,8 @@ export interface ClientOwner {
   createdAt: string;
   updatedAt: string;
 }
+
+export type ClientOwner = OrganizationOwner;
 
 // ============================================================================
 // DOCUMENTOS DE CLIENTE (MENTORIA)
@@ -248,7 +252,7 @@ export type DocumentFileType = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls';
 
 export interface ClientDocument {
   id: string;
-  clientId: string;
+  organizationId?: string;
   uploadedBy: string;
   fileName: string;
   originalName: string;
@@ -265,14 +269,14 @@ export interface ClientDocument {
 }
 
 export interface DocumentUploadParams {
-  clientId: string;
+  organizationId?: string;
   file: File;
   category?: DocumentCategory;
   description?: string;
 }
 
 export interface DocumentFilter {
-  clientId?: string;
+  organizationId?: string;
   category?: DocumentCategory;
   fileType?: DocumentFileType;
   searchTerm?: string;

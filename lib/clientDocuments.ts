@@ -46,7 +46,7 @@ export function validateFile(file: File): { valid: boolean; error?: string; file
 /**
  * Gera nome único para o arquivo no storage
  */
-function generateStoragePath(clientId: string, originalName: string): string {
+function generateStoragePath(organizationId: string, originalName: string): string {
   const timestamp = Date.now();
   const randomId = Math.random().toString(36).substring(2, 8);
   const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
@@ -55,7 +55,7 @@ function generateStoragePath(clientId: string, originalName: string): string {
     .replace(/[^a-zA-Z0-9-_]/g, '_')
     .substring(0, 50);
 
-  return `${clientId}/${timestamp}_${randomId}_${safeName}.${ext}`;
+  return `${organizationId}/${timestamp}_${randomId}_${safeName}.${ext}`;
 }
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
@@ -79,7 +79,7 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ ok: true;
 export async function uploadDocument(
   params: DocumentUploadParams,
 ): Promise<{ success: boolean; document?: ClientDocument; error?: string }> {
-  const { clientId, file, category = 'geral', description } = params;
+  const { organizationId, file, category = 'geral', description } = params;
 
   try {
     const validation = validateFile(file);
@@ -87,7 +87,7 @@ export async function uploadDocument(
       return { success: false, error: validation.error };
     }
 
-    const storagePath = generateStoragePath(clientId, file.name);
+    const storagePath = generateStoragePath(organizationId, file.name);
 
     try {
       await storageUpload(STORAGE_PREFIX, storagePath, file, { contentType: file.type });
@@ -101,7 +101,7 @@ export async function uploadDocument(
       method: 'POST',
       body: JSON.stringify({
         action: 'create-document',
-        organizationId: clientId,
+        organizationId: organizationId,
         fileName: storagePath.split('/').pop(),
         originalName: file.name,
         fileType: validation.fileType,
@@ -137,12 +137,12 @@ export async function listDocuments(
   filter: DocumentFilter = {},
 ): Promise<{ documents: ClientDocument[]; error?: string }> {
   try {
-    if (!filter.clientId) {
+    if (!filter.organizationId) {
       return { documents: [] };
     }
 
     const result = await apiFetch<DatabaseDocument[]>(
-      `/api/organizations?action=documents&organizationId=${encodeURIComponent(filter.clientId)}`,
+      `/api/organizations?action=documents&organizationId=${encodeURIComponent(filter.organizationId)}`,
     );
 
     if (!result.ok) {
@@ -279,7 +279,7 @@ interface DatabaseDocument {
 function mapDocumentFromDatabase(doc: DatabaseDocument): ClientDocument {
   return {
     id: doc.id,
-    clientId: doc.organizationId ?? doc.client_id ?? '',
+    organizationId: doc.organizationId ?? doc.client_id ?? '',
     uploadedBy: doc.uploadedBy ?? doc.uploaded_by ?? '',
     fileName: doc.fileName ?? doc.file_name ?? '',
     originalName: doc.originalName ?? doc.original_name ?? '',

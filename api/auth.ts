@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
-import { db, userProfiles, organizations } from '../src/DB/index.js';
+import { db, pool, userProfiles, organizations } from '../src/DB/index.js';
 
 async function getProfileWithClientId(userId: string) {
   const [profile] = await db
@@ -79,7 +79,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ...(imageUrl !== null ? { imageUrl, avatar: imageUrl } : {}),
           ...(phone !== undefined ? { phone } : {}),
           ...(plan ? { plan } : {}),
-          lastLogin: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(userProfiles.id, userId));
@@ -99,9 +98,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── DELETE /api/auth — exclui a conta do usuário autenticado ───────────────
   if (req.method === 'DELETE') {
     try {
-      // Delete profile and cascade (Better Auth user deletion not available here,
-      // so we mark the profile as deleted and log out the user)
       await db.delete(userProfiles).where(eq(userProfiles.id, userId));
+      // ba_session e ba_account têm FK → ba_user com CASCADE, então basta deletar ba_user
+      await pool.query('DELETE FROM ba_user WHERE id = $1', [userId]);
       jsonSuccess(res, { deleted: true });
     } catch (err) {
       jsonError(res, err instanceof Error ? err.message : String(err), { status: 500 });

@@ -113,7 +113,7 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
       setError(null);
 
       const { documents: docs, error: loadError } = await listDocuments({
-        clientId: filterClient || selectedClient?.id || undefined,
+        organizationId: filterClient || selectedClient?.id || undefined,
         category: filterCategory || undefined,
         searchTerm: searchTerm || undefined,
       });
@@ -200,7 +200,7 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
     try {
       const { success, document, error } = await uploadDocument({
-        clientId,
+        organizationId: clientId,
         file: selectedFile,
         category: uploadCategory,
         description: uploadDescription || undefined,
@@ -381,7 +381,7 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ onToast }) => {
 
       {/* Cliente atual */}
       {currentClientName && (
-          <div className="mb-4 px-3 py-2 bg-ai-surface rounded-lg border border-ai-border">
+        <div className="mb-4 px-3 py-2 bg-ai-surface rounded-lg border border-ai-border">
           <span className="text-sm text-ai-subtext">Organização: </span>
           <span className="text-sm font-medium text-ai-text">{currentClientName}</span>
         </div>

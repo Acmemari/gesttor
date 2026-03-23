@@ -27,7 +27,7 @@ function addDaysIso(iso: string, days: number): string {
 
 interface ProgramaDocumentoProps {
   effectiveUserId: string;
-  selectedClientId?: string | null;
+  selectedOrganizationId?: string | null;
   selectedFarmId?: string | null;
   /** Quando true, desabilita mutações (modo visualização para cliente). */
   readonly?: boolean;
@@ -51,7 +51,7 @@ const KANBAN_OPTIONS: { value: KanbanStatus; label: string }[] = [
 
 const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
   effectiveUserId,
-  selectedClientId,
+  selectedOrganizationId,
   selectedFarmId,
   readonly = false,
   onToast,
@@ -90,7 +90,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     setError(null);
     try {
       const t = await loadFullEAPTree(effectiveUserId, {
-        clientId: selectedClientId ?? undefined,
+        organizationId: selectedOrganizationId ?? undefined,
         farmId: selectedFarmId ?? undefined,
         clientMode: readonly,
       });
@@ -110,7 +110,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedClientId, selectedFarmId, readonly, selectedProgramId, toast]);
+  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, selectedProgramId, toast]);
 
   useEffect(() => {
     loadTree();
@@ -161,7 +161,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
       const payload: ProjectPayload = {
         name: p.name,
         description: p.description ?? undefined,
-        client_id: selectedClientId ?? undefined,
+        organization_id: selectedOrganizationId ?? undefined,
         start_date: p.start_date ?? undefined,
         end_date: p.end_date ?? undefined,
         transformations_achievements: p.transformations_achievements ?? undefined,
@@ -191,7 +191,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         }),
       );
     },
-    [readonly, selectedProgram, selectedClientId, scheduleSave],
+    [readonly, selectedProgram, selectedOrganizationId, scheduleSave],
   );
 
   const handleDeliveryChange = useCallback(
@@ -327,7 +327,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     try {
       await createDelivery(effectiveUserId, {
         project_id: selectedProgramId,
-        organization_id: selectedClientId || null,
+        organization_id: selectedOrganizationId || null,
         name: 'Nova Entrega',
       });
       await loadTree();
@@ -337,7 +337,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [selectedProgramId, selectedProgram, effectiveUserId, selectedClientId, loadTree, toast]);
+  }, [selectedProgramId, selectedProgram, effectiveUserId, selectedOrganizationId, loadTree, toast]);
 
   const addActivity = useCallback(
     async (deliveryId: string) => {
@@ -345,7 +345,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
       try {
         const r = await initiativesApi.createInitiative({
           delivery_id: deliveryId,
-          organization_id: selectedClientId || null,
+          organization_id: selectedOrganizationId || null,
           farm_id: selectedFarmId || null,
           name: 'Nova Atividade',
           status: 'Não Iniciado',
@@ -359,7 +359,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         setSaving(false);
       }
     },
-    [effectiveUserId, selectedClientId, selectedFarmId, loadTree, toast],
+    [effectiveUserId, selectedOrganizationId, selectedFarmId, loadTree, toast],
   );
 
   const addTask = useCallback(
@@ -486,7 +486,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
             try {
               await createProject(effectiveUserId, {
                 name: 'Novo Programa',
-                client_id: selectedClientId || null,
+                organization_id: selectedOrganizationId || null,
               });
               await loadTree();
               toast('Programa criado.', 'success');

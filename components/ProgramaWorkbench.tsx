@@ -46,7 +46,7 @@ import {
 
 interface ProgramaWorkbenchProps {
   effectiveUserId: string;
-  selectedClientId?: string | null;
+  selectedOrganizationId?: string | null;
   selectedFarmId?: string | null;
   /** Quando true, desabilita criação/edição/exclusão (modo visualização para cliente). */
   readonly?: boolean;
@@ -117,7 +117,7 @@ function swapSortOrderLocally<T extends { id: string; sort_order: number }>(
 
 const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   effectiveUserId,
-  selectedClientId,
+  selectedOrganizationId,
   selectedFarmId,
   readonly = false,
   onToast,
@@ -171,10 +171,10 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
 
   const filters = useMemo(
     () =>
-      selectedClientId
-        ? { clientId: selectedClientId, farmId: selectedFarmId ?? undefined, clientMode: readonly }
+      selectedOrganizationId
+        ? { organizationId: selectedOrganizationId, farmId: selectedFarmId ?? undefined, clientMode: readonly }
         : undefined,
-    [selectedClientId, selectedFarmId, readonly],
+    [selectedOrganizationId, selectedFarmId, readonly],
   );
 
   // ── Cascade data loading ───────────────────────────────────────────────
@@ -501,7 +501,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     const payload: ProjectPayload = {
       name,
       description: programForm.description.trim() || null,
-      client_id: selectedClientId || null,
+      organization_id: selectedOrganizationId || null,
       start_date: programForm.start_date || null,
       end_date: programForm.end_date || null,
       transformations_achievements: programForm.transformations_achievements.trim() || null,
@@ -523,7 +523,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [saving, programForm, selectedClientId, editingId, effectiveUserId, loadProjects, toast, closeModal]);
+  }, [saving, programForm, selectedOrganizationId, editingId, effectiveUserId, loadProjects, toast, closeModal]);
 
   const deleteProgramById = useCallback(
     async (id: string) => {
@@ -577,7 +577,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       end_date: deliveryForm.end_date || null,
       // Compatibilidade com consumidores legados que ainda leem due_date.
       due_date: deliveryForm.end_date || null,
-      client_id: selectedClientId || null,
+      organization_id: selectedOrganizationId || null,
       project_id: selectedProgramId,
     };
 
@@ -600,7 +600,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     saving,
     selectedProgramId,
     deliveryForm,
-    selectedClientId,
+    selectedOrganizationId,
     editingId,
     effectiveUserId,
     deliveries.length,
@@ -694,7 +694,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           status: activityForm.status || 'Não Iniciado',
           leader: leaderName,
           internal_leader: internalLeaderName,
-          organization_id: selectedClientId || null,
+          organization_id: selectedOrganizationId || null,
           farm_id: selectedFarmId || null,
           weight: String(percentVal),
         });
@@ -718,7 +718,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     activityForm,
     editingId,
     effectiveUserId,
-    selectedClientId,
+    selectedOrganizationId,
     selectedFarmId,
     people,
     selectedDeliveryActivities.length,

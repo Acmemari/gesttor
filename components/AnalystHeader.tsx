@@ -16,7 +16,7 @@ interface AnalystHeaderProps {
 
 const AnalystHeader: React.FC<AnalystHeaderProps> = () => {
   const { user } = useAuth();
-  const { selectedClient, selectedAnalyst, selectedFarm } = useHierarchy();
+  const { selectedOrganization: selectedClient, selectedAnalyst, selectedFarm } = useHierarchy();
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isLoadingUnread, setIsLoadingUnread] = useState(false);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);

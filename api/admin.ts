@@ -189,50 +189,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return;
         }
 
-        // Remoção em cascata — identifica qual etapa falha para diagnóstico
+        // Remoção em cascata dentro de uma transação para garantir atomicidade
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
 
-        // Tabelas com created_by NOT NULL: reassigna para o admin em vez de setar NULL
-        const reassignSteps = [
-          { label: 'initiatives (created_by)', sql: `UPDATE initiatives SET created_by = $2 WHERE created_by = $1` },
-          { label: 'deliveries (created_by)', sql: `UPDATE deliveries SET created_by = $2 WHERE created_by = $1` },
-          { label: 'projects (created_by)', sql: `UPDATE projects SET created_by = $2 WHERE created_by = $1` },
-          { label: 'pessoas (created_by)', sql: `UPDATE pessoas SET created_by = $2 WHERE created_by = $1` },
-        ];
-        for (const step of reassignSteps) {
-          try {
-            await pool.query(step.sql, [targetUserId, userId]);
-          } catch (stepErr) {
-            const detail = stepErr instanceof Error ? stepErr.message : String(stepErr);
-            throw new Error(`Falha ao reatribuir "${step.label}": ${detail}`);
+          // Tabelas com created_by: reassigna para o admin em vez de setar NULL
+          const reassignSteps = [
+            { label: 'initiatives (created_by)', sql: `UPDATE initiatives SET created_by = $2 WHERE created_by = $1` },
+            { label: 'deliveries (created_by)', sql: `UPDATE deliveries SET created_by = $2 WHERE created_by = $1` },
+            { label: 'projects (created_by)', sql: `UPDATE projects SET created_by = $2 WHERE created_by = $1` },
+            { label: 'assignees (created_by)', sql: `UPDATE assignees SET created_by = $2 WHERE created_by = $1` },
+          ];
+          for (const step of reassignSteps) {
+            await client.query(step.sql, [targetUserId, userId]).catch(e => {
+              throw new Error(`Falha ao reatribuir "${step.label}": ${e.message}`);
+            });
           }
-        }
 
-        const steps: Array<{ label: string; sql: string }> = [
-          { label: 'cattle_scenarios', sql: `DELETE FROM cattle_scenarios WHERE user_id = $1` },
-          { label: 'saved_questionnaires', sql: `DELETE FROM saved_questionnaires WHERE user_id = $1` },
-          { label: 'saved_feedbacks', sql: `DELETE FROM saved_feedbacks WHERE created_by = $1` },
-          { label: 'ai_token_usage', sql: `DELETE FROM ai_token_usage WHERE user_id = $1` },
-          { label: 'program_audit_log', sql: `DELETE FROM program_audit_log WHERE changed_by = $1` },
-          { label: 'farm_maps', sql: `DELETE FROM farm_maps WHERE uploaded_by = $1` },
-          { label: 'organization_documents', sql: `DELETE FROM organization_documents WHERE uploaded_by = $1` },
-          { label: 'support_ticket_messages', sql: `DELETE FROM support_ticket_messages WHERE author_id = $1` },
-          { label: 'support_tickets', sql: `DELETE FROM support_tickets WHERE created_by = $1` },
-          { label: 'organizations (analyst_id)', sql: `UPDATE organizations SET analyst_id = NULL WHERE analyst_id = $1` },
-          { label: 'organizations (owner_id)', sql: `UPDATE organizations SET owner_id = NULL WHERE owner_id = $1` },
-          { label: 'organization_analysts', sql: `DELETE FROM organization_analysts WHERE analyst_id = $1` },
-          { label: 'agent_runs', sql: `DELETE FROM agent_runs WHERE user_id = $1` },
-          { label: 'token_ledger', sql: `DELETE FROM token_ledger WHERE user_id = $1` },
-          { label: 'user_profiles', sql: `DELETE FROM user_profiles WHERE id = $1` },
-          { label: 'ba_user', sql: `DELETE FROM ba_user WHERE id = $1` },
-        ];
-
-        for (const step of steps) {
-          try {
-            await pool.query(step.sql, [targetUserId]);
-          } catch (stepErr) {
-            const detail = stepErr instanceof Error ? stepErr.message : String(stepErr);
-            throw new Error(`Falha ao limpar "${step.label}": ${detail}`);
+          const steps: Array<{ label: string; sql: string }> = [
+            { label: 'cattle_scenarios', sql: `DELETE FROM cattle_scenarios WHERE user_id = $1` },
+            { label: 'saved_questionnaires', sql: `DELETE FROM saved_questionnaires WHERE user_id = $1` },
+            { label: 'saved_feedbacks', sql: `DELETE FROM saved_feedbacks WHERE created_by = $1` },
+            { label: 'ai_token_usage', sql: `DELETE FROM ai_token_usage WHERE user_id = $1` },
+            { label: 'program_audit_log', sql: `DELETE FROM program_audit_log WHERE changed_by = $1` },
+            { label: 'farm_maps', sql: `DELETE FROM farm_maps WHERE uploaded_by = $1` },
+            { label: 'organization_documents', sql: `DELETE FROM organization_documents WHERE uploaded_by = $1` },
+            { label: 'support_ticket_messages', sql: `DELETE FROM support_ticket_messages WHERE author_id = $1` },
+            { label: 'support_tickets', sql: `DELETE FROM support_tickets WHERE created_by = $1` },
+            { label: 'organizations (analyst_id)', sql: `UPDATE organizations SET analyst_id = NULL WHERE analyst_id = $1` },
+            { label: 'organizations (owner_id)', sql: `UPDATE organizations SET owner_id = NULL WHERE owner_id = $1` },
+            { label: 'organization_analysts', sql: `DELETE FROM organization_analysts WHERE analyst_id = $1` },
+            { label: 'agent_runs', sql: `DELETE FROM agent_runs WHERE user_id = $1` },
+            { label: 'token_ledger', sql: `DELETE FROM token_ledger WHERE user_id = $1` },
+            { label: 'user_profiles', sql: `DELETE FROM user_profiles WHERE id = $1` },
+            { label: 'ba_user', sql: `DELETE FROM ba_user WHERE id = $1` },
+          ];
+          for (const step of steps) {
+            await client.query(step.sql, [targetUserId]).catch(e => {
+              throw new Error(`Falha ao limpar "${step.label}": ${e.message}`);
+            });
           }
+
+          await client.query('COMMIT');
+        } catch (txErr) {
+          await client.query('ROLLBACK');
+          throw txErr;
+        } finally {
+          client.release();
         }
 
         jsonSuccess(res, null);

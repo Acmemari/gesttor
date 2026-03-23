@@ -60,7 +60,7 @@ interface AnalystApiRow {
   qualification: string;
 }
 
-interface ClientApiRow {
+interface OrganizationApiRow {
   id: string;
   name: string;
   phone: string;
@@ -80,7 +80,7 @@ function mapAnalyst(r: AnalystApiRow): User {
   };
 }
 
-function mapClient(r: ClientApiRow): Client {
+function mapOrganization(r: OrganizationApiRow): Client {
   return {
     id: r.id,
     name: r.name,
@@ -113,33 +113,33 @@ export async function fetchAnalysts(options: {
   return { data, hasMore: res.meta?.hasMore ?? false };
 }
 
-/** Lista clientes por analista ou cliente fixo. */
+/** Lista organizações por analista ou organização fixa. */
 export async function fetchClients(options: {
   analystId?: string | null;
-  clientId?: string | null;
+  organizationId?: string | null;
   offset?: number;
   limit?: number;
   search?: string;
   signal?: AbortSignal;
 }): Promise<{ data: Client[]; hasMore: boolean }> {
   const params: Record<string, string | number | undefined | null> = {
-    level: 'clients',
+    level: 'organizations',
     offset: options.offset ?? 0,
     limit: options.limit ?? 50,
     search: options.search || undefined,
   };
   if (options.analystId) params.analystId = options.analystId;
-  if (options.clientId) params.clientId = options.clientId;
+  if (options.organizationId) params.organizationId = options.organizationId;
 
-  const res = await fetchApi<ClientApiRow[]>(apiUrl('/hierarchy', params), { signal: options.signal });
+  const res = await fetchApi<OrganizationApiRow[]>(apiUrl('/hierarchy', params), { signal: options.signal });
   if (!res.ok) throw new Error(res.error);
-  const data = (res.data || []).map(mapClient);
+  const data = (res.data || []).map(mapOrganization);
   return { data, hasMore: res.meta?.hasMore ?? false };
 }
 
-/** Lista fazendas por cliente. */
+/** Lista fazendas por organização. */
 export async function fetchFarms(options: {
-  clientId: string;
+  organizationId: string;
   offset?: number;
   limit?: number;
   search?: string;
@@ -149,7 +149,7 @@ export async function fetchFarms(options: {
   const res = await fetchApi<unknown[]>(
     apiUrl('/hierarchy', {
       level: 'farms',
-      clientId: options.clientId,
+      organizationId: options.organizationId,
       offset: options.offset ?? 0,
       limit: options.limit ?? 50,
       search: options.search || undefined,
@@ -162,20 +162,20 @@ export async function fetchFarms(options: {
   return { data, hasMore: res.meta?.hasMore ?? false };
 }
 
-/** Valida hierarquia analyst -> client -> farm. */
+/** Valida hierarquia analyst -> organization -> farm. */
 export async function validateHierarchy(p: {
   analystId: string | null;
-  clientId: string | null;
+  organizationId: string | null;
   farmId: string | null;
   signal?: AbortSignal;
-}): Promise<{ analyst_valid: boolean; client_valid: boolean; farm_valid: boolean }> {
-  const res = await fetchApi<{ analyst_valid: boolean; client_valid: boolean; farm_valid: boolean }>(
+}): Promise<{ analyst_valid: boolean; organization_valid: boolean; farm_valid: boolean }> {
+  const res = await fetchApi<{ analyst_valid: boolean; organization_valid: boolean; farm_valid: boolean }>(
     `${API_BASE}/hierarchy`,
     {
       method: 'POST',
       body: JSON.stringify({
         analystId: p.analystId,
-        clientId: p.clientId,
+        organizationId: p.organizationId,
         farmId: p.farmId,
       }),
       signal: p.signal,

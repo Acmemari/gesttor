@@ -137,11 +137,11 @@ O template HTML está em `lib/email-templates/reset-password.html` e pode ser pe
    - **Apache**: Arquivo `public/.htaccess` (já criado)
    - **Nginx**: Configure `try_files $uri $uri/ /index.html;` no bloco `location /`
 
-2. **URL sem protocolo**: Se a URL no email estiver sem `https://` (ex: `pecuaria.ai/reset-password`), configure o Site URL no Supabase com `https://pecuaria.ai`
+2. **URL sem protocolo**: Se a URL no email estiver sem `https://` (ex: `gesttor.app/reset-password`), configure o Site URL no Supabase com `https://gesttor.app`
 
 3. **Verifique se a URL de redirecionamento está configurada corretamente** no Supabase Dashboard:
-   - Authentication > URL Configuration > Site URL: `https://pecuaria.ai`
-   - Authentication > URL Configuration > Redirect URLs: `https://pecuaria.ai` e `https://pecuaria.ai/**`
+   - Authentication > URL Configuration > Site URL: `https://gesttor.app`
+   - Authentication > URL Configuration > Redirect URLs: `https://gesttor.app` e `https://gesttor.app/**`
 
 4. **Confirme que o token não expirou** (1 hora)
 

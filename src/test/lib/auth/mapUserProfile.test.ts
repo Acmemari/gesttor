@@ -75,42 +75,42 @@ describe('mapUserProfile', () => {
     expect(result?.lastLogin).toBe('2024-01-01T00:00:00.000Z');
   });
 
-  it('should infer qualification=cliente when client_id exists and qualification is null', () => {
+  it('should infer qualification=cliente when organization_id exists and qualification is null', () => {
     const profile = {
       id: 'user-123',
       name: 'Cliente Teste',
       email: 'cliente@example.com',
       role: 'client',
-      client_id: 'client-uuid-999',
+      organization_id: 'client-uuid-999',
       qualification: null,
     };
 
     const result = mapUserProfile(profile);
     expect(result?.qualification).toBe('cliente');
-    expect(result?.clientId).toBe('client-uuid-999');
+    expect(result?.organizationId).toBe('client-uuid-999');
   });
 
-  it('should infer qualification=cliente when client_id exists and qualification is undefined', () => {
+  it('should infer qualification=cliente when organization_id exists and qualification is undefined', () => {
     const profile = {
       id: 'user-456',
       name: 'Cliente Sem Qual',
       email: 'csq@example.com',
       role: 'client',
-      client_id: 'client-uuid-888',
+      organization_id: 'client-uuid-888',
     };
 
     const result = mapUserProfile(profile);
     expect(result?.qualification).toBe('cliente');
-    expect(result?.clientId).toBe('client-uuid-888');
+    expect(result?.organizationId).toBe('client-uuid-888');
   });
 
-  it('should infer qualification=cliente when client_id exists and qualification is invalid', () => {
+  it('should infer qualification=cliente when organization_id exists and qualification is invalid', () => {
     const profile = {
       id: 'user-789',
       name: 'Cliente Inválido',
       email: 'ci@example.com',
       role: 'client',
-      client_id: 'client-uuid-777',
+      organization_id: 'client-uuid-777',
       qualification: 'unknown_value',
     };
 
@@ -118,7 +118,7 @@ describe('mapUserProfile', () => {
     expect(result?.qualification).toBe('cliente');
   });
 
-  it('should keep qualification=visitante when client_id is absent and qualification is null', () => {
+  it('should keep qualification=visitante when organization_id is absent and qualification is null', () => {
     const profile = {
       id: 'user-111',
       name: 'Visitante',
@@ -129,21 +129,21 @@ describe('mapUserProfile', () => {
 
     const result = mapUserProfile(profile);
     expect(result?.qualification).toBe('visitante');
-    expect(result?.clientId).toBeUndefined();
+    expect(result?.organizationId).toBeUndefined();
   });
 
-  it('should expose clientId when client_id is present', () => {
+  it('should expose organizationId when organization_id is present', () => {
     const profile = {
       id: 'user-222',
-      name: 'Com ClientId',
+      name: 'Com OrganizationId',
       email: 'cc@example.com',
       role: 'client',
-      client_id: 'abc-123',
+      organization_id: 'abc-123',
       qualification: 'cliente',
     };
 
     const result = mapUserProfile(profile);
-    expect(result?.clientId).toBe('abc-123');
+    expect(result?.organizationId).toBe('abc-123');
     expect(result?.qualification).toBe('cliente');
   });
 });

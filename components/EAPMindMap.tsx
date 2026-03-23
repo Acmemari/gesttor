@@ -41,7 +41,7 @@ import {
 import { createDelivery, deleteDelivery, fetchDeliveriesByProject, updateDelivery, type DeliveryRow } from '../lib/deliveries';
 import { createInitiative, createTask, deleteInitiative, deleteTask, ensureDefaultMilestone, fetchInitiativesByDelivery, fetchTasksByInitiative, updateTask } from '../lib/initiatives';
 import * as initiativesApi from '../lib/api/initiativesClient';
-import { fetchPeople, type Person } from '../lib/people';
+import { fetchPeople, peopleFilteredForResponsavel, peopleFilteredForLiderInterno, type Person } from '../lib/people';
 import { sanitizeText } from '../lib/inputSanitizer';
 
 import '@xyflow/react/dist/style.css';
@@ -89,7 +89,7 @@ type ModalEntity = 'program' | 'delivery' | 'activity' | 'task';
 
 interface EAPMindMapProps {
   effectiveUserId: string;
-  selectedClientId?: string | null;
+  selectedOrganizationId?: string | null;
   selectedFarmId?: string | null;
   /** Quando true, desabilita mutações (modo visualização para cliente). */
   readonly?: boolean;
@@ -101,7 +101,7 @@ function getRawIdFromNodeId(nodeId: string): string {
   return parts.length >= 2 ? parts.slice(1).join('-') : nodeId;
 }
 
-const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedClientId, selectedFarmId, readonly = false, onToast }) => {
+const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedOrganizationId, selectedFarmId, readonly = false, onToast }) => {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -137,6 +137,8 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     ...INITIAL_TASK_FORM,
     activity_date: getCurrentIsoDate(),
   });
+  const peopleForResponsavel = useMemo(() => peopleFilteredForResponsavel(people), [people]);
+  const peopleForLiderInterno = useMemo(() => peopleFilteredForLiderInterno(people), [people]);
 
   const { fitView } = useReactFlow();
 
@@ -146,7 +148,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     setError(null);
     try {
       const t = await loadFullEAPTree(effectiveUserId, {
-        clientId: selectedClientId ?? undefined,
+        organizationId: selectedOrganizationId ?? undefined,
         farmId: selectedFarmId ?? undefined,
         clientMode: readonly,
       });
@@ -195,7 +197,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedClientId, selectedFarmId, readonly, fitView, setNodes, setEdges, toast]);
+  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, fitView, setNodes, setEdges, toast]);
 
   useEffect(() => {
     loadTree();
@@ -324,6 +326,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           leader_id: leaderId,
           internal_leader_id: internalLeaderId,
           participant_ids: participantIds,
+          percent: String(i.percent ?? 0),
         });
       } else if (level === 'task' && node.data.task) {
         const t = node.data.task;
@@ -404,7 +407,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     const payload: ProjectPayload = {
       name,
       description: programForm.description.trim() || null,
-      client_id: selectedClientId || null,
+      organization_id: selectedOrganizationId || null,
       start_date: programForm.start_date || null,
       end_date: programForm.end_date || null,
       transformations_achievements: programForm.transformations_achievements.trim() || null,
@@ -431,7 +434,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     } finally {
       setSaving(false);
     }
-  }, [saving, programForm, selectedClientId, editingNodeId, effectiveUserId, loadTree, toast, closeModal]);
+  }, [saving, programForm, selectedOrganizationId, editingNodeId, effectiveUserId, loadTree, toast, closeModal]);
 
   const saveDelivery = useCallback(async () => {
     if (saving) return;
@@ -459,7 +462,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
       start_date: deliveryForm.start_date || null,
       end_date: deliveryForm.end_date || null,
       due_date: deliveryForm.end_date || null,
-      client_id: selectedClientId || null,
+      organization_id: selectedOrganizationId || null,
       project_id: projectId,
     };
 
@@ -483,7 +486,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
   }, [
     saving,
     deliveryForm,
-    selectedClientId,
+    selectedOrganizationId,
     editingNodeId,
     parentNodeIdForCreate,
     effectiveUserId,
@@ -543,9 +546,9 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           start_date: activityForm.start_date || null,
           end_date: activityForm.end_date || null,
           status: activityForm.status || 'Não Iniciado',
-          leader: leaderName ?? undefined,
+           leader: leaderName ?? undefined,
           internal_leader: internalLeaderName ?? undefined,
-          organization_id: selectedClientId || null,
+          organization_id: selectedOrganizationId || null,
           farm_id: selectedFarmId || null,
           team: [],
           milestones: [],
@@ -570,7 +573,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
     editingNodeId,
     parentNodeIdForCreate,
     effectiveUserId,
-    selectedClientId,
+    selectedOrganizationId,
     selectedFarmId,
     findNodeInTree,
     loadTree,
@@ -786,6 +789,8 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedC
           saving={saving}
           mode={modalMode}
           people={people}
+          peopleForResponsavel={peopleForResponsavel}
+          peopleForLiderInterno={peopleForLiderInterno}
         />
       )}
 

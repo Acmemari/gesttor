@@ -3,7 +3,7 @@ dotenv.config({ path: '.env.local' });
 
 import { createClient } from '@supabase/supabase-js';
 
-const PROD_URL = 'https://pecuaria-red.vercel.app/api/agents-run';
+const PROD_URL = 'https://gesttor.app/api/agents-run';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY!;
 const TEST_EMAIL = process.env.TEST_EMAIL || '';

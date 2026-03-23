@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/gesttor/src -type f \\\\\\(-name *forgot* -o -name *reset* -o -name *password* -o -name *auth* \\\\\\))",
+      "Bash(ls -la /c/gesttor/*.html)",
+      "Bash(find /c/gesttor -path */node_modules -prune -o -type f -name *forgot* -o -type f -name *password*)",
+      "Bash(find /c/gesttor/lib -type f -name *.ts -o -name *.tsx)",
+      "Bash(find /c/gesttor/api -type f -name *.ts)"
+    ]
+  }
+}

@@ -28,3 +28,32 @@ dist-ssr
 
 # Test scripts
 test-gemini-key.mjs
+
+# Credenciais e arquivos sensíveis locais
+Gesttor.md
+
+# Arquivos temporários de debug/git
+git_log*.txt
+git_status*.txt
+branch_list.txt
+
+# Ambientes virtuais Python
+budget_env/
+venv/
+.venv/
+
+# Configuração local do Drizzle (pode conter DATABASE_URL)
+drizzle.config.ts
+
+# Scripts de desenvolvimento local
+scripts/diff-schema.cjs
+
+# Análises e documentação temporária
+.analysis/
+
+# Configuração de AI/IDE local
+.cursorrules
+
+# Cobertura de testes e resultados
+coverage/
+test-results/
