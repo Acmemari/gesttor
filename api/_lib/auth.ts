@@ -76,7 +76,8 @@ function getResetPasswordHtml(resetUrl: string, userName?: string): string {
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET ?? 'dev-insecure-secret-change-me',
-  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3333',
+  baseURL: process.env.BETTER_AUTH_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3333'),
   basePath: '/api/auth',
 
   // Passamos schema explicitamente para que o adapter NÃO acesse db._ no import
@@ -151,6 +152,7 @@ export const auth = betterAuth({
     'http://127.0.0.1:5173',
     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
     ...(process.env.VITE_APP_URL ? [process.env.VITE_APP_URL] : []),
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
   ],
 
   databaseHooks: {
