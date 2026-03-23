@@ -621,6 +621,63 @@ export const savedFeedbacks = pgTable('saved_feedbacks', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ── Support Tickets ────────────────────────────────────────────────────────────
+
+export const supportTickets = pgTable('support_tickets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  createdBy: text('created_by').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+  ticketType: text('ticket_type').notNull(),
+  subject: text('subject').notNull(),
+  status: text('status').notNull().default('open'),
+  currentUrl: text('current_url'),
+  locationArea: text('location_area'),
+  specificScreen: text('specific_screen'),
+  lastMessageAt: timestamp('last_message_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_support_tickets_created_by').on(t.createdBy),
+  index('idx_support_tickets_status').on(t.status),
+  index('idx_support_tickets_last_message_at').on(t.lastMessageAt),
+]);
+
+export const supportTicketMessages = pgTable('support_ticket_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ticketId: uuid('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  authorId: text('author_id').references(() => userProfiles.id, { onDelete: 'set null' }),
+  authorType: text('author_type').notNull().default('user'),
+  message: text('message').notNull(),
+  replyToId: uuid('reply_to_id'),
+  editedAt: timestamp('edited_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_support_ticket_messages_ticket_id').on(t.ticketId),
+]);
+
+export const supportTicketReads = pgTable('support_ticket_reads', {
+  ticketId: uuid('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+  lastReadAt: timestamp('last_read_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.ticketId, t.userId] }),
+]);
+
+export const supportTicketAttachments = pgTable('support_ticket_attachments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ticketId: uuid('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').references(() => supportTicketMessages.id, { onDelete: 'set null' }),
+  storagePath: text('storage_path').notNull(),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  createdBy: text('created_by').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_support_ticket_attachments_ticket_id').on(t.ticketId),
+]);
+
 // ── Other ──────────────────────────────────────────────────────────────────────
 
 export const empAss = pgTable('consulting_firms', {
