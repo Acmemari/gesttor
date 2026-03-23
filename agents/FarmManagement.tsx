@@ -175,7 +175,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   const { selectedClient } = useClient();
   const {
     farms: hierarchyFarms,
-    clients: hierarchyClients,
+    organizations: hierarchyClients,
     loading: hierarchyLoading,
     refreshCurrentLevel,
   } = useHierarchy();
