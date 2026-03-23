@@ -20,12 +20,12 @@ function getHierarchyStorageKey(userId: string): string {
 }
 
 const VISITOR_ANALYST_ID = '0238f4f4-5967-429e-9dce-3f6cc03f5a80';
-const VISITOR_CLIENT_ID = '00000000-0000-0000-0000-000000000002';
+const VISITOR_ORGANIZATION_ID = '00000000-0000-0000-0000-000000000002';
 const VISITOR_FARM_ID = '00000000-0000-0000-0000-000000000003';
 
-/** Cliente stub para modo visitante; evita query Supabase que pode travar por RLS. */
-const VISITOR_CLIENT: Client = {
-  id: VISITOR_CLIENT_ID,
+/** Organização stub para modo visitante; evita query Supabase que pode travar por RLS. */
+const VISITOR_ORGANIZATION: Client = {
+  id: VISITOR_ORGANIZATION_ID,
   name: 'Inttegra (Visitante)',
   phone: '',
   email: '',
@@ -36,31 +36,31 @@ const VISITOR_CLIENT: Client = {
 
 interface HierarchyLoadingState {
   analysts: boolean;
-  clients: boolean;
+  organizations: boolean;
   farms: boolean;
 }
 
 interface HierarchyErrorState {
   analysts: string | null;
-  clients: string | null;
+  organizations: string | null;
   farms: string | null;
 }
 
 interface HierarchyHasMoreState {
   analysts: boolean;
-  clients: boolean;
+  organizations: boolean;
   farms: boolean;
 }
 
 interface HierarchyState {
   analystId: string | null;
-  clientId: string | null;
+  organizationId: string | null;
   farmId: string | null;
   selectedAnalyst: User | null;
-  selectedClient: Client | null;
+  selectedOrganization: Client | null;
   selectedFarm: Farm | null;
   analysts: User[];
-  clients: Client[];
+  organizations: Client[];
   farms: Farm[];
   loading: HierarchyLoadingState;
   errors: HierarchyErrorState;
@@ -68,60 +68,60 @@ interface HierarchyState {
 }
 
 type HierarchyAction =
-  | { type: 'HYDRATE_IDS'; payload: { analystId: string | null; clientId: string | null; farmId: string | null } }
+  | { type: 'HYDRATE_IDS'; payload: { analystId: string | null; organizationId: string | null; farmId: string | null } }
   | { type: 'SET_ANALYSTS'; payload: { data: User[]; append: boolean; hasMore: boolean } }
-  | { type: 'SET_CLIENTS'; payload: { data: Client[]; append: boolean; hasMore: boolean } }
+  | { type: 'SET_ORGANIZATIONS'; payload: { data: Client[]; append: boolean; hasMore: boolean } }
   | { type: 'SET_FARMS'; payload: { data: Farm[]; append: boolean; hasMore: boolean } }
   | { type: 'SET_SELECTED_ANALYST'; payload: User | null }
-  | { type: 'SET_SELECTED_CLIENT'; payload: Client | null }
+  | { type: 'SET_SELECTED_ORGANIZATION'; payload: Client | null }
   | { type: 'SET_SELECTED_FARM'; payload: Farm | null }
   | { type: 'SET_LOADING'; payload: { level: keyof HierarchyLoadingState; value: boolean } }
   | { type: 'SET_ERROR'; payload: { level: keyof HierarchyErrorState; value: string | null } }
   | { type: 'SELECT_ANALYST_ID'; payload: string | null }
-  | { type: 'SELECT_CLIENT_ID'; payload: string | null }
+  | { type: 'SELECT_ORGANIZATION_ID'; payload: string | null }
   | { type: 'SELECT_FARM_ID'; payload: string | null };
 
 interface HierarchyContextType extends HierarchyState {
   effectiveAnalystId: string | null;
   setSelectedAnalyst: (analyst: User | null) => void;
-  setSelectedClient: (client: Client | null) => void;
+  setSelectedOrganization: (organization: Client | null) => void;
   setSelectedFarm: (farm: Farm | null) => void;
   selectAnalystById: (id: string | null) => void;
-  selectClientById: (id: string | null) => void;
+  selectOrganizationById: (id: string | null) => void;
   selectFarmById: (id: string | null) => void;
   clearFarm: () => void;
   searchAnalysts: (term: string) => Promise<void>;
-  searchClients: (term: string) => Promise<void>;
+  searchOrganizations: (term: string) => Promise<void>;
   searchFarms: (term: string) => Promise<void>;
   loadMoreAnalysts: () => Promise<void>;
-  loadMoreClients: () => Promise<void>;
+  loadMoreOrganizations: () => Promise<void>;
   loadMoreFarms: () => Promise<void>;
-  refreshCurrentLevel: (level: 'analysts' | 'clients' | 'farms') => Promise<void>;
+  refreshCurrentLevel: (level: 'analysts' | 'organizations' | 'farms') => Promise<void>;
 }
 
 const initialState: HierarchyState = {
   analystId: null,
-  clientId: null,
+  organizationId: null,
   farmId: null,
   selectedAnalyst: null,
-  selectedClient: null,
+  selectedOrganization: null,
   selectedFarm: null,
   analysts: [],
-  clients: [],
+  organizations: [],
   farms: [],
   loading: {
     analysts: false,
-    clients: false,
+    organizations: false,
     farms: false,
   },
   errors: {
     analysts: null,
-    clients: null,
+    organizations: null,
     farms: null,
   },
   hasMore: {
     analysts: true,
-    clients: true,
+    organizations: true,
     farms: true,
   },
 };
@@ -142,8 +142,8 @@ function parseLegacyId(value: string | null): string | null {
   return null;
 }
 
-function loadInitialPersistedIds(userId: string): { analystId: string | null; clientId: string | null; farmId: string | null } {
-  const fallback = { analystId: null, clientId: null, farmId: null };
+function loadInitialPersistedIds(userId: string): { analystId: string | null; organizationId: string | null; farmId: string | null } {
+  const fallback = { analystId: null, organizationId: null, farmId: null };
   const scopedKey = getHierarchyStorageKey(userId);
 
   try {
@@ -152,7 +152,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
       const modern = JSON.parse(modernRaw);
       return {
         analystId: sanitizeId(typeof modern?.analystId === 'string' ? modern.analystId : null),
-        clientId: sanitizeUUID(typeof modern?.clientId === 'string' ? modern.clientId : null),
+        organizationId: sanitizeUUID(typeof modern?.organizationId === 'string' ? modern.organizationId : null),
         farmId: sanitizeFarmIdAsUUID(typeof modern?.farmId === 'string' ? modern.farmId : null),
       };
     }
@@ -166,7 +166,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
       const legacy = JSON.parse(legacyRaw);
       const migrated = {
         analystId: sanitizeId(typeof legacy?.analystId === 'string' ? legacy.analystId : null),
-        clientId: sanitizeUUID(typeof legacy?.clientId === 'string' ? legacy.clientId : null),
+        organizationId: sanitizeUUID(typeof legacy?.clientId === 'string' ? legacy.clientId : null),
         farmId: sanitizeFarmIdAsUUID(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
       };
       localStorage.setItem(scopedKey, JSON.stringify(migrated));
@@ -178,11 +178,11 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; cl
   }
 
   const analystId = sanitizeId(parseLegacyId(localStorage.getItem('selectedAnalystId')));
-  const clientId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
+  const organizationId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
   const farmId = sanitizeFarmIdAsUUID(
     localStorage.getItem('selectedFarmId') || parseLegacyId(localStorage.getItem('selectedFarm')),
   );
-  const normalized = { analystId, clientId, farmId };
+  const normalized = { analystId, organizationId, farmId };
   try {
     localStorage.setItem(scopedKey, JSON.stringify(normalized));
   } catch {
@@ -197,10 +197,10 @@ function hierarchyReducer(state: HierarchyState, action: HierarchyAction): Hiera
       return {
         ...state,
         analystId: action.payload.analystId,
-        clientId: action.payload.clientId,
+        organizationId: action.payload.organizationId,
         farmId: action.payload.farmId,
         selectedAnalyst: action.payload.analystId !== state.analystId ? null : state.selectedAnalyst,
-        selectedClient: action.payload.clientId !== state.clientId ? null : state.selectedClient,
+        selectedOrganization: action.payload.organizationId !== state.organizationId ? null : state.selectedOrganization,
         selectedFarm: action.payload.farmId !== state.farmId ? null : state.selectedFarm,
       };
     case 'SET_ANALYSTS':
@@ -209,11 +209,11 @@ function hierarchyReducer(state: HierarchyState, action: HierarchyAction): Hiera
         analysts: action.payload.append ? [...state.analysts, ...action.payload.data] : action.payload.data,
         hasMore: { ...state.hasMore, analysts: action.payload.hasMore },
       };
-    case 'SET_CLIENTS':
+    case 'SET_ORGANIZATIONS':
       return {
         ...state,
-        clients: action.payload.append ? [...state.clients, ...action.payload.data] : action.payload.data,
-        hasMore: { ...state.hasMore, clients: action.payload.hasMore },
+        organizations: action.payload.append ? [...state.organizations, ...action.payload.data] : action.payload.data,
+        hasMore: { ...state.hasMore, organizations: action.payload.hasMore },
       };
     case 'SET_FARMS':
       return {
@@ -226,10 +226,10 @@ function hierarchyReducer(state: HierarchyState, action: HierarchyAction): Hiera
         ...state,
         selectedAnalyst: action.payload,
       };
-    case 'SET_SELECTED_CLIENT':
+    case 'SET_SELECTED_ORGANIZATION':
       return {
         ...state,
-        selectedClient: action.payload,
+        selectedOrganization: action.payload,
       };
     case 'SET_SELECTED_FARM':
       return {
@@ -251,18 +251,18 @@ function hierarchyReducer(state: HierarchyState, action: HierarchyAction): Hiera
         ...state,
         analystId: action.payload,
         selectedAnalyst: state.analysts.find(a => a.id === action.payload) || null,
-        clientId: null,
+        organizationId: null,
         farmId: null,
-        selectedClient: null,
+        selectedOrganization: null,
         selectedFarm: null,
-        clients: [],
+        organizations: [],
         farms: [],
       };
-    case 'SELECT_CLIENT_ID':
+    case 'SELECT_ORGANIZATION_ID':
       return {
         ...state,
-        clientId: action.payload,
-        selectedClient: state.clients.find(c => c.id === action.payload) || null,
+        organizationId: action.payload,
+        selectedOrganization: state.organizations.find(o => o.id === action.payload) || null,
         farmId: null,
         selectedFarm: null,
         farms: [],
@@ -284,10 +284,10 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const stateRef = useRef(state);
   const paginationRef = useRef({
     analystsOffset: 0,
-    clientsOffset: 0,
+    organizationsOffset: 0,
     farmsOffset: 0,
     analystsSearch: '',
-    clientsSearch: '',
+    organizationsSearch: '',
     farmsSearch: '',
   });
   const abortRef = useRef<{
@@ -302,7 +302,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const validationFailureCountRef = useRef(0);
   const prevUserIdRef = useRef<string | null>(null);
   const loadAnalystsRef = useRef<((options?: { append?: boolean; search?: string }) => Promise<void>) | null>(null);
-  const loadClientsRef = useRef<((options?: { append?: boolean; search?: string }) => Promise<void>) | null>(null);
+  const loadOrganizationsRef = useRef<((options?: { append?: boolean; search?: string }) => Promise<void>) | null>(null);
   const loadFarmsRef = useRef<((options?: { append?: boolean; search?: string }) => Promise<void>) | null>(null);
   const lastLoadClientsKeyRef = useRef<string>('');
   const lastLoadFarmsKeyRef = useRef<string>('');
@@ -323,10 +323,10 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const effectiveAnalystId = useMemo(() => {
     if (!user) return null;
     if (user.qualification === 'visitante') return VISITOR_ANALYST_ID;
-    // Clientes têm contexto fixo pelo clientId — não usam analista próprio como filtro.
-    // Se o perfil ainda não carregou a qualification mas clientId já existe, tratar como cliente.
-    if (user.qualification === 'cliente' || (user.clientId && !user.qualification)) return null;
-    if (user.role === 'admin') return state.analystId;
+    // Organizações têm contexto fixo pelo organizationId — não usam analista próprio como filtro.
+    // Se o perfil ainda não carregou a qualification mas organizationId já existe, tratar como cliente.
+    if (user.qualification === 'cliente' || (user.organizationId && !user.qualification)) return null;
+    if (user.role === 'admin' || user.role === 'administrador') return state.analystId;
     return user.id;
   }, [user, state.analystId]);
 
@@ -337,49 +337,49 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         type: 'HYDRATE_IDS',
         payload: {
           analystId: VISITOR_ANALYST_ID,
-          clientId: VISITOR_CLIENT_ID,
+          organizationId: VISITOR_ORGANIZATION_ID,
           farmId: VISITOR_FARM_ID,
         },
       });
       return;
     }
-    // Trata como cliente se: qualification='cliente' OU se clientId existe
+    // Trata como cliente se: qualification='cliente' OU se organizationId existe
     // (cobre o estado transitório onde qualification ainda não foi carregada do perfil real).
-    const isClientProfile = user.qualification === 'cliente' || Boolean(user.clientId);
+    const isClientProfile = user.qualification === 'cliente' || Boolean(user.organizationId);
     if (isClientProfile) {
-      if (!user.clientId) {
+      if (!user.organizationId) {
         // Cliente sem organização vinculada ainda: aguarda perfil completo sem fixar IDs de visitante
-        dispatch({ type: 'HYDRATE_IDS', payload: { analystId: null, clientId: null, farmId: null } });
+        dispatch({ type: 'HYDRATE_IDS', payload: { analystId: null, organizationId: null, farmId: null } });
         return;
       }
-      // Carrega o cliente fixo vinculado ao perfil. Restaura fazenda do localStorage se existir.
+      // Carrega a organização fixa vinculada ao perfil. Restaura fazenda do localStorage se existir.
       const persisted = loadInitialPersistedIds(user.id);
-      // Garante que não use clientId/analystId de outra sessão (ex: sessão de visitante anterior)
+      // Garante que não use organizationId/analystId de outra sessão (ex: sessão de visitante anterior)
       const safeFarmId =
         persisted.farmId && persisted.farmId !== VISITOR_FARM_ID ? persisted.farmId : null;
       dispatch({
         type: 'HYDRATE_IDS',
         payload: {
           analystId: null,
-          clientId: user.clientId,
+          organizationId: user.organizationId,
           farmId: safeFarmId,
         },
       });
       return;
     }
     const initial = loadInitialPersistedIds(user.id);
-    if (user.role !== 'admin') {
+    if (user.role !== 'admin' && user.role !== 'administrador') {
       initial.analystId = user.id;
     }
     dispatch({ type: 'HYDRATE_IDS', payload: initial });
-  }, [sessionReady, user?.id, user?.role, user?.qualification, user?.clientId, isProfileReady]);
+  }, [sessionReady, user?.id, user?.role, user?.qualification, user?.organizationId, isProfileReady]);
 
   useEffect(() => {
     if (!sessionReady || !user || !isProfileReady) return;
     if (user.qualification === 'visitante') return; // IDs são determinísticos, não persistir
     const scopedKey = getHierarchyStorageKey(user.id);
     if (user.qualification === 'cliente') {
-      // Para clientes, persiste apenas a fazenda (o clientId vem sempre do perfil); só UUID
+      // Para clientes, persiste apenas a fazenda (o organizationId vem sempre do perfil); só UUID
       const farmIdToSave = sanitizeFarmIdAsUUID(state.farmId);
       try {
         const stored = localStorage.getItem(scopedKey);
@@ -393,11 +393,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     const payload = {
       analystId: state.analystId,
-      clientId: state.clientId,
+      organizationId: state.organizationId,
       farmId: sanitizeFarmIdAsUUID(state.farmId),
     };
     localStorage.setItem(scopedKey, JSON.stringify(payload));
-  }, [state.analystId, state.clientId, state.farmId, user, isProfileReady, sessionReady]);
+  }, [state.analystId, state.organizationId, state.farmId, user, isProfileReady, sessionReady]);
 
   const nextController = useCallback((level: keyof HierarchyLoadingState) => {
     abortRef.current[level]?.abort();
@@ -408,7 +408,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const loadAnalysts = useCallback(
     async (options?: { append?: boolean; search?: string }) => {
-      if (!user || user.role !== 'admin') return;
+      if (!user || (user.role !== 'admin' && user.role !== 'administrador')) return;
       const append = options?.append ?? false;
       const search = options?.search ?? paginationRef.current.analystsSearch;
       paginationRef.current.analystsSearch = search;
@@ -465,115 +465,107 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [nextController, user],
   );
 
-  const loadClients = useCallback(
+  const loadOrganizations = useCallback(
     async (options?: { append?: boolean; search?: string }) => {
-      // Usuário com qualification='cliente' busca diretamente pelo seu client_id fixo.
-      // Também cobre estado transitório: perfil com clientId mas qualification ainda indefinida.
-      const isClientUser = user?.qualification === 'cliente' || Boolean(user?.clientId && !user?.qualification);
+      // Usuário com qualification='cliente' busca diretamente pelo seu organization_id fixo.
+      // Também cobre estado transitório: perfil com organizationId mas qualification ainda indefinida.
+      const isClientUser = user?.qualification === 'cliente' || Boolean(user?.organizationId && !user?.qualification);
 
       if (!user || (!effectiveAnalystId && !isClientUser)) {
-        dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
-        dispatch({ type: 'SELECT_CLIENT_ID', payload: null });
+        dispatch({ type: 'SET_ORGANIZATIONS', payload: { data: [], append: false, hasMore: false } });
+        dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: null });
         return;
       }
 
       // Visitante: não chamar Supabase (query com analyst_id = VISITOR_ANALYST_ID pode travar por RLS).
       if (effectiveAnalystId === VISITOR_ANALYST_ID) {
         dispatch({
-          type: 'SET_CLIENTS',
-          payload: { data: [VISITOR_CLIENT], append: false, hasMore: false },
+          type: 'SET_ORGANIZATIONS',
+          payload: { data: [VISITOR_ORGANIZATION], append: false, hasMore: false },
         });
-        dispatch({ type: 'SELECT_CLIENT_ID', payload: VISITOR_CLIENT_ID });
-        dispatch({ type: 'SET_LOADING', payload: { level: 'clients', value: false } });
+        dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: VISITOR_ORGANIZATION_ID });
+        dispatch({ type: 'SET_LOADING', payload: { level: 'organizations', value: false } });
         return;
       }
 
       const append = options?.append ?? false;
-      const search = options?.search ?? paginationRef.current.clientsSearch;
-      paginationRef.current.clientsSearch = search;
-      if (!append) paginationRef.current.clientsOffset = 0;
+      const search = options?.search ?? paginationRef.current.organizationsSearch;
+      paginationRef.current.organizationsSearch = search;
+      if (!append) paginationRef.current.organizationsOffset = 0;
 
       const trigger = append || search ? 'user' : 'effect';
       if (DEBUG_HIERARCHY) {
-        console.debug('[HierarchyContext] loadClients start', { trigger, effectiveAnalystId, append, search });
+        console.debug('[HierarchyContext] loadOrganizations start', { trigger, effectiveAnalystId, append, search });
       }
 
-      const offset = paginationRef.current.clientsOffset;
-      const controller = nextController('clients');
-      dispatch({ type: 'SET_LOADING', payload: { level: 'clients', value: true } });
-      dispatch({ type: 'SET_ERROR', payload: { level: 'clients', value: null } });
+      const offset = paginationRef.current.organizationsOffset;
+      const controller = nextController('organizations');
+      dispatch({ type: 'SET_LOADING', payload: { level: 'organizations', value: true } });
+      dispatch({ type: 'SET_ERROR', payload: { level: 'organizations', value: null } });
 
       if (!isClientUser && !effectiveAnalystId) {
-        dispatch({ type: 'SET_CLIENTS', payload: { data: [], append: false, hasMore: false } });
+        dispatch({ type: 'SET_ORGANIZATIONS', payload: { data: [], append: false, hasMore: false } });
         return;
       }
 
       try {
         const { data: mapped, hasMore: hasMoreData } = await fetchClients({
-          analystId: isClientUser && user.clientId ? null : effectiveAnalystId ?? undefined,
-          clientId: isClientUser && user.clientId ? user.clientId : null,
+          analystId: isClientUser && user.organizationId ? null : effectiveAnalystId ?? undefined,
+          organizationId: isClientUser && user.organizationId ? user.organizationId : null,
           offset,
           limit: PAGE_SIZE,
           search: search || undefined,
           signal: controller.signal,
         });
         if (DEBUG_HIERARCHY) {
-          console.debug('[HierarchyContext] loadClients end ok', { count: mapped.length });
+          console.debug('[HierarchyContext] loadOrganizations end ok', { count: mapped.length });
         }
         dispatch({
-          type: 'SET_CLIENTS',
+          type: 'SET_ORGANIZATIONS',
           payload: {
             data: mapped,
             append,
             hasMore: hasMoreData,
           },
         });
-        paginationRef.current.clientsOffset = append ? offset + mapped.length : mapped.length;
+        paginationRef.current.organizationsOffset = append ? offset + mapped.length : mapped.length;
 
         const current = stateRef.current;
-        const selectedId = current.clientId;
+        const selectedId = current.organizationId;
         if (!selectedId && mapped.length > 0 && !search) {
-          dispatch({ type: 'SELECT_CLIENT_ID', payload: mapped[0].id });
+          dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: mapped[0].id });
         } else if (selectedId && !append) {
-          const exists = mapped.some(client => client.id === selectedId);
+          const exists = mapped.some(org => org.id === selectedId);
           if (!exists) {
-            dispatch({ type: 'SELECT_CLIENT_ID', payload: mapped.length > 0 ? mapped[0].id : null });
+            dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: mapped.length > 0 ? mapped[0].id : null });
           } else {
             dispatch({
-              type: 'SET_SELECTED_CLIENT',
-              payload: mapped.find(client => client.id === selectedId) || null,
+              type: 'SET_SELECTED_ORGANIZATION',
+              payload: mapped.find(org => org.id === selectedId) || null,
             });
           }
         }
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') {
-          if (DEBUG_HIERARCHY) console.debug('[HierarchyContext] loadClients end aborted');
+          if (DEBUG_HIERARCHY) console.debug('[HierarchyContext] loadOrganizations end aborted');
           return;
-        }
-        const msg = error instanceof Error ? error.message : '';
-        const isNetwork = error instanceof TypeError || /fetch|network|ECONNREFUSED/i.test(msg);
-        if (DEBUG_HIERARCHY) {
-          console.debug('[HierarchyContext] loadClients end error', {
-            type: isNetwork ? 'network' : 'rpc',
-            message: error instanceof Error ? error.message : String(error),
-          });
         }
         const message = error instanceof Error ? error.message : 'Falha ao carregar organizações.';
         dispatch({
           type: 'SET_ERROR',
-          payload: { level: 'clients', value: message },
+          payload: { level: 'organizations', value: message },
         });
       } finally {
-        dispatch({ type: 'SET_LOADING', payload: { level: 'clients', value: false } });
+        dispatch({ type: 'SET_LOADING', payload: { level: 'organizations', value: false } });
       }
     },
-    [effectiveAnalystId, nextController, user?.id, user?.qualification, user?.clientId],
+    [effectiveAnalystId, nextController, user?.id, user?.qualification, user?.organizationId],
   );
 
   const loadFarms = useCallback(
     async (options?: { append?: boolean; search?: string }) => {
-      const selectedClientId = stateRef.current.clientId;
-      if (!selectedClientId) {
+      const selectedOrganizationId = stateRef.current.organizationId;
+      if (!selectedOrganizationId) {
         dispatch({ type: 'SET_FARMS', payload: { data: [], append: false, hasMore: false } });
         dispatch({ type: 'SELECT_FARM_ID', payload: null });
         return;
@@ -586,7 +578,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const trigger = append || search ? 'user' : 'effect';
       if (DEBUG_HIERARCHY) {
-        console.debug('[HierarchyContext] loadFarms start', { trigger, selectedClientId, append, search });
+        console.debug('[HierarchyContext] loadFarms start', { trigger, selectedOrganizationId, append, search });
       }
 
       const offset = paginationRef.current.farmsOffset;
@@ -596,7 +588,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       try {
         const { data: mapped, hasMore: hasMoreData } = await fetchFarms({
-          clientId: selectedClientId,
+          organizationId: selectedOrganizationId,
           offset,
           limit: PAGE_SIZE,
           search: search || undefined,
@@ -636,14 +628,6 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (DEBUG_HIERARCHY) console.debug('[HierarchyContext] loadFarms end aborted');
           return;
         }
-        const msg = error instanceof Error ? error.message : '';
-        const isNetwork = error instanceof TypeError || /fetch|network|ECONNREFUSED/i.test(msg);
-        if (DEBUG_HIERARCHY) {
-          console.debug('[HierarchyContext] loadFarms end error', {
-            type: isNetwork ? 'network' : 'rpc',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
         const message = error instanceof Error ? error.message : 'Falha ao carregar fazendas.';
         dispatch({
           type: 'SET_ERROR',
@@ -661,8 +645,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [loadAnalysts]);
 
   useEffect(() => {
-    loadClientsRef.current = loadClients;
-  }, [loadClients]);
+    loadOrganizationsRef.current = loadOrganizations;
+  }, [loadOrganizations]);
 
   useEffect(() => {
     loadFarmsRef.current = loadFarms;
@@ -685,11 +669,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     // Clientes não têm analista próprio — context de analista não se aplica.
     // Cobre também estado transitório onde clientId existe mas qualification ainda não chegou.
-    if (user.qualification === 'cliente' || (user.clientId && !user.qualification)) {
+    if (user.qualification === 'cliente' || (user.organizationId && !user.qualification)) {
       dispatch({ type: 'SET_SELECTED_ANALYST', payload: null });
       return;
     }
-    if (user.role === 'admin') {
+    if (user.role === 'admin' || user.role === 'administrador') {
       void loadAnalystsRef.current?.({ append: false, search: '' });
       return;
     }
@@ -703,23 +687,23 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         qualification: user.qualification,
       },
     });
-  }, [user?.id, user?.role, user?.qualification, user?.clientId, user?.name, user?.email, isProfileReady, sessionReady]);
+  }, [user?.id, user?.role, user?.qualification, user?.organizationId, user?.name, user?.email, isProfileReady, sessionReady]);
 
   useEffect(() => {
     if (!sessionReady || !user || !isProfileReady) return;
-    const key = `${effectiveAnalystId ?? ''}-${user.clientId ?? ''}`;
+    const key = `${effectiveAnalystId ?? ''}-${user.organizationId ?? ''}`;
     if (lastLoadClientsKeyRef.current === key) return;
     lastLoadClientsKeyRef.current = key;
-    void loadClientsRef.current?.({ append: false, search: '' });
-  }, [sessionReady, effectiveAnalystId, isProfileReady, user?.id, user?.role, user?.qualification, user?.clientId]);
+    void loadOrganizationsRef.current?.({ append: false, search: '' });
+  }, [sessionReady, effectiveAnalystId, isProfileReady, user?.id, user?.role, user?.qualification, user?.organizationId]);
 
   useEffect(() => {
     if (!sessionReady || !user || !isProfileReady) return;
-    const key = String(state.clientId ?? '');
+    const key = String(state.organizationId ?? '');
     if (lastLoadFarmsKeyRef.current === key) return;
     lastLoadFarmsKeyRef.current = key;
     void loadFarmsRef.current?.({ append: false, search: '' });
-  }, [sessionReady, state.clientId, isProfileReady, user?.id]);
+  }, [sessionReady, state.organizationId, isProfileReady, user?.id]);
 
   useEffect(() => {
     if (!sessionReady || !user || !isProfileReady) return;
@@ -731,20 +715,20 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const runValidation = async () => {
         const current = stateRef.current;
         const sanitizedAnalystId = sanitizeId(effectiveAnalystId);
-        const sanitizedClientId = sanitizeUUID(current.clientId);
+        const sanitizedOrganizationId = sanitizeUUID(current.organizationId);
         const sanitizedFarmId = sanitizeId(current.farmId);
-        if (!sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
+        if (!sanitizedAnalystId && !sanitizedOrganizationId && !sanitizedFarmId) return;
 
         // Bootstrap guard: skip validation when only analystId is set; fetchClients will
-        // auto-select the first client and this effect will re-run with clientId.
-        if (sanitizedAnalystId && !sanitizedClientId && !sanitizedFarmId) return;
+        // auto-select the first organization and this effect will re-run with organizationId.
+        if (sanitizedAnalystId && !sanitizedOrganizationId && !sanitizedFarmId) return;
 
-        const snapshotClientId = current.clientId;
+        const snapshotOrganizationId = current.organizationId;
 
         if (DEBUG_HIERARCHY) {
           console.debug('[HierarchyContext] validate_hierarchy start', {
             analystId: sanitizedAnalystId,
-            clientId: sanitizedClientId,
+            organizationId: sanitizedOrganizationId,
             farmId: sanitizedFarmId,
           });
         }
@@ -758,7 +742,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           try {
             const result = await validateHierarchyApi({
               analystId: sanitizedAnalystId,
-              clientId: sanitizedClientId,
+              organizationId: sanitizedOrganizationId,
               farmId: sanitizedFarmId,
               signal: abortController.signal,
             });
@@ -784,21 +768,26 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           });
 
           if (!isNetwork) {
-            validationFailureCountRef.current += 1;
-            if (validationFailureCountRef.current >= 2) {
-              if (abortController.signal.aborted) return;
-              if (stateRef.current.clientId !== snapshotClientId) return;
-              if (DEBUG_HIERARCHY) {
-                console.debug('[HierarchyContext] validate_hierarchy RESET IDs (consecutive RPC failures)');
+            // Só reseta IDs em erros explícitos de acesso negado (403/FORBIDDEN),
+            // não em erros genéricos de servidor (500) ou falhas transitórias.
+            const isForbidden = /acesso negado|forbidden|403/i.test(msg);
+            if (isForbidden) {
+              validationFailureCountRef.current += 1;
+              if (validationFailureCountRef.current >= 3) {
+                if (abortController.signal.aborted) return;
+                if (stateRef.current.organizationId !== snapshotOrganizationId) return;
+                if (DEBUG_HIERARCHY) {
+                  console.debug('[HierarchyContext] validate_hierarchy RESET IDs (consecutive FORBIDDEN failures)');
+                }
+                dispatch({
+                  type: 'HYDRATE_IDS',
+                  payload: {
+                    analystId: stateRef.current.analystId,
+                    organizationId: null,
+                    farmId: null,
+                  },
+                });
               }
-              dispatch({
-                type: 'HYDRATE_IDS',
-                payload: {
-                  analystId: stateRef.current.analystId,
-                  clientId: null,
-                  farmId: null,
-                },
-              });
             }
             return;
           }
@@ -826,7 +815,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return;
         }
 
-        if (stateRef.current.clientId !== snapshotClientId) {
+        if (stateRef.current.organizationId !== snapshotOrganizationId) {
           if (DEBUG_HIERARCHY) {
             console.debug('[HierarchyContext] State changed during validate_hierarchy, discarding stale result');
           }
@@ -834,15 +823,19 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         validationFailureCountRef.current = 0;
-        const result = data[0];
+        const result = data[0] as {
+          analyst_valid: boolean;
+          organization_valid: boolean;
+          farm_valid: boolean;
+        };
         const nextAnalystId = result.analyst_valid ? sanitizedAnalystId : null;
-        const nextClientId = result.client_valid ? sanitizedClientId : null;
+        const nextOrganizationId = result.organization_valid ? sanitizedOrganizationId : null;
         const nextFarmId = result.farm_valid ? sanitizedFarmId : null;
 
         if (DEBUG_HIERARCHY) {
           console.debug('[HierarchyContext] validate_hierarchy end ok', {
             analystValid: result.analyst_valid,
-            clientValid: result.client_valid,
+            organizationValid: result.organization_valid,
             farmValid: result.farm_valid,
           });
         }
@@ -851,7 +844,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           type: 'HYDRATE_IDS',
           payload: {
             analystId: nextAnalystId,
-            clientId: nextClientId,
+            organizationId: nextOrganizationId,
             farmId: nextFarmId,
           },
         });
@@ -868,11 +861,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     user?.id,
     user?.role,
     user?.qualification,
-    user?.clientId,
+    user?.organizationId,
     isProfileReady,
     effectiveAnalystId,
     state.analystId,
-    state.clientId,
+    state.organizationId,
     state.farmId,
   ]);
 
@@ -884,9 +877,9 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     dispatch({ type: 'SET_SELECTED_ANALYST', payload: analyst });
   }, []);
 
-  const setSelectedClient = useCallback((client: Client | null) => {
-    dispatch({ type: 'SELECT_CLIENT_ID', payload: client?.id || null });
-    dispatch({ type: 'SET_SELECTED_CLIENT', payload: client });
+  const setSelectedOrganization = useCallback((organization: Client | null) => {
+    dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: organization?.id || null });
+    dispatch({ type: 'SET_SELECTED_ORGANIZATION', payload: organization });
   }, []);
 
   const setSelectedFarm = useCallback((farm: Farm | null) => {
@@ -898,8 +891,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     dispatch({ type: 'SELECT_ANALYST_ID', payload: id });
   }, []);
 
-  const selectClientById = useCallback((id: string | null) => {
-    dispatch({ type: 'SELECT_CLIENT_ID', payload: id });
+  const selectOrganizationById = useCallback((id: string | null) => {
+    dispatch({ type: 'SELECT_ORGANIZATION_ID', payload: id });
   }, []);
 
   const selectFarmById = useCallback((id: string | null) => {
@@ -918,11 +911,11 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [loadAnalysts],
   );
 
-  const searchClients = useCallback(
+  const searchOrganizations = useCallback(
     async (term: string) => {
-      await loadClients({ append: false, search: term });
+      await loadOrganizations({ append: false, search: term });
     },
-    [loadClients],
+    [loadOrganizations],
   );
 
   const searchFarms = useCallback(
@@ -937,10 +930,10 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await loadAnalysts({ append: true });
   }, [loadAnalysts]);
 
-  const loadMoreClients = useCallback(async () => {
-    if (!stateRef.current.hasMore.clients || stateRef.current.loading.clients) return;
-    await loadClients({ append: true });
-  }, [loadClients]);
+  const loadMoreOrganizations = useCallback(async () => {
+    if (!stateRef.current.hasMore.organizations || stateRef.current.loading.organizations) return;
+    await loadOrganizations({ append: true });
+  }, [loadOrganizations]);
 
   const loadMoreFarms = useCallback(async () => {
     if (!stateRef.current.hasMore.farms || stateRef.current.loading.farms) return;
@@ -948,18 +941,18 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [loadFarms]);
 
   const refreshCurrentLevel = useCallback(
-    async (level: 'analysts' | 'clients' | 'farms') => {
+    async (level: 'analysts' | 'organizations' | 'farms') => {
       if (level === 'analysts') {
         await loadAnalysts({ append: false, search: paginationRef.current.analystsSearch });
         return;
       }
-      if (level === 'clients') {
-        await loadClients({ append: false, search: paginationRef.current.clientsSearch });
+      if (level === 'organizations') {
+        await loadOrganizations({ append: false, search: paginationRef.current.organizationsSearch });
         return;
       }
       await loadFarms({ append: false, search: paginationRef.current.farmsSearch });
     },
-    [loadAnalysts, loadClients, loadFarms],
+    [loadAnalysts, loadOrganizations, loadFarms],
   );
 
   const value = useMemo<HierarchyContextType>(
@@ -967,17 +960,17 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...state,
       effectiveAnalystId,
       setSelectedAnalyst,
-      setSelectedClient,
+      setSelectedOrganization,
       setSelectedFarm,
       selectAnalystById,
-      selectClientById,
+      selectOrganizationById,
       selectFarmById,
       clearFarm,
       searchAnalysts,
-      searchClients,
+      searchOrganizations,
       searchFarms,
       loadMoreAnalysts,
-      loadMoreClients,
+      loadMoreOrganizations,
       loadMoreFarms,
       refreshCurrentLevel,
     }),
@@ -985,17 +978,17 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       state,
       effectiveAnalystId,
       setSelectedAnalyst,
-      setSelectedClient,
+      setSelectedOrganization,
       setSelectedFarm,
       selectAnalystById,
-      selectClientById,
+      selectOrganizationById,
       selectFarmById,
       clearFarm,
       searchAnalysts,
-      searchClients,
+      searchOrganizations,
       searchFarms,
       loadMoreAnalysts,
-      loadMoreClients,
+      loadMoreOrganizations,
       loadMoreFarms,
       refreshCurrentLevel,
     ],

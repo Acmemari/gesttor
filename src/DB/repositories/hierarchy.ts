@@ -1,6 +1,6 @@
 import { eq, and, ilike, or, exists } from 'drizzle-orm';
 import { db } from '../index.js';
-import { farms, organizations, userProfiles, analystFarms, organizationAnalysts } from '../schema.js';
+import { farms, organizations, userProfiles, organizationAnalysts } from '../schema.js';
 
 export type AnalystRow = typeof userProfiles.$inferSelect;
 export type OrganizationRow = typeof organizations.$inferSelect;
@@ -13,7 +13,6 @@ export type CreateFarmInput = {
   state?: string | null;
   city: string;
   organizationId?: string | null;
-  clientId?: string | null;
   totalArea?: string | number | null;
   pastureArea?: string | number | null;
   agricultureArea?: string | number | null;
@@ -66,15 +65,69 @@ export async function getFarms(
   return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
-export async function createFarm(data: CreateFarmInput, _createdBy?: string) {
-  const [row] = await db.insert(farms).values(data as any).returning();
+export async function createFarm(data: CreateFarmInput, createdBy?: string) {
+  const [row] = await db.insert(farms).values({
+    id: data.id,
+    name: data.name,
+    country: data.country,
+    state: data.state ?? null,
+    city: data.city,
+    organizationId: data.organizationId ?? null,
+    totalArea: data.totalArea != null ? String(data.totalArea) : null,
+    pastureArea: data.pastureArea != null ? String(data.pastureArea) : null,
+    agricultureArea: data.agricultureArea != null ? String(data.agricultureArea) : null,
+    forageProductionArea: data.forageProductionArea != null ? String(data.forageProductionArea) : null,
+    agricultureAreaOwned: data.agricultureAreaOwned != null ? String(data.agricultureAreaOwned) : null,
+    agricultureAreaLeased: data.agricultureAreaLeased != null ? String(data.agricultureAreaLeased) : null,
+    otherCrops: data.otherCrops != null ? String(data.otherCrops) : null,
+    infrastructure: data.infrastructure != null ? String(data.infrastructure) : null,
+    reserveAndAPP: data.reserveAndAPP != null ? String(data.reserveAndAPP) : null,
+    otherArea: data.otherArea != null ? String(data.otherArea) : null,
+    propertyValue: data.propertyValue != null ? String(data.propertyValue) : null,
+    operationPecuary: data.operationPecuary != null ? String(data.operationPecuary) : null,
+    operationAgricultural: data.operationAgricultural != null ? String(data.operationAgricultural) : null,
+    otherOperations: data.otherOperations != null ? String(data.otherOperations) : null,
+    agricultureVariation: data.agricultureVariation != null ? String(data.agricultureVariation) : '0',
+    propertyType: data.propertyType ?? 'Própria',
+    weightMetric: data.weightMetric ?? 'Arroba (@)',
+    averageHerd: data.averageHerd != null ? String(data.averageHerd) : null,
+    herdValue: data.herdValue != null ? String(data.herdValue) : null,
+    commercializesGenetics: data.commercializesGenetics ?? false,
+    productionSystem: data.productionSystem ?? null,
+    ativo: data.ativo ?? true,
+    createdBy: createdBy ?? null,
+  }).returning();
   return row;
 }
 
 export async function updateFarm(id: string, data: UpdateFarmInput) {
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.country !== undefined) updates.country = data.country;
+  if (data.state !== undefined) updates.state = data.state;
+  if (data.city !== undefined) updates.city = data.city;
+  if (data.organizationId !== undefined) updates.organizationId = data.organizationId;
+  if (data.propertyType !== undefined) updates.propertyType = data.propertyType;
+  if (data.weightMetric !== undefined) updates.weightMetric = data.weightMetric;
+  if (data.productionSystem !== undefined) updates.productionSystem = data.productionSystem;
+  if (data.commercializesGenetics !== undefined) updates.commercializesGenetics = data.commercializesGenetics;
+  if (data.ativo !== undefined) updates.ativo = data.ativo;
+  // Numeric fields — coerce to string for Drizzle numeric columns
+  const numericFields = [
+    'totalArea', 'pastureArea', 'agricultureArea', 'forageProductionArea',
+    'agricultureAreaOwned', 'agricultureAreaLeased', 'otherCrops', 'infrastructure',
+    'reserveAndAPP', 'otherArea', 'propertyValue', 'operationPecuary',
+    'operationAgricultural', 'otherOperations', 'agricultureVariation',
+    'averageHerd', 'herdValue',
+  ] as const;
+  for (const field of numericFields) {
+    if (data[field] !== undefined) {
+      updates[field] = data[field] != null ? String(data[field]) : null;
+    }
+  }
   const [row] = await db
     .update(farms)
-    .set({ ...data, updatedAt: new Date() } as any)
+    .set(updates)
     .where(eq(farms.id, id))
     .returning();
   return row;
@@ -142,13 +195,13 @@ export async function getOrganizations(params: {
 
 export async function validateHierarchy(params: {
   analystId?: string | null;
-  clientId?: string | null;
+  organizationId?: string | null;
   farmId?: string | null;
-}): Promise<{ analyst_valid: boolean; client_valid: boolean; farm_valid: boolean }> {
-  const { analystId, clientId, farmId } = params;
+}): Promise<{ analyst_valid: boolean; organization_valid: boolean; farm_valid: boolean }> {
+  const { analystId, organizationId, farmId } = params;
 
   let analyst_valid = false;
-  let client_valid = false;
+  let organization_valid = false;
   let farm_valid = false;
 
   if (analystId) {
@@ -159,12 +212,12 @@ export async function validateHierarchy(params: {
     analyst_valid = !!row;
   }
 
-  if (clientId) {
+  if (organizationId) {
     const [row] = await db.select({ id: organizations.id })
       .from(organizations)
-      .where(and(eq(organizations.id, clientId), eq(organizations.ativo, true)))
+      .where(and(eq(organizations.id, organizationId), eq(organizations.ativo, true)))
       .limit(1);
-    client_valid = !!row;
+    organization_valid = !!row;
   }
 
   if (farmId) {
@@ -175,5 +228,5 @@ export async function validateHierarchy(params: {
     farm_valid = !!row;
   }
 
-  return { analyst_valid, client_valid, farm_valid };
+  return { analyst_valid, organization_valid, farm_valid };
 }
