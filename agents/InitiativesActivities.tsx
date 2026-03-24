@@ -686,13 +686,14 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
       setDeliveries([]);
       return;
     }
-    fetchDeliveries(effectiveUserId)
+    const filters = selectedClient?.id ? { organizationId: selectedClient.id } : undefined;
+    fetchDeliveries(effectiveUserId, filters)
       .then(setDeliveries)
       .catch(err => {
         console.error('[InitiativesActivities] Erro ao carregar entregas:', err);
         setDeliveries([]);
       });
-  }, [effectiveUserId]);
+  }, [effectiveUserId, selectedClient?.id]);
 
   const deliveriesById = useMemo(
     () =>

@@ -272,7 +272,8 @@ async function handleParticipants(req: VercelRequest, res: VercelResponse, userI
     const initiativeId = String(body?.initiativeId ?? '').trim();
     if (!initiativeId) { jsonError(res, 'initiativeId é obrigatório', { status: 400 }); return; }
     await assertInitiativeAccess(initiativeId, userId, role);
-    const personIds = Array.isArray(body?.personIds) ? (body.personIds as string[]).filter(Boolean) : [];
+    const rawPersonIds = Array.isArray(body?.personIds) ? body.personIds : [];
+    const personIds = rawPersonIds.map((p: any) => typeof p === 'string' ? p : p?.id).filter(Boolean) as string[];
     await replaceParticipants(initiativeId, personIds);
     jsonSuccess(res, { ok: true });
     return;

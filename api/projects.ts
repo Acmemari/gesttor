@@ -10,7 +10,7 @@ import { db } from '../src/DB/index.js';
 import { userProfiles, projects as projectsTable } from '../src/DB/schema.js';
 import {
   fetchProjectsByCreatedBy,
-  fetchProjectsForClient,
+  fetchProjectsForOrganization,
   createProject,
   updateProject,
   deleteProject,
@@ -59,6 +59,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (clientMode && organizationId && isClientRole) {
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 100 });
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    if (organizationId) {
+      if (!isAdmin && !isClientRole) {
+        await assertOrgAccess(organizationId, userId, profile.role ?? 'visitante');
+      }
+      const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 1000 });
       jsonSuccess(res, rows);
       return;
     }

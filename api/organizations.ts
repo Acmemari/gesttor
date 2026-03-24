@@ -295,13 +295,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         analystId: userId,
       });
 
-      if (body.owners?.length) {
-        await saveOrganizationOwners(org.id, body.owners);
-      }
+      const savedOwners = body.owners?.length
+        ? await saveOrganizationOwners(org.id, body.owners) ?? []
+        : [];
 
       await autoCreatePessoaForAnalyst(userId, org.id);
 
-      const savedOwners = await getOrganizationOwners(org.id);
       jsonSuccess(res, {
         ...org,
         createdAt: org.createdAt?.toISOString() ?? '',

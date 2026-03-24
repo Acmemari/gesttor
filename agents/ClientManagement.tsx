@@ -143,6 +143,19 @@ function formatLocalPhoneByCountry(countryCode: string, rawValue: string): strin
   return `${digits.slice(0, 3)} ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+function getPhonePlaceholder(countryCode: string): string {
+  const country = getCountryByCode(countryCode);
+  switch (country.iso) {
+    case 'BR': return '(00) 00000-0000';
+    case 'PY': return '000 000-000';
+    case 'UY': return '00 000-0000';
+    case 'BO': return '00 000-0000';
+    case 'CO': return '000 000-0000';
+    case 'AR': return '000 000-0000';
+    default:   return '000 000-0000';
+  }
+}
+
 function composePhoneWithCountry(countryCode: string, localPhone: string): string | null {
   const normalized = formatLocalPhoneByCountry(countryCode, localPhone);
   const localDigits = normalized.replace(/\D/g, '');
@@ -771,7 +784,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                         setFormData({ ...formData, phone: formatLocalPhoneByCountry(formData.phoneCountryCode, e.target.value) })
                       }
                       className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                      placeholder="(00) 00000-0000"
+                      placeholder={getPhonePlaceholder(formData.phoneCountryCode)}
                     />
                   </div>
                   {formErrors.phone && <p className="mt-1 text-sm text-ai-error">{formErrors.phone}</p>}
@@ -923,17 +936,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                             </button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                            <input
-                              type="text"
-                              value={owner.name}
-                              onChange={e => {
-                                const next = [...owners];
-                                next[idx] = { ...next[idx], name: e.target.value };
-                                setOwners(next);
-                              }}
-                              className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                              placeholder="Nome"
-                            />
+                            <div>
+                              <label className="block text-xs font-medium text-ai-subtext mb-1">
+                                Nome <span className="text-ai-error">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={owner.name}
+                                onChange={e => {
+                                  const next = [...owners];
+                                  next[idx] = { ...next[idx], name: e.target.value };
+                                  setOwners(next);
+                                }}
+                                className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
+                                placeholder="Nome completo"
+                              />
+                            </div>
                             <div>
                               <input
                                 type="email"
@@ -987,7 +1005,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                                     setOwnerErrors(errs);
                                   }}
                                   className="w-full px-3 py-2 bg-ai-bg border border-ai-border rounded-md text-ai-text text-sm focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                                  placeholder="(00) 00000-0000"
+                                  placeholder={getPhonePlaceholder(owner.phoneCountryCode)}
                                 />
                               </div>
                               {ownerErrors[idx]?.phone && (

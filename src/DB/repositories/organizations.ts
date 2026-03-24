@@ -77,8 +77,8 @@ export async function deactivateOrganization(id: string) {
 export async function saveOrganizationOwners(orgId: string, owners: OrgOwnerInput[]) {
   await db.delete(organizationOwners).where(eq(organizationOwners.organizationId, orgId));
   const valid = owners.filter(o => o.name?.trim());
-  if (valid.length === 0) return;
-  await db.insert(organizationOwners).values(
+  if (valid.length === 0) return [];
+  return db.insert(organizationOwners).values(
     valid.map((o, i) => ({
       organizationId: orgId,
       name: o.name.trim(),
@@ -87,7 +87,7 @@ export async function saveOrganizationOwners(orgId: string, owners: OrgOwnerInpu
       cpf: o.cpf ?? null,
       sortOrder: i,
     })),
-  );
+  ).returning();
 }
 
 export async function getOrganizationOwners(orgId: string) {
