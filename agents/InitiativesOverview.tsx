@@ -127,12 +127,12 @@ const InitiativesOverview: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const initiativeFilters: { clientId?: string; farmId?: string } = {};
-      if (selectedClient?.id) initiativeFilters.clientId = selectedClient.id;
+      const initiativeFilters: { organizationId?: string; farmId?: string } = {};
+      if (selectedClient?.id) initiativeFilters.organizationId = selectedClient.id;
       if (selectedFarm?.id) initiativeFilters.farmId = selectedFarm.id;
 
-      const deliveryFilters: { clientId?: string } = {};
-      if (selectedClient?.id) deliveryFilters.clientId = selectedClient.id;
+      const deliveryFilters: { organizationId?: string } = {};
+      if (selectedClient?.id) deliveryFilters.organizationId = selectedClient.id;
 
       const [list, deliveryList] = await Promise.all([
         fetchInitiatives(effectiveUserId, Object.keys(initiativeFilters).length > 0 ? initiativeFilters : undefined),
@@ -345,7 +345,7 @@ const InitiativesOverview: React.FC = () => {
           const base64 = generateInitiativesOverviewPdfAsBase64(pdfData);
           const reportName = `Visao Geral - ${new Date().toLocaleDateString('pt-BR')}`;
           await saveReportPdf(user.id, reportName, base64, 'initiatives_overview_pdf', {
-            clientId: selectedClient?.id ?? null,
+            organizationId: selectedClient?.id ?? null,
             farmId: selectedFarm?.id ?? null,
             farmName: selectedFarm?.name ?? null,
           });

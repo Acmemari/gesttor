@@ -72,15 +72,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'GET') {
       switch (action) {
         case 'documents':
-          return handleGetDocuments(req, res, userId);
+          return await handleGetDocuments(req, res, userId);
         case 'jobs':
-          return handleGetJobs(req, res, userId);
+          return await handleGetJobs(req, res, userId);
         case 'collections':
-          return handleGetCollections(req, res, userId);
+          return await handleGetCollections(req, res, userId);
         case 'logs':
-          return handleGetLogs(req, res, userId);
+          return await handleGetLogs(req, res, userId);
         case 'stats':
-          return handleGetStats(req, res, userId);
+          return await handleGetStats(req, res, userId);
         default:
           return fail(res, `Ação desconhecida: ${action}`);
       }
@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── DELETE actions ───────────────────────────────────────────────────────
     if (method === 'DELETE') {
-      if (action === 'document') return handleDeleteDocument(req, res, userId);
+      if (action === 'document') return await handleDeleteDocument(req, res, userId);
       return fail(res, `Ação DELETE desconhecida: ${action}`);
     }
 
@@ -96,15 +96,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'POST') {
       switch (action) {
         case 'register':
-          return handleRegister(req, res, userId);
+          return await handleRegister(req, res, userId);
         case 'process':
-          return handleProcess(req, res, userId);
+          return await handleProcess(req, res, userId);
         case 'ask':
-          return handleAsk(req, res, userId);
+          return await handleAsk(req, res, userId);
         case 'feedback':
-          return handleFeedback(req, res, userId);
+          return await handleFeedback(req, res, userId);
         case 'collection':
-          return handleCreateCollection(req, res, userId);
+          return await handleCreateCollection(req, res, userId);
         default:
           return fail(res, `Ação POST desconhecida: ${action}`);
       }

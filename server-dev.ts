@@ -166,13 +166,17 @@ app.all('/api/pessoas', (req, res) => handleApiRoute('./api/pessoas.ts', req, re
 
 // Projetos / Deliveries / Iniciativas / Milestones / Tarefas
 app.all('/api/projects', (req, res) => handleApiRoute('./api/projects.ts', req, res));
+app.all('/api/project', (req, res) => handleApiRoute('./api/project.ts', req, res));
 app.all('/api/deliveries', (req, res) => handleApiRoute('./api/deliveries.ts', req, res));
+app.all('/api/delivery-summaries', (req, res) => handleApiRoute('./api/delivery-summaries.ts', req, res));
 app.all('/api/initiatives', (req, res) => handleApiRoute('./api/initiatives.ts', req, res));
 app.all('/api/milestones', (req, res) => handleApiRoute('./api/milestones.ts', req, res));
 app.all('/api/tasks', (req, res) => handleApiRoute('./api/tasks.ts', req, res));
 
 // Semanas / Atividades
 app.all('/api/semanas', (req, res) => handleApiRoute('./api/semanas.ts', req, res));
+app.all('/api/atividades', (req, res) => handleApiRoute('./api/atividades.ts', req, res));
+app.all('/api/historico-semanas', (req, res) => handleApiRoute('./api/historico-semanas.ts', req, res));
 
 // Evidências / Mapas de fazenda
 app.all('/api/evidence', (req, res) => handleApiRoute('./api/evidence.ts', req, res));
@@ -180,7 +184,10 @@ app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req
 
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
-app.all('/api/questionnaire-insights', (req, res) => handleApiRoute('./api/questionnaire-insights.ts', req, res));
+app.all('/api/ai-usage', (req, res) => handleApiRoute('./api/ai-usage.ts', req, res));
+app.all('/api/knowledge', (req, res) => handleApiRoute('./api/knowledge.ts', req, res));
+app.all('/api/support-tickets', (req, res) => handleApiRoute('./api/support-tickets.ts', req, res));
+app.all('/api/questions', (req, res) => handleApiRoute('./api/questions.ts', req, res));
 app.all('/api/delivery-summary', (req, res) => handleApiRoute('./api/delivery-summary.ts', req, res));
 app.all('/api/feedback-assist', (req, res) => handleApiRoute('./api/feedback-assist.ts', req, res));
 app.all('/api/support-suggest', (req, res) => handleApiRoute('./api/support-suggest.ts', req, res));
@@ -200,8 +207,10 @@ app.all('/api/saved-feedbacks', (req, res) => handleApiRoute('./api/saved-feedba
 // Empresas assessoras
 app.all('/api/emp-ass', (req, res) => handleApiRoute('./api/emp-ass.ts', req, res));
 
-// Admin
+// Admin / Auxiliares
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));
+app.all('/api/permissions', (req, res) => handleApiRoute('./api/permissions.ts', req, res));
+app.all('/api/diag', (req, res) => handleApiRoute('./api/diag.ts', req, res));
 
 // Hierarquia (analistas / clientes / fazendas)
 app.all('/api/hierarchy', (req, res) => handleApiRoute('./api/hierarchy.ts', req, res));

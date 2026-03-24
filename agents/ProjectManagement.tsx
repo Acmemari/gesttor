@@ -26,6 +26,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
   const { selectedClient } = useClient();
   const { selectedFarm } = useFarm();
   const [viewMode, setViewMode] = useState<ViewMode>('columns');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'admin';
   const isCliente = user?.qualification === 'cliente';
@@ -236,6 +237,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
           selectedFarmId={selectedFarm?.id || null}
           readonly={isCliente}
           onToast={onToast}
+          onProjectSelect={setSelectedProjectId}
         />
       )}
       {viewMode === 'mindmap' && (
@@ -245,6 +247,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
           selectedFarmId={selectedFarm?.id || null}
           readonly={isCliente}
           onToast={onToast}
+          selectedProjectId={selectedProjectId}
         />
       )}
       {viewMode === 'document' && (

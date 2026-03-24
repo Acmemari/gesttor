@@ -66,17 +66,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       jsonError(res, 'semana_id e titulo são obrigatórios', { status: 400 });
       return;
     }
-    const row = await createAtividade({
-      semana_id,
-      titulo,
-      descricao: body?.descricao ? String(body.descricao) : '',
-      pessoa_id: body?.pessoa_id ? String(body.pessoa_id) : null,
-      data_termino: body?.data_termino ? String(body.data_termino) : null,
-      tag: body?.tag ? String(body.tag) : '#planejamento',
-      status: body?.status ? String(body.status) : 'a fazer',
-    });
-    jsonSuccess(res, row);
-    return;
+    try {
+      const row = await createAtividade({
+        semana_id,
+        titulo,
+        descricao: body?.descricao ? String(body.descricao) : '',
+        pessoa_id: body?.pessoa_id ? String(body.pessoa_id) : null,
+        data_termino: body?.data_termino ? String(body.data_termino) : null,
+        tag: body?.tag ? String(body.tag) : '#planejamento',
+        status: body?.status ? String(body.status) : 'a fazer',
+      });
+      jsonSuccess(res, row);
+      return;
+    } catch (err: any) {
+      console.error("ERRO AO CRIAR ATIVIDADE:", err);
+      jsonError(res, `Erro interno: ${err.message}`, { status: 500 });
+      return;
+    }
   }
 
   if (req.method === 'PATCH') {

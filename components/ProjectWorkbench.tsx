@@ -51,6 +51,7 @@ interface ProjectWorkbenchProps {
   /** Quando true, desabilita criação/edição/exclusão (modo visualização para cliente). */
   readonly?: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  onProjectSelect?: (id: string | null) => void;
 }
 
 interface WorkbenchTask {
@@ -121,6 +122,7 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
   selectedFarmId,
   readonly = false,
   onToast,
+  onProjectSelect,
 }) => {
   const mountedRef = useRef(true);
   const toastRef = useRef(onToast);
@@ -329,6 +331,10 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
   }, [projects, selectedProgramId]);
 
   useEffect(() => {
+    onProjectSelect?.(selectedProgramId);
+  }, [selectedProgramId, onProjectSelect]);
+
+  useEffect(() => {
     if (deliveries.length === 0) return;
     if (selectedDeliveryId && deliveries.some(d => d.id === selectedDeliveryId)) return;
     setSelectedDeliveryId(deliveries[0].id);
@@ -504,6 +510,14 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
       toast('Nome do projeto é obrigatório.', 'warning');
       return;
     }
+    if (!programForm.start_date) {
+      toast('Data de Início é obrigatória.', 'warning');
+      return;
+    }
+    if (!programForm.end_date) {
+      toast('Data Final é obrigatória.', 'warning');
+      return;
+    }
     if (programForm.start_date && programForm.end_date && programForm.end_date < programForm.start_date) {
       toast('Data final anterior à data inicial.', 'warning');
       return;
@@ -572,6 +586,14 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
     const name = deliveryForm.name.trim();
     if (!name) {
       toast('Nome da entrega é obrigatório.', 'warning');
+      return;
+    }
+    if (!deliveryForm.start_date) {
+      toast('Data inicial da entrega é obrigatória.', 'warning');
+      return;
+    }
+    if (!deliveryForm.end_date) {
+      toast('Data final da entrega é obrigatória.', 'warning');
       return;
     }
     if (deliveryForm.start_date && deliveryForm.end_date && deliveryForm.end_date < deliveryForm.start_date) {

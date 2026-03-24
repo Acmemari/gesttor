@@ -69,11 +69,11 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ form, onChange, onSa
     <SectionHeader icon={<Calendar size={14} className="text-ai-accent" />} label="Cronograma" />
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Data de Início</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Data de Início <span className="text-red-500">*</span></label>
         <DateInputBR value={form.start_date} onChange={v => onChange({ ...form, start_date: v })} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Data Final</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Data Final <span className="text-red-500">*</span></label>
         <DateInputBR
           value={form.end_date}
           onChange={v => onChange({ ...form, end_date: v })}

@@ -137,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         organization_id: body?.organization_id ? String(body.organization_id) : null,
         farm_id: body?.farm_id ? String(body.farm_id) : null,
         name,
-        tags: body?.tags ? sanitize(String(body.tags)) : null,
+        tags: body?.tags !== undefined ? body.tags : null,
         description: body?.description ? sanitize(String(body.description)) : null,
         start_date: body?.start_date ? String(body.start_date) : null,
         end_date: body?.end_date ? String(body.end_date) : null,
@@ -177,7 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const body = (req.body || {}) as Record<string, unknown>;
       const payload: Record<string, unknown> = {};
       if (body?.name !== undefined) payload.name = sanitize(String(body.name));
-      if (body?.tags !== undefined) payload.tags = body.tags ? sanitize(String(body.tags)) : null;
+      if (body?.tags !== undefined) payload.tags = body.tags ?? null;
       if (body?.description !== undefined) payload.description = body.description ? sanitize(String(body.description)) : null;
       if (body?.start_date !== undefined) payload.start_date = body.start_date ? String(body.start_date) : null;
       if (body?.end_date !== undefined) payload.end_date = body.end_date ? String(body.end_date) : null;
@@ -206,8 +206,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     jsonError(res, 'Método não permitido', { status: 405 });
   } catch (err: unknown) {
-    const e = err as { message?: string; status?: number; code?: string };
-    jsonError(res, e.message ?? 'Erro interno', { status: e.status ?? 500, code: e.code });
+    const e = err as { message?: string; status?: number; code?: string; cause?: unknown };
+    const cause = e.cause as { message?: string } | undefined;
+    const message = cause?.message || e.message || 'Erro interno';
+    jsonError(res, message, { status: e.status ?? 500, code: e.code });
   }
 }
 

@@ -94,6 +94,7 @@ interface EAPMindMapProps {
   /** Quando true, desabilita mutações (modo visualização para cliente). */
   readonly?: boolean;
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  selectedProjectId?: string | null;
 }
 
 function getRawIdFromNodeId(nodeId: string): string {
@@ -101,7 +102,7 @@ function getRawIdFromNodeId(nodeId: string): string {
   return parts.length >= 2 ? parts.slice(1).join('-') : nodeId;
 }
 
-const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedOrganizationId, selectedFarmId, readonly = false, onToast }) => {
+const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedOrganizationId, selectedFarmId, readonly = false, onToast, selectedProjectId }) => {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -181,7 +182,8 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       });
       if (!mountedRef.current) return;
       setTree(t);
-      const { nodes: flowNodes, edges: flowEdges } = wbsTreeToFlowData(t);
+      const filteredTree = selectedProjectId ? t.filter(n => n.id === `program-${selectedProjectId}`) : t;
+      const { nodes: flowNodes, edges: flowEdges } = wbsTreeToFlowData(filteredTree);
 
       const graph = {
         id: 'root',
@@ -224,7 +226,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, fitView, setNodes, setEdges, toast]);
+  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, selectedProjectId, fitView, setNodes, setEdges, toast]);
 
   useEffect(() => {
     loadTree();

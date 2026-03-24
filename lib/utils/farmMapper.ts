@@ -7,31 +7,54 @@ interface DatabaseFarm {
   state?: string | null;
   city: string;
   organization_id?: string | null;
+  organizationId?: string | null;
   client_id?: string | null;          // alias legado
   total_area?: string | number | null;
+  totalArea?: string | number | null;
   pasture_area?: string | number | null;
+  pastureArea?: string | number | null;
   forage_production_area?: string | number | null;
+  forageProductionArea?: string | number | null;
   agriculture_area_owned?: string | number | null;
+  agricultureAreaOwned?: string | number | null;
   agriculture_area_leased?: string | number | null;
+  agricultureAreaLeased?: string | number | null;
   agriculture_area?: string | number | null;
+  agricultureArea?: string | number | null;
   other_crops?: string | number | null;
+  otherCrops?: string | number | null;
   infrastructure?: string | number | null;
   reserve_and_app?: string | number | null;
+  reserveAndAPP?: string | number | null;
   other_area?: string | number | null;
+  otherArea?: string | number | null;
   property_value?: string | number | null;
+  propertyValue?: string | number | null;
   operation_pecuary?: string | number | null;
+  operationPecuary?: string | number | null;
   operation_agricultural?: string | number | null;
+  operationAgricultural?: string | number | null;
   other_operations?: string | number | null;
+  otherOperations?: string | number | null;
   agriculture_variation?: string | number | null;
+  agricultureVariation?: string | number | null;
   property_type?: string | null;
+  propertyType?: string | null;
   weight_metric?: string | null;
+  weightMetric?: string | null;
   average_herd?: string | number | null;
+  averageHerd?: string | number | null;
   herd_value?: string | number | null;
+  herdValue?: string | number | null;
   commercializes_genetics?: boolean | null;
+  commercializesGenetics?: boolean | null;
   production_system?: string | null;
+  productionSystem?: string | null;
   ativo?: boolean | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+  created_at?: string | null | Date;
+  createdAt?: string | null | Date;
+  updated_at?: string | null | Date;
+  updatedAt?: string | null | Date;
 }
 
 function toNum(v: string | number | null | undefined): number | undefined {
@@ -41,10 +64,15 @@ function toNum(v: string | number | null | undefined): number | undefined {
 }
 
 export function mapFarmFromDatabase(dbFarm: DatabaseFarm): Farm {
-  const rawWeight = dbFarm.weight_metric;
+  const rawWeight = dbFarm.weight_metric ?? dbFarm.weightMetric;
   // Normalizar valor legado 'Quilograma (Kg)' → 'Kg'
   const weightMetric: WeightMetric =
     rawWeight === 'Quilograma (Kg)' ? 'Kg' : ((rawWeight as WeightMetric) || 'Arroba (@)');
+
+  const resolveDate = (d: string | Date | null | undefined): string => {
+    if (!d) return new Date().toISOString();
+    return d instanceof Date ? d.toISOString() : d;
+  };
 
   return {
     id: dbFarm.id,
@@ -52,31 +80,31 @@ export function mapFarmFromDatabase(dbFarm: DatabaseFarm): Farm {
     country: dbFarm.country,
     state: dbFarm.state || '',
     city: dbFarm.city,
-    organizationId: dbFarm.organization_id ?? dbFarm.client_id ?? '',
-    totalArea: toNum(dbFarm.total_area) ?? null,
-    pastureArea: toNum(dbFarm.pasture_area) ?? null,
-    agricultureArea: toNum(dbFarm.agriculture_area) ?? null,
-    forageProductionArea: toNum(dbFarm.forage_production_area) ?? null,
-    agricultureAreaOwned: toNum(dbFarm.agriculture_area_owned) ?? null,
-    agricultureAreaLeased: toNum(dbFarm.agriculture_area_leased) ?? null,
-    otherCrops: toNum(dbFarm.other_crops) ?? null,
+    organizationId: dbFarm.organizationId ?? dbFarm.organization_id ?? dbFarm.client_id ?? '',
+    totalArea: toNum(dbFarm.totalArea ?? dbFarm.total_area) ?? null,
+    pastureArea: toNum(dbFarm.pastureArea ?? dbFarm.pasture_area) ?? null,
+    agricultureArea: toNum(dbFarm.agricultureArea ?? dbFarm.agriculture_area) ?? null,
+    forageProductionArea: toNum(dbFarm.forageProductionArea ?? dbFarm.forage_production_area) ?? null,
+    agricultureAreaOwned: toNum(dbFarm.agricultureAreaOwned ?? dbFarm.agriculture_area_owned) ?? null,
+    agricultureAreaLeased: toNum(dbFarm.agricultureAreaLeased ?? dbFarm.agriculture_area_leased) ?? null,
+    otherCrops: toNum(dbFarm.otherCrops ?? dbFarm.other_crops) ?? null,
     infrastructure: toNum(dbFarm.infrastructure) ?? null,
-    reserveAndAPP: toNum(dbFarm.reserve_and_app) ?? null,
-    otherArea: toNum(dbFarm.other_area) ?? null,
-    propertyValue: toNum(dbFarm.property_value) ?? null,
-    operationPecuary: toNum(dbFarm.operation_pecuary) ?? null,
-    operationAgricultural: toNum(dbFarm.operation_agricultural) ?? null,
-    otherOperations: toNum(dbFarm.other_operations) ?? null,
-    agricultureVariation: toNum(dbFarm.agriculture_variation) ?? 0,
-    propertyType: (dbFarm.property_type as PropertyType) || 'Própria',
+    reserveAndAPP: toNum(dbFarm.reserveAndAPP ?? dbFarm.reserve_and_app) ?? null,
+    otherArea: toNum(dbFarm.otherArea ?? dbFarm.other_area) ?? null,
+    propertyValue: toNum(dbFarm.propertyValue ?? dbFarm.property_value) ?? null,
+    operationPecuary: toNum(dbFarm.operationPecuary ?? dbFarm.operation_pecuary) ?? null,
+    operationAgricultural: toNum(dbFarm.operationAgricultural ?? dbFarm.operation_agricultural) ?? null,
+    otherOperations: toNum(dbFarm.otherOperations ?? dbFarm.other_operations) ?? null,
+    agricultureVariation: toNum(dbFarm.agricultureVariation ?? dbFarm.agriculture_variation) ?? 0,
+    propertyType: ((dbFarm.propertyType ?? dbFarm.property_type) as PropertyType) || 'Própria',
     weightMetric,
-    averageHerd: toNum(dbFarm.average_herd) ?? null,
-    herdValue: toNum(dbFarm.herd_value) ?? null,
-    commercializesGenetics: dbFarm.commercializes_genetics ?? false,
-    productionSystem: (dbFarm.production_system as ProductionSystem) ?? null,
+    averageHerd: toNum(dbFarm.averageHerd ?? dbFarm.average_herd) ?? null,
+    herdValue: toNum(dbFarm.herdValue ?? dbFarm.herd_value) ?? null,
+    commercializesGenetics: dbFarm.commercializesGenetics ?? dbFarm.commercializes_genetics ?? false,
+    productionSystem: ((dbFarm.productionSystem ?? dbFarm.production_system) as ProductionSystem) ?? null,
     ativo: dbFarm.ativo ?? true,
-    createdAt: dbFarm.created_at || new Date().toISOString(),
-    updatedAt: dbFarm.updated_at || new Date().toISOString(),
+    createdAt: resolveDate(dbFarm.createdAt ?? dbFarm.created_at),
+    updatedAt: resolveDate(dbFarm.updatedAt ?? dbFarm.updated_at),
   };
 }
 
