@@ -462,8 +462,13 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     if (!formData.country.trim()) return false;
     if (formData.country === 'Brasil' && !formData.state) return false;
     if (!formData.city.trim()) return false;
+    if (!formData.productionSystem) return false;
+    if (!formData.totalArea || parseNumber(formData.totalArea) === undefined) return false;
+    if (!formData.pastureArea || parseNumber(formData.pastureArea) === undefined) return false;
+    if (!formData.propertyValue || parseInteger(formData.propertyValue) === undefined) return false;
+    if (!formData.herdValue || parseInteger(formData.herdValue) === undefined) return false;
     return true;
-  }, [formData.name, formData.country, formData.state, formData.city]);
+  }, [formData.name, formData.country, formData.state, formData.city, formData.productionSystem, formData.totalArea, formData.pastureArea, formData.propertyValue, formData.herdValue]);
 
   // Calcular valores das áreas baseado na proporção e variação
   // Seguindo os passos:

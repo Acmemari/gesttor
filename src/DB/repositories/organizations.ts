@@ -1,4 +1,4 @@
-import { eq, ilike, and, ne, desc } from 'drizzle-orm';
+import { eq, ilike, and, ne, desc, or, exists } from 'drizzle-orm';
 import { db } from '../index.js';
 import { organizations, organizationAnalysts, organizationOwners, organizationDocuments, userProfiles } from '../schema.js';
 import { randomUUID } from 'crypto';
@@ -28,7 +28,19 @@ export async function listOrganizations(params: {
 } = {}): Promise<{ rows: typeof organizations.$inferSelect[]; hasMore: boolean }> {
   const conditions: ReturnType<typeof eq>[] = [];
   if (!params.includeInactive) conditions.push(eq(organizations.ativo, true));
-  if (params.analystId) conditions.push(eq(organizations.analystId, params.analystId));
+  if (params.analystId) {
+    conditions.push(or(
+      eq(organizations.analystId, params.analystId),
+      exists(
+        db.select({ id: organizationAnalysts.id })
+          .from(organizationAnalysts)
+          .where(and(
+            eq(organizationAnalysts.organizationId, organizations.id),
+            eq(organizationAnalysts.analystId, params.analystId),
+          ))
+      ),
+    ) as any);
+  }
   if (params.status) conditions.push(eq(organizations.status, params.status));
   if (params.state) conditions.push(eq(organizations.state, params.state));
   if (params.search) conditions.push(ilike(organizations.name, `%${params.search}%`) as any);
@@ -172,9 +184,26 @@ export async function addOrgAnalyst(orgId: string, analystId: string, permission
   return row;
 }
 
-/** Remove analyst by link ID (organizationAnalysts.id). */
-export async function removeOrgAnalyst(linkId: string) {
+/** Remove analyst by link ID (organizationAnalysts.id). Guards against removing the primary analyst. */
+export async function removeOrgAnalyst(linkId: string): Promise<{ deleted: boolean; error?: string }> {
+  const [link] = await db
+    .select({ analystId: organizationAnalysts.analystId, organizationId: organizationAnalysts.organizationId })
+    .from(organizationAnalysts)
+    .where(eq(organizationAnalysts.id, linkId as any))
+    .limit(1);
+  if (!link) return { deleted: false, error: 'Vínculo não encontrado' };
+
+  const [org] = await db
+    .select({ analystId: organizations.analystId })
+    .from(organizations)
+    .where(eq(organizations.id, link.organizationId))
+    .limit(1);
+  if (org?.analystId === link.analystId) {
+    return { deleted: false, error: 'Não é possível remover o analista responsável desta forma.' };
+  }
+
   await db.delete(organizationAnalysts).where(eq(organizationAnalysts.id, linkId as any));
+  return { deleted: true };
 }
 
 /** Update analyst permissions by link ID (organizationAnalysts.id). */

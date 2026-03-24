@@ -189,12 +189,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Validate enum fields
-    const validPropertyTypes = ['Própria', 'Arrendada'];
+    const validPropertyTypes = ['Própria', 'Arrendada', 'Parceria', 'Comodato', 'Mista'];
     if (body.propertyType && !validPropertyTypes.includes(body.propertyType)) {
       jsonError(res, `propertyType inválido. Use: ${validPropertyTypes.join(', ')}`, { code: 'VALIDATION', status: 400 });
       return;
     }
-    const validWeightMetrics = ['Arroba (@)', 'Quilograma (Kg)'];
+    const validWeightMetrics = ['Arroba (@)', 'Kg'];
     if (body.weightMetric && !validWeightMetrics.includes(body.weightMetric)) {
       jsonError(res, `weightMetric inválido. Use: ${validWeightMetrics.join(', ')}`, { code: 'VALIDATION', status: 400 });
       return;
@@ -276,7 +276,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const { id: _id, ...updates } = body as { id: string } & UpdateFarmInput;
+    // organizationId não pode ser alterado via PATCH (fazenda não pode mudar de organização)
+    const { id: _id, organizationId: _orgId, ...updates } = body as { id: string; organizationId?: string } & UpdateFarmInput;
+
+    // Validate enum fields (same rules as POST)
+    const patchValidPropertyTypes = ['Própria', 'Arrendada', 'Parceria', 'Comodato', 'Mista'];
+    if (updates.propertyType && !patchValidPropertyTypes.includes(updates.propertyType)) {
+      jsonError(res, `propertyType inválido. Use: ${patchValidPropertyTypes.join(', ')}`, { code: 'VALIDATION', status: 400 });
+      return;
+    }
+    const patchValidWeightMetrics = ['Arroba (@)', 'Kg'];
+    if (updates.weightMetric && !patchValidWeightMetrics.includes(updates.weightMetric)) {
+      jsonError(res, `weightMetric inválido. Use: ${patchValidWeightMetrics.join(', ')}`, { code: 'VALIDATION', status: 400 });
+      return;
+    }
+
     try {
       const updated = await updateFarm(farmId, updates);
       if (!updated) {

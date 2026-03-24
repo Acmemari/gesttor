@@ -258,7 +258,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
     city: '',
     state: '',
     status: 'active',
-    plan: 'essencial',
+    plan: 'gestor',
     ativo: true,
     analystId: currentUser?.id || '',
   });
@@ -545,7 +545,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
       city: '',
       state: '',
       status: 'active',
-      plan: 'essencial',
+      plan: 'gestor',
       ativo: true,
       analystId: currentUser?.id || '',
     });
@@ -803,17 +803,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ onToast }) => {
                   />
                 </div>
 
-                {/* Endereço */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-ai-text mb-2">Endereço</label>
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={e => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-4 py-2 bg-ai-surface2 border border-ai-border rounded-md text-ai-text focus:outline-none focus:ring-2 focus:ring-ai-accent"
-                    placeholder="Rua, número, complemento"
-                  />
-                </div>
+                {/* Endereço — oculto temporariamente, manter para uso futuro */}
 
                 {/* Cidade e Estado */}
                 <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">

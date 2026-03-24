@@ -434,7 +434,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.status !== undefined) updates.status = body.status;
     if (body.plan !== undefined) updates.plan = body.plan;
     if (body.ativo !== undefined) updates.ativo = body.ativo;
-    if (isAdmin && body.analystId !== undefined) updates.analystId = body.analystId;
+    if (isAdmin && body.analystId !== undefined) {
+      const [targetProfile] = await db
+        .select({ role: userProfiles.role })
+        .from(userProfiles)
+        .where(eq(userProfiles.id, body.analystId))
+        .limit(1);
+      if (!targetProfile) {
+        jsonError(res, 'Usuário não encontrado para o analystId informado', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      if (targetProfile.role !== 'analista') {
+        jsonError(res, 'O usuário informado não possui o perfil de analista', { code: 'VALIDATION', status: 400 });
+        return;
+      }
+      updates.analystId = body.analystId;
+    }
 
     try {
       const org = await updateOrganization(body.id, updates as Parameters<typeof updateOrganization>[1]);
@@ -486,7 +501,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return;
         }
       }
-      await removeOrgAnalyst(q.id);
+      const result = await removeOrgAnalyst(q.id);
+      if (!result.deleted) {
+        jsonError(res, result.error ?? 'Não foi possível remover o analista', { code: 'FORBIDDEN', status: 400 });
+        return;
+      }
       jsonSuccess(res, { deleted: true });
       return;
     }

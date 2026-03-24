@@ -19,7 +19,7 @@ interface ProjectModalProps {
 export const ProjectModal: React.FC<ProjectModalProps> = ({ form, onChange, onSave, onClose, saving, mode, people = [] }) => (
   <ModalShell
     title={mode === 'create' ? 'Novo Projeto' : 'Editar Projeto'}
-    subtitle="Preencha os detalhes para criar uma nova atividade."
+    subtitle={mode === 'create' ? 'Preencha os detalhes do novo projeto.' : 'Edite as informações do projeto.'}
     onClose={saving ? () => {} : onClose}
   >
     <div>

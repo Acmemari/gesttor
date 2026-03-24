@@ -1,4 +1,3 @@
-import { sanitizeText } from './inputSanitizer';
 import * as projectsApi from './api/projectsClient';
 
 export interface ProjectStakeholderRow {

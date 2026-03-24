@@ -19,9 +19,15 @@ import {
 
 const MAX_NAME_LENGTH = 300;
 const MAX_STAKEHOLDER_ROWS = 50;
+const VALID_PROGRAM_TYPES = ['assessoria', 'fazenda'];
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function sanitize(val: string): string {
   return String(val ?? '').trim();
+}
+
+function isValidISODate(s: string): boolean {
+  return ISO_DATE_RE.test(s) && !isNaN(new Date(s).getTime());
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -38,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const [profile] = await db
-    .select({ role: userProfiles.role })
+    .select({ role: userProfiles.role, organizationId: userProfiles.organizationId })
     .from(userProfiles)
     .where(eq(userProfiles.id, userId))
     .limit(1);
@@ -58,14 +64,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : null;
 
     if (clientMode && organizationId && isClientRole) {
+      // Verificar que o cliente pertence à organização solicitada
+      if (profile.organizationId !== organizationId) {
+        jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+        return;
+      }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 100 });
       jsonSuccess(res, rows);
       return;
     }
 
     if (organizationId) {
-      if (!isAdmin && !isClientRole) {
-        await assertOrgAccess(organizationId, userId, profile.role ?? 'visitante');
+      if (!isAdmin) {
+        if (isClientRole) {
+          // Cliente só pode acessar sua própria organização
+          if (profile.organizationId !== organizationId) {
+            jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+            return;
+          }
+        } else {
+          await assertOrgAccess(organizationId, userId, profile.role ?? 'visitante');
+        }
       }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 1000 });
       jsonSuccess(res, rows);
@@ -95,6 +114,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const successEvidence = Array.isArray(body?.success_evidence)
       ? body.success_evidence.filter((s: unknown) => typeof s === 'string' && (s as string).trim())
       : [];
+
+    // Validate program_type
+    if (body?.program_type && !VALID_PROGRAM_TYPES.includes(String(body.program_type))) {
+      jsonError(res, `program_type inválido. Use: ${VALID_PROGRAM_TYPES.join(', ')}`, { status: 400 });
+      return;
+    }
+
+    // Validate dates
+    if (body?.start_date && !isValidISODate(String(body.start_date))) {
+      jsonError(res, 'start_date com formato inválido (esperado AAAA-MM-DD)', { status: 400 });
+      return;
+    }
+    if (body?.end_date && !isValidISODate(String(body.end_date))) {
+      jsonError(res, 'end_date com formato inválido (esperado AAAA-MM-DD)', { status: 400 });
+      return;
+    }
+    if (body?.start_date && body?.end_date && String(body.start_date) > String(body.end_date)) {
+      jsonError(res, 'Data de início não pode ser posterior à data final', { status: 400 });
+      return;
+    }
 
     const organizationIdForProject = (body?.organization_id as string) || (body?.client_id as string) || null;
     if (organizationIdForProject && !isAdmin) {
@@ -136,8 +175,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? body.success_evidence.filter((s: unknown) => typeof s === 'string' && (s as string).trim())
       : undefined;
 
+    // Validate program_type
+    if (body?.program_type !== undefined && body.program_type !== null &&
+        !VALID_PROGRAM_TYPES.includes(String(body.program_type))) {
+      jsonError(res, `program_type inválido. Use: ${VALID_PROGRAM_TYPES.join(', ')}`, { status: 400 });
+      return;
+    }
+
+    // Validate dates
+    if (body?.start_date && !isValidISODate(String(body.start_date))) {
+      jsonError(res, 'start_date com formato inválido (esperado AAAA-MM-DD)', { status: 400 });
+      return;
+    }
+    if (body?.end_date && !isValidISODate(String(body.end_date))) {
+      jsonError(res, 'end_date com formato inválido (esperado AAAA-MM-DD)', { status: 400 });
+      return;
+    }
+    if (body?.start_date && body?.end_date && String(body.start_date) > String(body.end_date)) {
+      jsonError(res, 'Data de início não pode ser posterior à data final', { status: 400 });
+      return;
+    }
+
     const payload: Record<string, unknown> = {};
-    if (body?.name !== undefined) payload.name = sanitize(String(body.name));
+    if (body?.name !== undefined) {
+      const name = sanitize(String(body.name));
+      if (!name) {
+        jsonError(res, 'Nome do projeto é obrigatório', { status: 400 });
+        return;
+      }
+      if (name.length > MAX_NAME_LENGTH) {
+        jsonError(res, `Nome muito longo (máx ${MAX_NAME_LENGTH})`, { status: 400 });
+        return;
+      }
+      payload.name = name;
+    }
     if (body?.description !== undefined) payload.description = body.description ? sanitize(String(body.description)) : null;
     if (body?.transformations_achievements !== undefined)
       payload.transformations_achievements = body.transformations_achievements ? sanitize(String(body.transformations_achievements)) : null;
@@ -153,7 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!isAdmin) {
       const [proj] = await db
-        .select({ createdBy: projectsTable.createdBy })
+        .select({ createdBy: projectsTable.createdBy, organizationId: projectsTable.organizationId })
         .from(projectsTable)
         .where(eq(projectsTable.id, projectId))
         .limit(1);
@@ -161,7 +232,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Projeto não encontrado', { status: 404 });
         return;
       }
-      if (proj.createdBy !== userId) {
+      if (proj.organizationId) {
+        try {
+          await assertOrgAccess(proj.organizationId, userId, profile.role ?? 'visitante');
+        } catch (e: unknown) {
+          const err = e as { status?: number; code?: string; message?: string };
+          jsonError(res, err.message ?? 'Acesso negado', { code: err.code ?? 'FORBIDDEN', status: err.status ?? 403 });
+          return;
+        }
+      } else if (proj.createdBy !== userId) {
         jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
         return;
       }
@@ -181,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!isAdmin) {
       const [proj] = await db
-        .select({ createdBy: projectsTable.createdBy })
+        .select({ createdBy: projectsTable.createdBy, organizationId: projectsTable.organizationId })
         .from(projectsTable)
         .where(eq(projectsTable.id, projectId))
         .limit(1);
@@ -189,7 +268,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Projeto não encontrado', { status: 404 });
         return;
       }
-      if (proj.createdBy !== userId) {
+      if (proj.organizationId) {
+        try {
+          await assertOrgAccess(proj.organizationId, userId, profile.role ?? 'visitante');
+        } catch (e: unknown) {
+          const err = e as { status?: number; code?: string; message?: string };
+          jsonError(res, err.message ?? 'Acesso negado', { code: err.code ?? 'FORBIDDEN', status: err.status ?? 403 });
+          return;
+        }
+      } else if (proj.createdBy !== userId) {
         jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
         return;
       }

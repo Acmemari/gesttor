@@ -13,7 +13,7 @@ export type CreateFarmInput = {
   country: string;
   state?: string | null;
   city: string;
-  organizationId?: string | null;
+  organizationId: string;
   totalArea?: string | number | null;
   pastureArea?: string | number | null;
   agricultureArea?: string | number | null;
@@ -74,7 +74,7 @@ export async function createFarm(data: CreateFarmInput, createdBy?: string) {
     country: data.country,
     state: data.state ?? null,
     city: data.city,
-    organizationId: data.organizationId ?? null,
+    organizationId: data.organizationId,
     totalArea: data.totalArea != null ? String(data.totalArea) : null,
     pastureArea: data.pastureArea != null ? String(data.pastureArea) : null,
     agricultureArea: data.agricultureArea != null ? String(data.agricultureArea) : null,
