@@ -90,6 +90,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
   'https://gesttor.ai',
   'https://www.gesttor.ai',
+  'https://gesttor.app',
+  'https://www.gesttor.app',
   'https://pecuaria.ai',
   'https://www.pecuaria.ai',
 ] as const;
