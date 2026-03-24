@@ -137,3 +137,17 @@ CodeRabbit (revisão automática)
 Para ativar o ambiente Pyton
 .\\budget\_env\\Scripts\\activate
 
+
+
+
+
+Nomes e comandos: TAB Navigatiom
+
+Brachs comandos:
+
+git branch (LSITAR A BRANCH)
+
+git switch dev
+
+git switch main (ALTERAR A BRANCH)
+
