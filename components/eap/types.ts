@@ -8,6 +8,7 @@ export interface ProgramFormState {
   transformations_achievements: string;
   success_evidence: string[];
   stakeholder_matrix: ProjectStakeholderRow[];
+  program_type: 'assessoria' | 'fazenda';
 }
 
 export interface DeliveryFormState {
@@ -50,6 +51,7 @@ export const INITIAL_PROGRAM_FORM: ProgramFormState = {
   transformations_achievements: '',
   success_evidence: [''],
   stakeholder_matrix: [{ name: '', activity: '' }],
+  program_type: 'assessoria',
 };
 
 export const INITIAL_DELIVERY_FORM: DeliveryFormState = {

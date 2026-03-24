@@ -93,17 +93,17 @@ export const PERMISSION_KEYS: PermissionKeyDef[] = [
   // Gerenciamento
   {
     key: 'projects:structure',
-    label: 'Estrutura programas/entregas/atividades',
-    description: 'Árvore de programas, entregas e atividades',
+    label: 'Estrutura projetos/entregas/atividades',
+    description: 'Árvore de projetos, entregas e atividades',
     location: 'Gerenciamento > Estrutura do Projeto',
     icon: 'FolderTree',
     category: 'gerenciamento',
   },
   {
     key: 'projects:program_modal',
-    label: 'Modal de programa',
-    description: 'Cadastro e edição de programa',
-    location: 'Gerenciamento > Estrutura > Modal Programa',
+    label: 'Modal de projeto',
+    description: 'Cadastro e edição de projeto',
+    location: 'Gerenciamento > Estrutura > Modal Projeto',
     icon: 'LayoutList',
     category: 'gerenciamento',
   },

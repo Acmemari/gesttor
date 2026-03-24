@@ -22,26 +22,27 @@ export interface SearchResult {
 export async function semanticSearch(
   queryEmbedding: number[],
   topK = 6,
-  minScore = 0.5,
+  minScore = 0.65,
 ): Promise<SearchResult[]> {
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
+  // CTE evita calcular o score duas vezes (WHERE + SELECT)
   const { rows } = await pool.query(
     `
-    SELECT
-      kc.id            AS chunk_id,
-      kc.document_id,
-      kd.title         AS document_title,
-      kc.content,
-      kc.metadata,
-      1 - (kc.embedding <=> $1::vector) AS score
-    FROM knowledge_chunks kc
-    JOIN knowledge_documents kd ON kd.id = kc.document_id
-    WHERE kd.status = 'published'
-      AND kc.embedding IS NOT NULL
-      AND 1 - (kc.embedding <=> $1::vector) >= $3
-    ORDER BY kc.embedding <=> $1::vector
-    LIMIT $2
+    WITH ranked AS (
+      SELECT
+        kc.id            AS chunk_id,
+        kc.document_id,
+        kd.title         AS document_title,
+        kc.content,
+        kc.metadata,
+        1 - (kc.embedding <=> $1::vector) AS score
+      FROM knowledge_chunks kc
+      JOIN knowledge_documents kd ON kd.id = kc.document_id
+      WHERE kd.status = 'published'
+        AND kc.embedding IS NOT NULL
+    )
+    SELECT * FROM ranked WHERE score >= $3 ORDER BY score DESC LIMIT $2
     `,
     [vectorStr, topK, minScore],
   );

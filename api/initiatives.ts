@@ -28,6 +28,29 @@ function sanitize(val: string): string {
   return String(val ?? '').trim();
 }
 
+function serializeInitiative(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    delivery_id: row.deliveryId ?? row.delivery_id,
+    organization_id: row.organizationId ?? row.organization_id,
+    farm_id: row.farmId ?? row.farm_id,
+    created_by: row.createdBy ?? row.created_by,
+    internal_leader: row.internalLeader ?? row.internal_leader,
+    leader: row.leader,
+    start_date: row.startDate ?? row.start_date,
+    end_date: row.endDate ?? row.end_date,
+    status: row.status,
+    weight: row.weight,
+    percent: row.percent,
+    sort_order: row.sortOrder ?? row.sort_order,
+    tags: row.tags,
+    created_at: row.createdAt ?? row.created_at,
+    updated_at: row.updatedAt ?? row.updated_at,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
@@ -59,14 +82,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (id) {
         const row = await getInitiativeById(id);
         if (!row) { jsonError(res, 'Iniciativa não encontrada', { code: 'NOT_FOUND', status: 404 }); return; }
-        jsonSuccess(res, row);
+        jsonSuccess(res, serializeInitiative(row as Record<string, unknown>));
         return;
       }
 
       if (deliveryId) {
         await assertDeliveryAccess(deliveryId, userId, role);
         const rows = await listInitiativesByDelivery(deliveryId);
-        if (!withTree) { jsonSuccess(res, rows); return; }
+        if (!withTree) { jsonSuccess(res, rows.map(r => serializeInitiative(r as unknown as Record<string, unknown>))); return; }
 
         // withTree=true: incluir milestones e tasks para cada iniciativa (em paralelo)
         const withMilestones = await Promise.all(
@@ -82,7 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const totalTasks = allTasks.length;
             const completedTasks = allTasks.filter(t => t.completed).length;
             const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-            return { ...initiative, milestones: milestonesWithTasks, progress };
+            return { ...serializeInitiative(initiative as unknown as Record<string, unknown>), milestones: milestonesWithTasks, progress };
           }),
         );
         jsonSuccess(res, withMilestones);
@@ -91,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (orgId) {
         const rows = await listInitiativesByOrg(orgId);
-        jsonSuccess(res, rows);
+        jsonSuccess(res, rows.map(r => serializeInitiative(r as unknown as Record<string, unknown>)));
         return;
       }
       jsonError(res, 'deliveryId ou orgId é obrigatório', { status: 400 });
@@ -141,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? await createInitiativeWithTeamAndMilestones(basePayload, teamPayload, milestonesPayload)
         : await createInitiative(basePayload);
 
-      jsonSuccess(res, row);
+      jsonSuccess(res, serializeInitiative(row as unknown as Record<string, unknown>));
       return;
     }
 
@@ -167,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body?.status !== undefined) payload.status = String(body.status);
 
       const row = await updateInitiative(id, payload);
-      jsonSuccess(res, row);
+      jsonSuccess(res, serializeInitiative(row as unknown as Record<string, unknown>));
       return;
     }
 
@@ -206,10 +229,11 @@ async function handleTeam(req: VercelRequest, res: VercelResponse, userId: strin
     if (!name) { jsonError(res, 'name é obrigatório', { status: 400 }); return; }
     await assertInitiativeAccess(initiativeId, userId, role);
 
-    const row = await addTeamMember(initiativeId, {
+    const row = await addTeamMember({
+      initiative_id: initiativeId,
       name,
       role: body?.role ? String(body.role) : 'APOIO',
-      pessoaId: body?.pessoa_id ? String(body.pessoa_id) : null,
+      person_id: body?.pessoa_id ? String(body.pessoa_id) : undefined,
     });
     jsonSuccess(res, row);
     return;

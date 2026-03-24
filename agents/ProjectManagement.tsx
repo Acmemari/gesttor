@@ -4,14 +4,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAnalyst } from '../contexts/AnalystContext';
 import { useClient } from '../contexts/ClientContext';
 import { useFarm } from '../contexts/FarmContext';
-import ProgramaWorkbench from '../components/ProgramaWorkbench';
+import ProjectWorkbench from '../components/ProjectWorkbench';
 import EAPMindMap from '../components/EAPMindMap';
-import ProgramaDocumento from '../components/ProgramaDocumento';
+import ProjectDocument from '../components/ProjectDocument';
 import { loadFullEAPTree } from '../lib/eapTree';
 import type { DeliveryRow } from '../lib/deliveries';
 import type { InitiativeWithProgress } from '../lib/initiatives';
-import { generateProgramaImpressao, generateProgramaImpressaoBase64 } from '../lib/generateProgramaImpressao';
-import { generateProgramaImpressaoDocx } from '../lib/generateProgramaImpressaoDocx';
+import { generateProjectPrint, generateProjectPrintBase64 } from '../lib/generateProjectPrint';
+import { generateProjectPrintDocx } from '../lib/generateProjectPrintDocx';
 import { saveReportPdf } from '../lib/scenarios';
 
 type ViewMode = 'columns' | 'mindmap' | 'document';
@@ -50,7 +50,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
       const programNodes = tree.filter(n => n.level === 'program');
 
       if (programNodes.length === 0) {
-        onToast?.('Nenhum programa encontrado para exportar.', 'warning');
+        onToast?.('Nenhum projeto encontrado para exportar.', 'warning');
         return;
       }
 
@@ -76,15 +76,15 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         };
 
         if (mode === 'download_pdf') {
-          await generateProgramaImpressao(pdfData);
+          await generateProjectPrint(pdfData);
         } else if (mode === 'download_word') {
-          const blob = await generateProgramaImpressaoDocx(pdfData);
-          const safeName = (project.name || 'programa').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          const blob = await generateProjectPrintDocx(pdfData);
+          const safeName = (project.name || 'projeto').replace(/[^a-z0-9]/gi, '_').toLowerCase();
           const url = URL.createObjectURL(blob);
           try {
             const a = document.createElement('a');
             a.href = url;
-            a.download = `programa_trabalho_${safeName}.docx`;
+            a.download = `projeto_${safeName}.docx`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -92,9 +92,9 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
             URL.revokeObjectURL(url);
           }
         } else {
-          const base64 = await generateProgramaImpressaoBase64(pdfData);
-          const safeName = (project.name || 'Programa de Trabalho').slice(0, 60);
-          await saveReportPdf(userId, `Programa de Trabalho — ${safeName}`, base64, 'programa_impressao_pdf', {
+          const base64 = await generateProjectPrintBase64(pdfData);
+          const safeName = (project.name || 'Projeto').slice(0, 60);
+          await saveReportPdf(userId, `Projeto — ${safeName}`, base64, 'projeto_impressao_pdf', {
             organizationId: selectedClient?.id ?? null,
             farmId: selectedFarm?.id ?? null,
           });
@@ -116,7 +116,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         <div className="max-w-xl w-full rounded-xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-3">
           <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800">
-            Selecione um <strong>Analista</strong> no cabeçalho para gerenciar programas.
+            Selecione um <strong>Analista</strong> no cabeçalho para gerenciar projetos.
           </p>
         </div>
       </div>
@@ -129,7 +129,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         <div className="max-w-xl w-full rounded-xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-3">
           <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800">
-            Selecione uma <strong>Fazenda</strong> no cabeçalho para visualizar os programas.
+            Selecione uma <strong>Fazenda</strong> no cabeçalho para visualizar os projetos.
           </p>
         </div>
       </div>
@@ -148,10 +148,10 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
     <div className="h-full flex flex-col p-4 md:p-6 w-full">
       <header className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-ai-text tracking-tight">Programa de Trabalho</h1>
+          <h1 className="text-2xl font-bold text-ai-text tracking-tight">Projeto</h1>
           <p className="text-sm text-ai-subtext mt-1 max-w-2xl">
             {viewMode === 'columns'
-              ? 'Gestão visual da estrutura hierárquica em colunas: Programa, Entrega, Atividade e Tarefa.'
+              ? 'Gestão visual da estrutura hierárquica em colunas: Projeto, Entrega, Atividade e Tarefa.'
               : viewMode === 'mindmap'
                 ? 'Mapa Mental EAP — visualize e edite a estrutura do projeto em formato de árvore.'
                 : 'Documento — edite os dados diretamente no conteúdo, como em um documento de texto.'}
@@ -230,7 +230,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         </div>
       </header>
       {viewMode === 'columns' && (
-        <ProgramaWorkbench
+        <ProjectWorkbench
           effectiveUserId={effectiveUserId ?? ''}
           selectedOrganizationId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
@@ -248,7 +248,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         />
       )}
       {viewMode === 'document' && (
-        <ProgramaDocumento
+        <ProjectDocument
           effectiveUserId={effectiveUserId ?? ''}
           selectedOrganizationId={selectedClient?.id || null}
           selectedFarmId={selectedFarm?.id || null}
@@ -262,7 +262,7 @@ const ProjectManagement: React.FC<ProjectManagementProps> = ({ onToast }) => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 animate-fade-in">
             <h3 className="text-lg font-bold text-ai-text mb-2">Formato do Documento</h3>
-            <p className="text-sm text-ai-subtext mb-6">Em qual formato você deseja baixar o Programa de Trabalho?</p>
+            <p className="text-sm text-ai-subtext mb-6">Em qual formato você deseja baixar o Projeto?</p>
             
             <div className="flex flex-col gap-3">
               <button

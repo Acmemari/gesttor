@@ -26,7 +26,7 @@ import * as milestonesApi from '../lib/api/milestonesClient';
 import * as tasksApi from '../lib/api/tasksClient';
 import HierarchyColumn, { type HierarchyColumnItem } from './HierarchyColumn';
 import {
-  ProgramModal,
+  ProjectModal,
   DeliveryModal,
   ActivityModal,
   TaskModal,
@@ -44,7 +44,7 @@ import {
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
-interface ProgramaWorkbenchProps {
+interface ProjectWorkbenchProps {
   effectiveUserId: string;
   selectedOrganizationId?: string | null;
   selectedFarmId?: string | null;
@@ -115,7 +115,7 @@ function swapSortOrderLocally<T extends { id: string; sort_order: number }>(
 
 // ─── Workbench Principal ────────────────────────────────────────────────────
 
-const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
+const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
   effectiveUserId,
   selectedOrganizationId,
   selectedFarmId,
@@ -153,8 +153,18 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   const [people, setPeople] = useState<Person[]>([]);
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
 
-  const peopleForResponsavel = useMemo(() => peopleFilteredForResponsavel(people), [people]);
-  const peopleForLiderInterno = useMemo(() => peopleFilteredForLiderInterno(people), [people]);
+  const activeProjectType = useMemo(
+    () => projects.find(p => p.id === selectedProgramId)?.program_type ?? 'assessoria',
+    [projects, selectedProgramId],
+  );
+  const peopleForResponsavel = useMemo(
+    () => activeProjectType === 'fazenda' ? people : peopleFilteredForResponsavel(people),
+    [people, activeProjectType],
+  );
+  const peopleForLiderInterno = useMemo(
+    () => activeProjectType === 'fazenda' ? people : peopleFilteredForLiderInterno(people),
+    [people, activeProjectType],
+  );
 
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
@@ -188,7 +198,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       if (!mountedRef.current) return;
       setProjects(p);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao carregar programas.';
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar projetos.';
       if (mountedRef.current) setErrorMessage(msg);
       toast(msg, 'error');
     } finally {
@@ -402,6 +412,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
         transformations_achievements: t.transformations_achievements || '',
         success_evidence: t.success_evidence.length ? [...t.success_evidence] : [''],
         stakeholder_matrix: t.stakeholder_matrix.length ? [...t.stakeholder_matrix] : [{ name: '', activity: '' }],
+        program_type: (t.program_type as 'assessoria' | 'fazenda') ?? 'assessoria',
       });
     },
     [projects],
@@ -490,7 +501,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     if (saving) return;
     const name = programForm.name.trim();
     if (!name) {
-      toast('Nome do programa é obrigatório.', 'warning');
+      toast('Nome do projeto é obrigatório.', 'warning');
       return;
     }
     if (programForm.start_date && programForm.end_date && programForm.end_date < programForm.start_date) {
@@ -509,6 +520,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       stakeholder_matrix: programForm.stakeholder_matrix
         .map(r => ({ name: r.name.trim(), activity: r.activity.trim() }))
         .filter(r => r.name || r.activity),
+      program_type: programForm.program_type,
     };
 
     setSaving(true);
@@ -516,10 +528,10 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       const saved = editingId ? await updateProject(editingId, payload) : await createProject(effectiveUserId, payload);
       await loadProjects();
       setSelectedProgramId(saved.id);
-      toast(editingId ? 'Programa atualizado.' : 'Programa criado.', 'success');
+      toast(editingId ? 'Projeto atualizado.' : 'Projeto criado.', 'success');
       closeModal();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Erro ao salvar programa.', 'error');
+      toast(err instanceof Error ? err.message : 'Erro ao salvar projeto.', 'error');
     } finally {
       setSaving(false);
     }
@@ -539,9 +551,9 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
           setTasks([]);
         }
         await loadProjects();
-        toast('Programa removido.', 'success');
+        toast('Projeto removido.', 'success');
       } catch (err) {
-        toast(err instanceof Error ? err.message : 'Erro ao excluir programa.', 'error');
+        toast(err instanceof Error ? err.message : 'Erro ao excluir projeto.', 'error');
       } finally {
         setDeleting(null);
       }
@@ -554,7 +566,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   const saveDelivery = useCallback(async () => {
     if (saving) return;
     if (!selectedProgramId) {
-      toast('Selecione um programa.', 'warning');
+      toast('Selecione um projeto.', 'warning');
       return;
     }
     const name = deliveryForm.name.trim();
@@ -643,6 +655,22 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     const name = activityForm.name.trim();
     if (!name) {
       toast('Nome é obrigatório.', 'warning');
+      return;
+    }
+    if (!activityForm.start_date) {
+      toast('Data inicial é obrigatória.', 'warning');
+      return;
+    }
+    if (!activityForm.end_date) {
+      toast('Data final é obrigatória.', 'warning');
+      return;
+    }
+    if (!activityForm.leader_id) {
+      toast('Responsável é obrigatório.', 'warning');
+      return;
+    }
+    if (!activityForm.internal_leader_id) {
+      toast('Lider Interno é obrigatório.', 'warning');
       return;
     }
     const percentVal = Math.round(Math.min(100, Math.max(0, Number(activityForm.percent) || 0)));
@@ -898,7 +926,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
         await swapSortOrder('projects', current, target);
       } catch (err) {
         await loadProjects();
-        toast(err instanceof Error ? err.message : 'Erro ao reordenar programas.', 'error');
+        toast(err instanceof Error ? err.message : 'Erro ao reordenar projetos.', 'error');
       }
     },
     [projects, swapSortOrder, loadProjects, toast],
@@ -1007,7 +1035,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
         );
       } catch (err) {
         await loadProjects();
-        toast(err instanceof Error ? err.message : 'Erro ao reordenar programas.', 'error');
+        toast(err instanceof Error ? err.message : 'Erro ao reordenar projetos.', 'error');
       }
     },
     [projects, batchUpdateSortOrder, loadProjects, toast],
@@ -1116,20 +1144,20 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
     <div className="space-y-4">
       {readonly ? (
         <p className="text-sm text-ai-subtext">
-          Visualização do Programa de Trabalho da fazenda selecionada.
+          Visualização do Projeto da fazenda selecionada.
         </p>
       ) : (
         <p className="text-sm text-ai-subtext">
-          Cadastre o <strong>Programa</strong>, depois a <strong>Entrega</strong>, em seguida as{' '}
+          Cadastre o <strong>Projeto</strong>, depois a <strong>Entrega</strong>, em seguida as{' '}
           <strong>Atividades</strong> e por fim as <strong>Tarefas</strong>.
         </p>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         <HierarchyColumn
-          title="Programas"
+          title="Projetos"
           icon={<FolderOpen size={12} className="text-indigo-500" />}
-          emptyLabel="Nenhum programa cadastrado."
+          emptyLabel="Nenhum projeto cadastrado."
           items={programItems}
           selectedId={selectedProgramId}
           accentClassName="bg-indigo-100 text-indigo-900"
@@ -1147,7 +1175,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
         <HierarchyColumn
           title="Entregas"
           icon={<Package size={12} className="text-blue-500" />}
-          emptyLabel={selectedProgramId ? 'Nenhuma entrega.' : 'Selecione um programa.'}
+          emptyLabel={selectedProgramId ? 'Nenhuma entrega.' : 'Selecione um projeto.'}
           items={deliveryItems}
           selectedId={selectedDeliveryId}
           accentClassName="bg-blue-100 text-blue-900"
@@ -1203,7 +1231,7 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
       </div>
 
       {modalEntity === 'program' && (
-        <ProgramModal
+        <ProjectModal
           form={programForm}
           onChange={setProgramForm}
           onSave={saveProgram}
@@ -1254,4 +1282,4 @@ const ProgramaWorkbench: React.FC<ProgramaWorkbenchProps> = ({
   );
 };
 
-export default ProgramaWorkbench;
+export default ProjectWorkbench;

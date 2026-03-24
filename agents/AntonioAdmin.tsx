@@ -139,6 +139,7 @@ const AntonioAdmin: React.FC = () => {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estado — Jobs
@@ -169,9 +170,11 @@ const AntonioAdmin: React.FC = () => {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/knowledge?action=documents', { headers });
+      if (!res.headers.get('content-type')?.includes('application/json')) throw new Error('Servidor indisponível');
       const json = await res.json();
       if (json.ok) setDocuments(json.data);
-    } catch { /* silencioso */ }
+      else showToast(json.error ?? 'Erro ao carregar documentos', 'error');
+    } catch (e: any) { showToast(e.message ?? 'Erro de comunicação', 'error'); }
     finally { setLoadingDocs(false); }
   }, []);
 
@@ -179,9 +182,10 @@ const AntonioAdmin: React.FC = () => {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/knowledge?action=collections', { headers });
+      if (!res.headers.get('content-type')?.includes('application/json')) return;
       const json = await res.json();
       if (json.ok) setCollections(json.data);
-    } catch { /* silencioso */ }
+    } catch { /* coleções são opcionais */ }
   }, []);
 
   const fetchJobs = useCallback(async () => {
@@ -231,16 +235,18 @@ const AntonioAdmin: React.FC = () => {
 
   // ── Upload de arquivo ────────────────────────────────────────────────────────
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
+  const handleFileFromFile = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const supportedTypes: Record<string, string> = { pdf: 'pdf', docx: 'docx', txt: 'txt', md: 'md' };
     const sourceType = supportedTypes[ext];
     if (!sourceType) {
       showToast('Formato não suportado. Use PDF, DOCX, TXT ou MD.', 'error');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      showToast('Arquivo muito grande. Limite: 25 MB.', 'error');
       return;
     }
 
@@ -268,13 +274,33 @@ const AntonioAdmin: React.FC = () => {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? 'Erro ao registrar documento');
 
-      showToast(`"${file.name}" enviado com sucesso. Clique em "Processar" para vetorizar.`);
+      showToast(`"${file.name}" enviado. Clique em "Processar" para vetorizar.`);
       await fetchDocuments();
     } catch (err: any) {
       showToast(err.message ?? 'Erro no upload', 'error');
     } finally {
       setUploadingFile(false);
     }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (file) handleFileFromFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileFromFile(file);
   };
 
   // ── Processar (pipeline de ingestão) ────────────────────────────────────────
@@ -419,10 +445,19 @@ const AntonioAdmin: React.FC = () => {
         {activeTab === 'documentos' && (
           <div className="p-6 space-y-5">
             {/* Upload area */}
-            <div className="border-2 border-dashed border-ai-border rounded-xl p-6 text-center bg-ai-surface/30 hover:bg-ai-surface/50 transition-colors">
+            <div
+              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                dragOver
+                  ? 'border-ai-accent bg-ai-accent/5'
+                  : 'border-ai-border bg-ai-surface/30 hover:bg-ai-surface/50'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <Upload size={28} className="mx-auto mb-3 text-ai-subtext" />
               <p className="text-sm font-medium text-ai-text mb-1">Arraste um arquivo ou clique para selecionar</p>
-              <p className="text-xs text-ai-subtext mb-4">PDF, DOCX, TXT ou Markdown</p>
+              <p className="text-xs text-ai-subtext mb-4">PDF, DOCX, TXT ou Markdown · máx. 25 MB</p>
 
               {collections.length > 0 && (
                 <div className="mb-3 flex justify-center">

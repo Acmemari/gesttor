@@ -32,6 +32,7 @@ export async function createProject(data: {
   end_date?: string;
   stakeholder_matrix?: unknown;
   sort_order?: number;
+  program_type?: string;
 }) {
   const [row] = await db.insert(projects).values({
     name: data.name,
@@ -44,6 +45,7 @@ export async function createProject(data: {
     endDate: data.end_date ?? null,
     stakeholderMatrix: (data.stakeholder_matrix ?? []) as any,
     sortOrder: data.sort_order ?? 0,
+    programType: data.program_type ?? 'assessoria',
   }).returning();
   return row;
 }
@@ -59,6 +61,7 @@ export async function updateProject(id: string, data: Record<string, unknown>) {
   if (data.stakeholder_matrix !== undefined) mapped.stakeholderMatrix = data.stakeholder_matrix;
   if (data.sort_order !== undefined) mapped.sortOrder = data.sort_order;
   if (data.organization_id !== undefined) mapped.organizationId = data.organization_id;
+  if (data.program_type !== undefined) mapped.programType = data.program_type;
   
   const [row] = await db.update(projects).set(mapped).where(eq(projects.id, id as any)).returning();
   return row;

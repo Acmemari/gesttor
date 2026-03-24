@@ -68,7 +68,7 @@ const ProjetoDesktop: React.FC<ProjetoDesktopProps> = ({
     {
       id: 'estrutura',
       title: <ProjetoTitle entity="Estrutura do Projeto" />,
-      description: 'Programas, entregas, atividades e tarefas em hierarquia. Exporte relatórios em PDF.',
+      description: 'Projetos, entregas, atividades e tarefas em hierarquia. Exporte relatórios em PDF.',
       icon: <FolderOpen size={24} />,
       onClick: onSelectEstrutura,
     },

@@ -47,23 +47,25 @@ export async function createInitiative(data: Record<string, unknown>) {
   return row;
 }
 
-export async function createInitiativeWithTeamAndMilestones(data: Record<string, unknown>) {
+export async function createInitiativeWithTeamAndMilestones(
+  data: Record<string, unknown>,
+  teamMembers: { name: string; role?: string; pessoaId?: string | null }[] = [],
+  milestoneItems: { title: string; due_date?: string | null }[] = [],
+) {
   const initiative = await createInitiative(data);
-  const teamMembers = (data.team as unknown[]) ?? [];
-  const milestoneItems = (data.milestones as unknown[]) ?? [];
   if (teamMembers.length > 0) {
     await db.insert(initiativeTeam).values(
-      teamMembers.map((m: any) => ({ initiativeId: initiative.id as any, name: m.name, role: m.role }))
+      teamMembers.map((m) => ({ initiativeId: initiative.id as any, name: m.name, role: m.role ?? null }))
     );
   }
   if (milestoneItems.length > 0) {
     await db.insert(initiativeMilestones).values(
-      milestoneItems.map((m: any, i: number) => ({
+      milestoneItems.map((m, i) => ({
         initiativeId: initiative.id as any,
         title: m.title,
         dueDate: m.due_date ?? null,
-        sortOrder: m.sort_order ?? i,
-        percent: m.percent ?? 0,
+        sortOrder: i,
+        percent: 0,
       }))
     );
   }

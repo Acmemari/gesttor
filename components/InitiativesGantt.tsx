@@ -318,7 +318,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({
       if (!groupedDeliveries || groupedDeliveries.length === 0) continue;
       programs.push({
         id: project.id,
-        name: project.name || 'Programa sem nome',
+        name: project.name || 'Projeto sem nome',
         deliveries: groupedDeliveries,
       });
       seenProgramIds.add(project.id);
@@ -328,7 +328,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({
     if (unlinkedDeliveries.length > 0) {
       programs.push({
         id: UNLINKED_PROGRAM_ID,
-        name: 'Sem programa vinculado',
+        name: 'Sem projeto vinculado',
         deliveries: unlinkedDeliveries,
       });
       seenProgramIds.add(UNLINKED_PROGRAM_ID);
@@ -338,7 +338,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({
       if (seenProgramIds.has(programId)) continue;
       programs.push({
         id: programId,
-        name: 'Programa não encontrado',
+        name: 'Projeto não encontrado',
         deliveries: groupedDeliveries,
       });
     }
@@ -510,7 +510,7 @@ const InitiativesGantt: React.FC<InitiativesGanttProps> = ({
       let html = `<strong>${name}</strong><br/>${formatDateBR(start)} — ${formatDateBR(end)}<br/>${dur} dia${dur > 1 ? 's' : ''}`;
 
       if (tt === 'program') {
-        html += '<br/>Nível: Programa';
+        html += '<br/>Nível: Projeto';
       } else if (tt === 'delivery') {
         html += '<br/>Nível: Entrega';
       } else if (tt === 'initiative') {

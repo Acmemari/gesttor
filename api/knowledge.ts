@@ -53,6 +53,14 @@ Vocabulário: nunca use "chão" — use "Solo" ou "Terra".`;
 // ─── Handler principal ─────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS preflight — browsers send OPTIONS before POST with Content-Type: application/json
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(204).end();
+  }
+
   const userId = await getAuthUserIdFromRequest(req);
   if (!userId) return fail(res, 'Não autorizado', 401);
 

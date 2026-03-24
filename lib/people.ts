@@ -3,7 +3,7 @@
  * para o novo modelo (Neon/Drizzle 'pessoas' + sub-tabelas).
  *
  * Os componentes legados (FeedbackAgent, InitiativesActivities, EAPMindMap,
- * ProgramaWorkbench, etc.) continuam importando daqui sem alteração.
+ * ProjectWorkbench, etc.) continuam importando daqui sem alteração.
  */
 import { listPessoasByFarm, checkPermsByEmail } from './api/pessoasClient';
 import { storageUpload, storageGetPublicUrl } from './storage';

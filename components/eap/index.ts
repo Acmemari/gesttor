@@ -1,5 +1,5 @@
 export { ModalShell, SectionHeader } from './ModalShell';
-export { ProgramModal } from './ProgramModal';
+export { ProjectModal } from './ProjectModal';
 export { DeliveryModal } from './DeliveryModal';
 export { ActivityModal } from './ActivityModal';
 export { TaskModal } from './TaskModal';

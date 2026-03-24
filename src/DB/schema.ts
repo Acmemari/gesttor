@@ -317,6 +317,7 @@ export const projects = pgTable('projects', {
   startDate: date('start_date'),
   endDate: date('end_date'),
   stakeholderMatrix: jsonb('stakeholder_matrix').default('[]'),
+  programType: text('program_type').default('assessoria'),
   sortOrder: integer('sort_order').default(0),
   percent: integer('percent').default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),

@@ -6,7 +6,7 @@ import type { ProgramFormState } from './types';
 import { removeAtIndex, updateAtIndex } from './types';
 import type { Person } from '../../lib/people';
 
-interface ProgramModalProps {
+interface ProjectModalProps {
   form: ProgramFormState;
   onChange: (form: ProgramFormState) => void;
   onSave: () => void;
@@ -16,16 +16,16 @@ interface ProgramModalProps {
   people?: Person[];
 }
 
-export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSave, onClose, saving, mode, people = [] }) => (
+export const ProjectModal: React.FC<ProjectModalProps> = ({ form, onChange, onSave, onClose, saving, mode, people = [] }) => (
   <ModalShell
-    title={mode === 'create' ? 'Novo Programa' : 'Editar Programa'}
+    title={mode === 'create' ? 'Novo Projeto' : 'Editar Projeto'}
     subtitle="Preencha os detalhes para criar uma nova atividade."
     onClose={saving ? () => {} : onClose}
   >
     <SectionHeader icon={<Info size={14} className="text-ai-accent" />} label="Informações Básicas" />
     <div>
       <label className="block text-sm font-medium text-ai-text mb-1">
-        Nome do Programa <span className="text-red-500">*</span>
+        Nome do Projeto <span className="text-red-500">*</span>
       </label>
       <input
         type="text"
@@ -41,9 +41,28 @@ export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSa
         rows={3}
         value={form.description}
         onChange={e => onChange({ ...form, description: e.target.value })}
-        placeholder="Descreva os objetivos principais e o contexto do programa..."
+        placeholder="Descreva os objetivos principais e o contexto do projeto..."
         className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text placeholder:text-ai-subtext/50 resize-none"
       />
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-ai-text mb-2">Tipo de Projeto</label>
+      <div className="inline-flex rounded-lg border border-ai-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => onChange({ ...form, program_type: 'assessoria' })}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${form.program_type === 'assessoria' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
+        >
+          Assessoria
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange({ ...form, program_type: 'fazenda' })}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-l border-ai-border ${form.program_type === 'fazenda' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
+        >
+          Fazenda
+        </button>
+      </div>
     </div>
 
     <SectionHeader icon={<Calendar size={14} className="text-ai-accent" />} label="Cronograma" />
@@ -67,7 +86,7 @@ export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSa
       rows={3}
       value={form.transformations_achievements}
       onChange={e => onChange({ ...form, transformations_achievements: e.target.value })}
-      placeholder="Quais mudanças reais este programa trará para a organização?"
+        placeholder="Quais mudanças reais este projeto trará para a organização?"
       className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text placeholder:text-ai-subtext/50 resize-none"
     />
 
@@ -217,7 +236,7 @@ export const ProgramModal: React.FC<ProgramModalProps> = ({ form, onChange, onSa
         className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-ai-accent/90 disabled:opacity-60 transition-colors"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-        {mode === 'create' ? 'Salvar Programa' : 'Atualizar Programa'}
+        {mode === 'create' ? 'Salvar Projeto' : 'Atualizar Projeto'}
       </button>
     </div>
   </ModalShell>

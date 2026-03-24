@@ -550,7 +550,7 @@ const AppContent: React.FC = () => {
   const isProjetoSubView =
     isIniciativasOverview || isIniciativasAtividades || isIniciativasKanban || isProjectStructure;
   const isRhFeedbackList = activeAgentId === 'rh-feedback-list';
-  const isProgramaCadastro = activeAgentId === 'cadastros' && cadastroView === 'project';
+  const isProjectCadastro = activeAgentId === 'cadastros' && cadastroView === 'project';
   const isAvaliacaoProtocolo = activeAgentId === 'cattle-profit' && viewMode === 'avaliacao-protocolo';
   const headerTitle = isAvaliacaoProtocolo
     ? 'Avaliação Protocolo 5-3-9'
@@ -574,8 +574,8 @@ const AppContent: React.FC = () => {
                     ? 'Área Certificados'
                     : isRhFeedbackList
                       ? 'RH - Feedback'
-                      : isProgramaCadastro
-                        ? 'Programa de Trabalho'
+                      : isProjectCadastro
+                        ? 'Projeto'
                         : activeAgent?.name;
 
   const renderContent = () => {
@@ -1072,7 +1072,7 @@ const AppContent: React.FC = () => {
                     : cadastroView === 'client' ? 'Organizações'
                     : cadastroView === 'people' ? 'Pessoas'
                     : cadastroView === 'perfis-config' ? 'Perfis e Cargos'
-                    : cadastroView === 'project' ? 'Programa de Trabalho'
+                    : cadastroView === 'project' ? 'Projeto'
                     : cadastroView === 'delivery' ? 'Entregas'
                     : 'Cadastro';
 

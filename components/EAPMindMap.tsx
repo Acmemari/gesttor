@@ -16,7 +16,7 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import { loadFullEAPTree, wbsTreeToFlowData, type WBSNode, type WBSLevel } from '../lib/eapTree';
 import { WBSNode as WBSNodeComponent, EAPNodeActionsContext } from './eap/WBSNode';
 import {
-  ProgramModal,
+  ProjectModal,
   DeliveryModal,
   ActivityModal,
   TaskModal,
@@ -137,8 +137,35 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
     ...INITIAL_TASK_FORM,
     activity_date: getCurrentIsoDate(),
   });
-  const peopleForResponsavel = useMemo(() => peopleFilteredForResponsavel(people), [people]);
-  const peopleForLiderInterno = useMemo(() => peopleFilteredForLiderInterno(people), [people]);
+  const activeProjectType = useMemo((): 'assessoria' | 'fazenda' => {
+    if (modalEntity !== 'activity') return 'assessoria';
+    function walkTree(nodes: WBSNode[], id: string | null): WBSNode | null {
+      if (!id) return null;
+      for (const n of nodes) {
+        if (n.id === id) return n;
+        const found = walkTree(n.children, id);
+        if (found) return found;
+      }
+      return null;
+    }
+    function findRoot(id: string | null): WBSNode | null {
+      const node = walkTree(tree, id);
+      if (!node) return null;
+      if (node.level === 'program') return node;
+      return findRoot(node.parentId);
+    }
+    const refId = editingNodeId ?? parentNodeIdForCreate;
+    const root = findRoot(refId);
+    return (root?.data.project?.program_type as 'assessoria' | 'fazenda') ?? 'assessoria';
+  }, [modalEntity, editingNodeId, parentNodeIdForCreate, tree]);
+  const peopleForResponsavel = useMemo(
+    () => activeProjectType === 'fazenda' ? people : peopleFilteredForResponsavel(people),
+    [people, activeProjectType],
+  );
+  const peopleForLiderInterno = useMemo(
+    () => activeProjectType === 'fazenda' ? people : peopleFilteredForLiderInterno(people),
+    [people, activeProjectType],
+  );
 
   const { fitView } = useReactFlow();
 
@@ -289,6 +316,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
           transformations_achievements: p.transformations_achievements || '',
           success_evidence: p.success_evidence?.length ? [...p.success_evidence] : [''],
           stakeholder_matrix: p.stakeholder_matrix?.length ? [...p.stakeholder_matrix] : [{ name: '', activity: '' }],
+          program_type: (p.program_type as 'assessoria' | 'fazenda') ?? 'assessoria',
         });
       } else if (level === 'delivery' && node.data.delivery) {
         const d = node.data.delivery;
@@ -361,7 +389,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       try {
         if (level === 'program') {
           await deleteProject(rawId);
-          toast('Programa removido.', 'success');
+          toast('Projeto removido.', 'success');
         } else if (level === 'delivery') {
           await deleteDelivery(rawId);
           toast('Entrega removida.', 'success');
@@ -396,7 +424,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
     if (saving) return;
     const name = programForm.name.trim();
     if (!name) {
-      toast('Nome do programa é obrigatório.', 'warning');
+      toast('Nome do projeto é obrigatório.', 'warning');
       return;
     }
     if (programForm.start_date && programForm.end_date && programForm.end_date < programForm.start_date) {
@@ -415,6 +443,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       stakeholder_matrix: programForm.stakeholder_matrix
         .map(r => ({ name: r.name.trim(), activity: r.activity.trim() }))
         .filter(r => r.name || r.activity),
+      program_type: programForm.program_type,
     };
 
     setSaving(true);
@@ -422,15 +451,15 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       if (editingNodeId) {
         const rawId = getRawIdFromNodeId(editingNodeId);
         await updateProject(rawId, payload);
-        toast('Programa atualizado.', 'success');
+        toast('Projeto atualizado.', 'success');
       } else {
         await createProject(effectiveUserId, payload);
-        toast('Programa criado.', 'success');
+        toast('Projeto criado.', 'success');
       }
       await loadTree();
       closeModal();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Erro ao salvar programa.', 'error');
+      toast(err instanceof Error ? err.message : 'Erro ao salvar projeto.', 'error');
     } finally {
       setSaving(false);
     }
@@ -444,7 +473,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
         ? findNodeInTree(editingNodeId)?.data.parentId
         : null;
     if (!projectId) {
-      toast('Selecione um programa.', 'warning');
+      toast('Selecione um projeto.', 'warning');
       return;
     }
     const name = deliveryForm.name.trim();
@@ -674,7 +703,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
     return (
       <>
         <div className="flex flex-col items-center justify-center h-96 gap-4 rounded-xl border border-ai-border bg-ai-bg">
-          <p className="text-sm text-ai-subtext">Nenhum programa cadastrado.</p>
+          <p className="text-sm text-ai-subtext">Nenhum projeto cadastrado.</p>
           {!readonly && (
             <button
               type="button"
@@ -685,12 +714,12 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
               }}
               className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-4 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
             >
-              Novo Programa
+              Novo Projeto
             </button>
           )}
         </div>
         {modalEntity === 'program' && (
-          <ProgramModal
+          <ProjectModal
             form={programForm}
             onChange={setProgramForm}
             onSave={saveProgram}
@@ -743,7 +772,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
                 }}
                 className="inline-flex items-center gap-2 rounded-lg bg-ai-accent px-3 py-2 text-sm font-medium text-white hover:bg-ai-accent/90 transition-colors"
               >
-                Novo Programa
+                Novo Projeto
               </button>
             )}
             <button
@@ -760,7 +789,7 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       </EAPNodeActionsContext.Provider>
 
       {modalEntity === 'program' && (
-        <ProgramModal
+        <ProjectModal
           form={programForm}
           onChange={setProgramForm}
           onSave={saveProgram}

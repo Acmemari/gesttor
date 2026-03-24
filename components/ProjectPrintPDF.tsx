@@ -12,7 +12,7 @@ import type { DeliveryRow } from '../lib/deliveries';
 import type { InitiativeWithProgress } from '../lib/initiatives';
 import { formatDateBR, formatMonthYearBR, formatLongDateBR, getDurationLabel } from '../lib/dateFormatters';
 
-export interface ProgramaImpressaoData {
+export interface ProjectPrintData {
   project: ProjectRow;
   deliveries: DeliveryRow[];
   initiativesByDeliveryId: Record<string, InitiativeWithProgress[]>;
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
 
 
 // ─── Document Component ──────────────────────────────────────────────────────
-const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
+const ProjectPrintPDF = ({ data }: { data: ProjectPrintData }) => {
   const { project, deliveries, initiativesByDeliveryId, userName } = data;
 
   const totalActivities = Object.values(initiativesByDeliveryId).reduce((s, arr) => s + arr.length, 0);
@@ -557,7 +557,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
   const dateLong = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
   
   // Title splitting logic
-  const pName = project.name || 'Programa de Trabalho';
+  const pName = project.name || 'Projeto';
   const words = pName.split(' ');
   const titleLine1 = words.length > 1 ? words[0] : pName;
   const titleLine2 = words.length > 1 ? words.slice(1).join(' ') : '';
@@ -571,7 +571,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
       <View style={styles.pageHeaderLeft}>
         <Text style={styles.pageHeaderLogo}>Gesttor Inttegra</Text>
         <View style={styles.pageHeaderSep} />
-        <Text style={styles.pageHeaderDoc}>Programa de Trabalho — {project.name}</Text>
+        <Text style={styles.pageHeaderDoc}>Projeto — {project.name}</Text>
       </View>
       <Text style={styles.pageHeaderRight}>{dateShort}</Text>
     </View>
@@ -581,13 +581,13 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
   const InnerFooter = () => (
     <View style={styles.pageFooter} fixed>
       <Text style={{ color: C.accent }}>[ Confidencial ] Documento de uso interno</Text>
-      <Text>Gesttor Inttegra — Programa de Trabalho</Text>
+      <Text>Gesttor Inttegra — Projeto</Text>
       <Text render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`} />
     </View>
   );
 
   return (
-    <Document title={`${project.name} - Programa de Trabalho`}>
+    <Document title={`${project.name} - Projeto`}>
       {/* PAGE 1: COVER */}
       <Page size="A4" style={styles.page}>
         <View style={styles.cover}>
@@ -603,7 +603,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
 
           <View style={styles.coverCentral}>
             <View style={styles.coverDivider} />
-            <Text style={styles.coverSubtitle}>Programa de Trabalho</Text>
+            <Text style={styles.coverSubtitle}>Projeto</Text>
             <Text style={styles.coverTitle}>{titleLine1}</Text>
             {titleLine2 && <Text style={[styles.coverTitle, styles.coverTitleAccent]}>{titleLine2}</Text>}
             <Text style={styles.coverDesc}>{project.description || ''}</Text>
@@ -630,7 +630,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
 
           <View style={styles.coverFooter}>
             <View>
-              <Text style={styles.coverFooterLeft}>Gesttor Inttegra — Programa de Trabalho</Text>
+              <Text style={styles.coverFooterLeft}>Gesttor Inttegra — Projeto</Text>
               <Text style={styles.coverFooterLeft}>Documento confidencial e de uso interno</Text>
             </View>
             <View>
@@ -647,7 +647,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
         
         {/* Descrição */}
         <View style={styles.sectionTitleBox}>
-          <Text style={styles.sectionTitleText}>Descrição do Programa</Text>
+          <Text style={styles.sectionTitleText}>Descrição do Projeto</Text>
           <View style={styles.sectionLine} />
         </View>
         <View style={styles.descBox}>
@@ -816,7 +816,7 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
         
         <View style={styles.confBox}>
           <Text style={styles.confTitle}>Aviso de Confidencialidade</Text>
-          <Text style={styles.confText}>Este documento é de propriedade da Gesttor Inttegra e contém informações confidenciais e privilegiadas. A reprodução, distribuição ou divulgação total ou parcial deste material sem autorização prévia por escrito é estritamente proibida. O uso deste documento é restrito aos stakeholders identificados neste programa de trabalho.</Text>
+          <Text style={styles.confText}>Este documento é de propriedade da Gesttor Inttegra e contém informações confidenciais e privilegiadas. A reprodução, distribuição ou divulgação total ou parcial deste material sem autorização prévia por escrito é estritamente proibida. O uso deste documento é restrito aos stakeholders identificados neste projeto.</Text>
         </View>
 
         <Text style={styles.sigTitle}>TERMOS DE ACEITE E ASSINATURAS</Text>
@@ -838,14 +838,14 @@ const ProgramaImpressaoPDF = ({ data }: { data: ProgramaImpressaoData }) => {
 };
 
 // Shared blob builder — renders the PDF only once
-const buildBlob = async (data: ProgramaImpressaoData): Promise<Blob> => {
+const buildBlob = async (data: ProjectPrintData): Promise<Blob> => {
   const doc = pdf();
-  doc.updateContainer(<ProgramaImpressaoPDF data={data} />);
+  doc.updateContainer(<ProjectPrintPDF data={data} />);
   return doc.toBlob();
 };
 
 // Fast ArrayBuffer → btoa (2-3x faster than FileReader)
-export const generateProgramaImpressaoBase64 = async (data: ProgramaImpressaoData): Promise<string> => {
+export const generateProjectPrintBase64 = async (data: ProjectPrintData): Promise<string> => {
   const blob = await buildBlob(data);
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -854,9 +854,9 @@ export const generateProgramaImpressaoBase64 = async (data: ProgramaImpressaoDat
   return btoa(binary);
 };
 
-export const generateProgramaImpressao = async (data: ProgramaImpressaoData) => {
+export const generateProjectPrint = async (data: ProjectPrintData) => {
   const blob = await buildBlob(data);
-  const safeName = (data.project.name || 'programa').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const safeName = (data.project.name || 'projeto').replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const url = URL.createObjectURL(blob);
   try {
     const link = document.createElement('a');

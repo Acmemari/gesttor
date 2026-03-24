@@ -16,12 +16,12 @@ import {
   Footer,
   PageNumber,
 } from 'docx';
-import type { ProgramaImpressaoData } from './generateProgramaImpressao';
+import type { ProjectPrintData } from './generateProjectPrint';
 import { formatDateBR, formatMonthYearBR, getDurationLabel } from './dateFormatters';
 
 
 
-export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData): Promise<Blob> {
+export async function generateProjectPrintDocx(data: ProjectPrintData): Promise<Blob> {
   const { project, deliveries, initiativesByDeliveryId, userName } = data;
 
   const totalActs = Object.values(initiativesByDeliveryId).reduce((s, a) => s + a.length, 0);
@@ -55,7 +55,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
       alignment: AlignmentType.LEFT,
       spacing: { after: 360 },
       children: [
-        new TextRun({ text: "PROGRAMA DE TRABALHO", bold: true, size: 24, color: "C8A96E" }),
+        new TextRun({ text: "PROJETO", bold: true, size: 24, color: "C8A96E" }),
       ],
     }),
     new Paragraph({
@@ -63,7 +63,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
       alignment: AlignmentType.LEFT,
       spacing: { after: 720 },
       children: [
-        new TextRun({ text: project.name || "Programa", bold: true, size: 64, color: "1B2A4A" }),
+        new TextRun({ text: project.name || "Projeto", bold: true, size: 64, color: "1B2A4A" }),
       ],
     }),
   ];
@@ -114,7 +114,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
 
   // --- Visão Geral (Overview) ---
   const overviewChildren: (Paragraph | Table)[] = [
-    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Descrição do Programa", color: "1B2A4A" })], spacing: { after: 240 } }),
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Descrição do Projeto", color: "1B2A4A" })], spacing: { after: 240 } }),
   ];
 
   if (project.description) {
@@ -295,7 +295,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
             new Paragraph({
               alignment: AlignmentType.RIGHT,
               children: [
-                new TextRun({ text: `Gesttor Inttegra — Programa de Trabalho (${dateLong})`, size: 16, color: "7A7A8A" })
+                new TextRun({ text: `Gesttor Inttegra — Projeto (${dateLong})`, size: 16, color: "7A7A8A" })
               ]
             })
           ]
@@ -332,7 +332,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
           shading: { type: ShadingType.CLEAR, fill: "F8F7F4" },
           spacing: { before: 120, after: 360 },
           children: [
-            new TextRun({ text: "Este documento é de propriedade da Gesttor Inttegra e contém informações confidenciais e privilegiadas. A reprodução, distribuição ou divulgação total ou parcial deste material sem autorização prévia por escrito é estritamente proibida. O uso deste documento é restrito aos stakeholders identificados neste programa de trabalho." })
+            new TextRun({ text: "Este documento é de propriedade da Gesttor Inttegra e contém informações confidenciais e privilegiadas. A reprodução, distribuição ou divulgação total ou parcial deste material sem autorização prévia por escrito é estritamente proibida. O uso deste documento é restrito aos stakeholders identificados neste projeto." })
           ]
         }),
         new Paragraph({ children: [new PageBreak()] }),
@@ -340,7 +340,7 @@ export async function generateProgramaImpressaoDocx(data: ProgramaImpressaoData)
         new Paragraph({
           spacing: { after: 960 },
           children: [
-            new TextRun({ text: "Pelo presente termo, as partes abaixo identificadas aprovam o escopo, as entregas, as atividades e o cronograma estabelecidos neste Programa de Trabalho, comprometendo-se com sua execução conforme as condições estipuladas." })
+            new TextRun({ text: "Pelo presente termo, as partes abaixo identificadas aprovam o escopo, as entregas, as atividades e o cronograma estabelecidos neste Projeto, comprometendo-se com sua execução conforme as condições estipuladas." })
           ]
         }),
         new Table({

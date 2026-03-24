@@ -80,9 +80,9 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       ? [
           {
             id: 'projeto',
-            title: <CadastroTitle entity="Programa de Trabalho" />,
+            title: <CadastroTitle entity="Projeto" />,
             description:
-              'Gerencie programas de trabalho, defina transformações esperadas, stakeholders e organize entregas, atividades e tarefas.',
+              'Gerencie projetos, defina transformações esperadas, stakeholders e organize entregas, atividades e tarefas.',
             icon: <ProgramWorkIcon />,
             onClick: onSelectProjeto,
           },

@@ -67,6 +67,10 @@ const AntonioChat: React.FC = () => {
         body: JSON.stringify({ question, history }),
       });
 
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Servidor indisponível. Tente novamente em instantes.');
+      }
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error ?? `Erro ${res.status}`);
 

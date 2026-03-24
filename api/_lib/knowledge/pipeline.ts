@@ -98,7 +98,7 @@ export async function runIngestionPipeline(documentId: string): Promise<void> {
     // Deletar chunks antigos (se estiver reprocessando)
     await pool.query(`DELETE FROM knowledge_chunks WHERE document_id = $1`, [documentId]);
 
-    const BATCH = 48; // chunks por chamada Voyage (conservador)
+    const BATCH = 80; // chunks por chamada Voyage (Voyage AI suporta 128; 80 é seguro e rápido)
     let totalEmbTokens = 0;
     let totalDone = 0;
 

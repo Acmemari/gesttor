@@ -106,6 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       end_date: body?.end_date ? String(body.end_date) : null,
       sort_order: nextOrder,
       stakeholder_matrix: stakeholder,
+      program_type: body?.program_type ? String(body.program_type) : 'assessoria',
     });
     jsonSuccess(res, row);
     return;
@@ -139,6 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payload.organization_id = body.organization_id || body.client_id || null;
     }
     if (body?.sort_order !== undefined) payload.sort_order = Number(body.sort_order);
+    if (body?.program_type !== undefined) payload.program_type = String(body.program_type);
 
     if (!isAdmin) {
       const [proj] = await db

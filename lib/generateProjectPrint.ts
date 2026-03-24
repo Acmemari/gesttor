@@ -1,1 +1,1 @@
-export * from '../components/ProgramaImpressaoPDF';
+export * from '../components/ProjectPrintPDF';

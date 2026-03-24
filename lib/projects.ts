@@ -18,6 +18,7 @@ export interface ProjectRow {
   end_date: string | null;
   sort_order: number;
   stakeholder_matrix: ProjectStakeholderRow[];
+  program_type?: 'assessoria' | 'fazenda';
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +32,7 @@ export interface ProjectPayload {
   start_date?: string | null;
   end_date?: string | null;
   stakeholder_matrix?: ProjectStakeholderRow[];
+  program_type?: 'assessoria' | 'fazenda';
 }
 
 export interface FetchProjectsFilters {

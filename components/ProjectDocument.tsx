@@ -25,7 +25,7 @@ function addDaysIso(iso: string, days: number): string {
   }
 }
 
-interface ProgramaDocumentoProps {
+interface ProjectDocumentProps {
   effectiveUserId: string;
   selectedOrganizationId?: string | null;
   selectedFarmId?: string | null;
@@ -49,7 +49,7 @@ const KANBAN_OPTIONS: { value: KanbanStatus; label: string }[] = [
   { value: 'Concluído', label: 'Concluído' },
 ];
 
-const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
+const ProjectDocument: React.FC<ProjectDocumentProps> = ({
   effectiveUserId,
   selectedOrganizationId,
   selectedFarmId,
@@ -320,7 +320,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
 
   const addDelivery = useCallback(async () => {
     if (!selectedProgramId) {
-      toast('Selecione um programa.', 'warning');
+      toast('Selecione um projeto.', 'warning');
       return;
     }
     setSaving(true);
@@ -478,18 +478,18 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
   if (tree.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-sm text-ai-subtext">Nenhum programa cadastrado.</p>
+        <p className="text-sm text-ai-subtext">Nenhum projeto cadastrado.</p>
         {!readonly && <button
           type="button"
           onClick={async () => {
             setSaving(true);
             try {
               await createProject(effectiveUserId, {
-                name: 'Novo Programa',
+                name: 'Novo Projeto',
                 organization_id: selectedOrganizationId || null,
               });
               await loadTree();
-              toast('Programa criado.', 'success');
+              toast('Projeto criado.', 'success');
             } catch (err) {
               toast(err instanceof Error ? err.message : 'Erro ao criar.', 'error');
             } finally {
@@ -500,7 +500,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
           className="inline-flex items-center gap-2 rounded-md bg-ai-accent px-4 py-2 text-sm text-white hover:bg-ai-accent/90 disabled:opacity-60"
         >
           <Plus size={14} />
-          Criar primeiro programa
+          Criar primeiro projeto
         </button>}
       </div>
     );
@@ -519,7 +519,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
         >
           {programs.map(p => (
             <option key={p.data.rawId} value={p.data.rawId}>
-              {p.data.project?.name || 'Programa sem nome'}
+              {p.data.project?.name || 'Projeto sem nome'}
             </option>
           ))}
         </select>
@@ -539,12 +539,12 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="p-6 md:p-8 space-y-6">
-          {/* PROGRAMA */}
+          {/* PROJETO */}
           {currentProgram && (
             <section className="space-y-4">
               <h2 className="text-lg font-bold text-ai-text flex items-center gap-2">
                 <FolderOpen size={18} className="text-indigo-500" />
-                PROGRAMA
+                PROJETO
               </h2>
               <div className="space-y-3 pl-6">
                 <div className="flex flex-wrap items-center gap-2">
@@ -552,7 +552,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                   <InlineText
                     value={currentProgram.name || ''}
                     onChange={v => handleProgramChange('name', v)}
-                    placeholder="Nome do programa"
+                    placeholder="Nome do projeto"
                     disabled={readonly}
                     className="flex-1 min-w-[200px]"
                   />
@@ -578,7 +578,7 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
                   <InlineTextarea
                     value={currentProgram.description || ''}
                     onChange={v => handleProgramChange('description', v)}
-                    placeholder="Descreva o programa aqui..."
+                    placeholder="Descreva o projeto aqui..."
                     rows={3}
                     disabled={readonly}
                   />
@@ -954,4 +954,4 @@ const ProgramaDocumento: React.FC<ProgramaDocumentoProps> = ({
   );
 };
 
-export default ProgramaDocumento;
+export default ProjectDocument;

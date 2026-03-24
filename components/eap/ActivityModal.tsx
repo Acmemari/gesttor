@@ -69,11 +69,11 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
     </div>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Data inicial</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Data inicial *</label>
         <DateInputBR value={form.start_date} onChange={v => onChange({ ...form, start_date: v })} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Data final</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Data final *</label>
         <DateInputBR
           value={form.end_date}
           onChange={v => onChange({ ...form, end_date: v })}
@@ -98,7 +98,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-ai-text mb-1">Lider Interno</label>
+        <label className="block text-sm font-medium text-ai-text mb-1">Lider Interno *</label>
         <select
           value={form.internal_leader_id}
           onChange={e => onChange({ ...form, internal_leader_id: e.target.value })}

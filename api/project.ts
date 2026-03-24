@@ -1,8 +1,8 @@
 /**
- * API de programa de trabalho — carregamento hierárquico sem N+1.
+ * API de projeto — carregamento hierárquico sem N+1.
  *
- * GET /api/program?orgId=...       → projetos com progresso (via v_program_progress)
- * GET /api/program?projectId=...   → hierarquia completa: projeto + entregas + iniciativas + marcos + tarefas
+ * GET /api/project?orgId=...       → projetos com progresso (via v_program_progress)
+ * GET /api/project?projectId=...   → hierarquia completa: projeto + entregas + iniciativas + marcos + tarefas
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';

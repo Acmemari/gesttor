@@ -676,7 +676,7 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
     fetchProjects(effectiveUserId, filters)
       .then(setProjects)
       .catch(err => {
-        console.error('[InitiativesActivities] Erro ao carregar programas:', err);
+        console.error('[InitiativesActivities] Erro ao carregar projetos:', err);
         setProjects([]);
       });
   }, [effectiveUserId, selectedClient?.id]);

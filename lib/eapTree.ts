@@ -165,7 +165,7 @@ export async function loadFullEAPTree(
       parentId: null,
       data: {
         level: 'program',
-        label: project.name || 'Programa sem nome',
+        label: project.name || 'Projeto sem nome',
         subtitle: `${formatDateBR(project.start_date)} — ${formatDateBR(project.end_date)}`,
         rawId: project.id,
         parentId: null,
