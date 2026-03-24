@@ -17,6 +17,25 @@ function sanitize(val: string): string {
   return String(val ?? '').trim();
 }
 
+function serializeDelivery(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    project_id: row.projectId ?? row.project_id,
+    organization_id: row.organizationId ?? row.organization_id,
+    created_by: row.createdBy ?? row.created_by,
+    transformations_achievements: row.transformationsAchievements ?? row.transformations_achievements,
+    due_date: row.dueDate ?? row.due_date,
+    start_date: row.startDate ?? row.start_date,
+    end_date: row.endDate ?? row.end_date,
+    sort_order: row.sortOrder ?? row.sort_order,
+    stakeholder_matrix: row.stakeholderMatrix ?? row.stakeholder_matrix ?? [],
+    created_at: row.createdAt ?? row.created_at,
+    updated_at: row.updatedAt ?? row.updated_at,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
@@ -38,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       await assertProjectAccess(projectId, userId, role);
       const rows = await listDeliveriesByProject(projectId);
-      jsonSuccess(res, rows);
+      jsonSuccess(res, rows.map(r => serializeDelivery(r as unknown as Record<string, unknown>)));
       return;
     }
 
@@ -65,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         end_date: body?.end_date ? String(body.end_date) : null,
         sort_order: sortOrder,
       });
-      jsonSuccess(res, row);
+      jsonSuccess(res, serializeDelivery(row as unknown as Record<string, unknown>));
       return;
     }
 
@@ -88,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body?.sort_order !== undefined) payload.sort_order = Number(body.sort_order);
 
       const row = await updateDelivery(id, payload);
-      jsonSuccess(res, row);
+      jsonSuccess(res, serializeDelivery(row as unknown as Record<string, unknown>));
       return;
     }
 
