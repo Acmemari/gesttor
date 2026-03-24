@@ -5,7 +5,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
-import { getUserRole, assertDeliveryAccess, assertInitiativeAccess } from './_lib/orgAccess.js';
+import { getUserRole, assertDeliveryAccess, assertInitiativeAccess, assertOrgAccess } from './_lib/orgAccess.js';
+import { db } from '../src/DB/index.js';
+import { eq, inArray, asc } from 'drizzle-orm';
+import { initiativeMilestones, initiativeTasks } from '../src/DB/schema.js';
 import {
   listInitiativesByDelivery,
   listInitiativesByOrg,
@@ -91,28 +94,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rows = await listInitiativesByDelivery(deliveryId);
         if (!withTree) { jsonSuccess(res, rows.map(r => serializeInitiative(r as unknown as Record<string, unknown>))); return; }
 
-        // withTree=true: incluir milestones e tasks para cada iniciativa (em paralelo)
-        const withMilestones = await Promise.all(
-          rows.map(async (initiative) => {
-            const milestones = await listMilestonesByInitiative(initiative.id);
-            const milestonesWithTasks = await Promise.all(
-              milestones.map(async (m) => {
-                const tasks = await listTasksByMilestone(m.id);
-                return { ...m, tasks };
-              }),
-            );
-            const allTasks = milestonesWithTasks.flatMap(m => m.tasks);
-            const totalTasks = allTasks.length;
-            const completedTasks = allTasks.filter(t => t.completed).length;
-            const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-            return { ...serializeInitiative(initiative as unknown as Record<string, unknown>), milestones: milestonesWithTasks, progress };
-          }),
-        );
+        // withTree=true: incluir milestones e tasks para cada iniciativa (Batch optimized)
+        const initiativeIds = rows.map(i => i.id as any);
+        if (initiativeIds.length === 0) { jsonSuccess(res, []); return; }
+
+        const milestones = await db.select().from(initiativeMilestones)
+          .where(inArray(initiativeMilestones.initiativeId, initiativeIds))
+          .orderBy(asc(initiativeMilestones.sortOrder));
+
+        const milestoneIds = milestones.map(m => m.id as any);
+        const tasks = milestoneIds.length > 0
+          ? await db.select().from(initiativeTasks)
+              .where(inArray(initiativeTasks.milestoneId, milestoneIds))
+              .orderBy(asc(initiativeTasks.sortOrder))
+          : [];
+
+        const tasksByMilestone = new Map<string, any[]>();
+        tasks.forEach(t => {
+          const mid = String(t.milestoneId);
+          if (!tasksByMilestone.has(mid)) tasksByMilestone.set(mid, []);
+          tasksByMilestone.get(mid)!.push(t);
+        });
+
+        const milestonesByInitiative = new Map<string, any[]>();
+        milestones.forEach(m => {
+          const iid = String(m.initiativeId);
+          if (!milestonesByInitiative.has(iid)) milestonesByInitiative.set(iid, []);
+          milestonesByInitiative.get(iid)!.push({ ...m, tasks: tasksByMilestone.get(String(m.id)) ?? [] });
+        });
+
+        const withMilestones = rows.map(initiative => {
+          const ms = milestonesByInitiative.get(String(initiative.id)) ?? [];
+          const allTasks = ms.flatMap(m => m.tasks);
+          const totalTasks = allTasks.length;
+          const completedTasks = allTasks.filter(t => t.completed).length;
+          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+          return { ...serializeInitiative(initiative as unknown as Record<string, unknown>), milestones: ms, progress };
+        });
+
         jsonSuccess(res, withMilestones);
         return;
       }
 
       if (orgId) {
+        await assertOrgAccess(orgId, userId, role);
         const rows = await listInitiativesByOrg(orgId);
         jsonSuccess(res, rows.map(r => serializeInitiative(r as unknown as Record<string, unknown>)));
         return;

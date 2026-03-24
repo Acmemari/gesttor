@@ -38,6 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       if (initiativeId) {
+        await assertInitiativeAccess(initiativeId, userId, role);
         const rows = await listTasksByInitiative(initiativeId);
         jsonSuccess(res, rows);
         return;

@@ -117,7 +117,7 @@ const InitiativesOverview: React.FC = () => {
     [isAdmin, selectedAnalyst, user?.id],
   );
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isMounted: () => boolean) => {
     if (!effectiveUserId) {
       setInitiatives([]);
       setDeliveries([]);
@@ -139,20 +139,27 @@ const InitiativesOverview: React.FC = () => {
         fetchDeliveries(effectiveUserId, Object.keys(deliveryFilters).length > 0 ? deliveryFilters : undefined),
       ]);
 
+      if (!isMounted()) return;
       setInitiatives(list);
       setDeliveries(deliveryList);
     } catch (e) {
+      if (!isMounted()) return;
       console.error('[InitiativesOverview] loadData:', e);
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados');
       setInitiatives([]);
       setDeliveries([]);
     } finally {
-      setLoading(false);
+      if (isMounted()) setLoading(false);
     }
   }, [effectiveUserId, selectedClient?.id, selectedFarm?.id]);
 
   useEffect(() => {
-    loadData();
+    let mounted = true;
+    const checkMounted = () => mounted;
+    loadData(checkMounted);
+    return () => {
+      mounted = false;
+    };
   }, [loadData]);
 
   const yearOptions = useMemo(() => {
@@ -390,7 +397,7 @@ const InitiativesOverview: React.FC = () => {
         <p className="text-sm">{error}</p>
         <button
           type="button"
-          onClick={loadData}
+          onClick={() => loadData(() => true)}
           className="mt-3 px-4 py-2 rounded-lg bg-ai-accent text-white text-sm hover:opacity-90"
         >
           Tentar novamente
