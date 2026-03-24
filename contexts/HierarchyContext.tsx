@@ -477,8 +477,8 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // Visitante: não chamar Supabase (query com analyst_id = VISITOR_ANALYST_ID pode travar por RLS).
-      if (effectiveAnalystId === VISITOR_ANALYST_ID) {
+      // Visitante: não chamar API — usa stub local para evitar query com ID fictício.
+      if (user?.qualification === 'visitante') {
         dispatch({
           type: 'SET_ORGANIZATIONS',
           payload: { data: [VISITOR_ORGANIZATION], append: false, hasMore: false },

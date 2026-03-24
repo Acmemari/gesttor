@@ -443,14 +443,14 @@ const Comparator: React.FC<ComparatorProps> = ({ onToast, initialScenarios }) =>
       });
 
       const comparatorData = {
-        type: 'comparator_pdf',
+        type: 'comparator_pdf' as const,
         pdf_base64: pdfBase64,
         scenarios: scenariosPayload,
       };
 
       // Salvar o comparativo completo (PDF + dados dos cenários) - um único registro, sem cenário adicional
       await saveComparatorReport(user.id, saveName.trim(), comparatorData, {
-        clientId: selectedClient?.id || null,
+        organizationId: selectedClient?.id || null,
         farmId: selectedFarm?.id || null,
         farmName: selectedFarm?.name || null,
       });

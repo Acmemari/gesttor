@@ -108,19 +108,30 @@ export const organizations = pgTable('organizations', {
   plan: text('plan'),
   ativo: boolean('ativo').default(true),
   ownerId: text('owner_id'),
-  analystId: text('analyst_id'),
+  // Analista responsável — NOT NULL: toda organização deve ter um analista.
+  // onDelete: restrict — impede exclusão de analista enquanto houver orgs vinculadas.
+  analystId: text('analyst_id').notNull().references(() => userProfiles.id, { onDelete: 'restrict' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_organizations_analyst_id').on(t.analystId),
+  index('idx_organizations_ativo').on(t.ativo),
+]);
 
 export const organizationAnalysts = pgTable('organization_analysts', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
-  analystId: text('analyst_id').notNull(),
+  // FK garante que só analistas existentes podem ser vinculados.
+  // onDelete: cascade — ao remover um analista, remove seus vínculos secundários.
+  analystId: text('analyst_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
   permissions: jsonb('permissions').default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  // Garante que o mesmo analista não seja vinculado duas vezes à mesma org.
+  uniqueIndex('org_analysts_org_analyst_uidx').on(t.organizationId, t.analystId),
+  index('idx_org_analysts_analyst_id').on(t.analystId),
+]);
 
 // ── User profiles ──────────────────────────────────────────────────────────────
 
@@ -139,16 +150,22 @@ export const userProfiles = pgTable('user_profiles', {
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_user_profiles_organization_id').on(t.organizationId),
+]);
 
 // ── Farms ──────────────────────────────────────────────────────────────────────
 
 export const farms = pgTable('farms', {
   id: text('id').primaryKey(),
+  // Slug para exibição e roteamento amigável. Gerado a partir do nome da fazenda.
+  // Novos registros recebem UUID como `id` e o slug fica neste campo.
+  slug: text('slug').unique(),
   name: text('name').notNull(),
   country: text('country').notNull(),
   state: text('state'),
   city: text('city').notNull(),
+  // Postgres não cria índice automático em colunas FK — declarado explicitamente abaixo.
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   totalArea: numeric('total_area'),
   pastureArea: numeric('pasture_area'),
@@ -175,7 +192,10 @@ export const farms = pgTable('farms', {
   createdBy: text('created_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_farms_organization_id').on(t.organizationId),
+  index('idx_farms_ativo').on(t.ativo),
+]);
 
 
 // ── People ─────────────────────────────────────────────────────────────────────
@@ -198,14 +218,12 @@ export const people = pgTable('people', {
   observacoes: text('observacoes'),
   ativo: boolean('ativo').default(true),
   createdBy: text('created_by'),
-  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
   podeAlterarSemanaFechada: boolean('pode_alterar_semana_fechada').default(false),
   podeApagarSemana: boolean('pode_apagar_semana').default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_people_organization_id').on(t.organizationId),
-  index('idx_people_farm_id').on(t.farmId),
   index('idx_people_ativo').on(t.ativo),
   // Partial unique index on CPF (nulls allowed, but non-null CPF must be unique)
   // Note: Drizzle doesn't support partial indexes natively; enforced via SQL migration

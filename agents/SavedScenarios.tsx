@@ -159,11 +159,11 @@ const SavedScenarios: React.FC<SavedScenariosProps> = ({
     setError(null);
     try {
       // Construir filtros baseado no contexto
-      const filters: { clientId?: string; farmId?: string } = {};
+      const filters: { organizationId?: string; farmId?: string } = {};
 
       // Para analistas/admins com cliente selecionado
       if (isAnalystOrAdmin && selectedClient) {
-        filters.clientId = selectedClient.id;
+        filters.organizationId = selectedClient.id;
 
         // Se tiver fazenda selecionada e filtro por fazenda ativo
         if (selectedFarm && filterMode === 'farm') {

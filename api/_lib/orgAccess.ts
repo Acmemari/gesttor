@@ -129,6 +129,7 @@ export async function assertDeliveryAccess(
 
 /**
  * Resolve iniciativa → entrega → projeto → organização e verifica acesso.
+ * Usa JOIN único em vez de queries sequenciais para evitar N round-trips ao banco.
  */
 export async function assertInitiativeAccess(
   initiativeId: string,
@@ -137,20 +138,35 @@ export async function assertInitiativeAccess(
 ): Promise<void> {
   if (role === 'admin' || role === 'administrador') return;
 
-  const [initiative] = await db
-    .select({ deliveryId: initiativesTable.deliveryId })
+  const [row] = await db
+    .select({ analystId: organizations.analystId, orgId: organizations.id })
     .from(initiativesTable)
+    .innerJoin(deliveriesTable, eq(deliveriesTable.id, initiativesTable.deliveryId))
+    .innerJoin(projectsTable, eq(projectsTable.id, deliveriesTable.projectId))
+    .innerJoin(organizations, eq(organizations.id, projectsTable.organizationId))
     .where(eq(initiativesTable.id, initiativeId))
     .limit(1);
 
-  if (!initiative) {
+  if (!row) {
     throw Object.assign(new Error('Iniciativa não encontrada'), { status: 404, code: 'NOT_FOUND' });
   }
-  await assertDeliveryAccess(initiative.deliveryId, userId, role);
+
+  if (row.analystId === userId) return;
+
+  const [secondary] = await db
+    .select({ id: organizationAnalysts.id })
+    .from(organizationAnalysts)
+    .where(and(eq(organizationAnalysts.organizationId, row.orgId), eq(organizationAnalysts.analystId, userId)))
+    .limit(1);
+
+  if (!secondary) {
+    throw Object.assign(new Error('Sem permissão para esta organização'), { status: 403, code: 'FORBIDDEN' });
+  }
 }
 
 /**
  * Resolve marco → iniciativa → entrega → projeto → organização e verifica acesso.
+ * Usa JOIN único em vez de queries sequenciais.
  */
 export async function assertMilestoneAccess(
   milestoneId: string,
@@ -159,20 +175,36 @@ export async function assertMilestoneAccess(
 ): Promise<void> {
   if (role === 'admin' || role === 'administrador') return;
 
-  const [milestone] = await db
-    .select({ initiativeId: initiativeMilestones.initiativeId })
+  const [row] = await db
+    .select({ analystId: organizations.analystId, orgId: organizations.id })
     .from(initiativeMilestones)
+    .innerJoin(initiativesTable, eq(initiativesTable.id, initiativeMilestones.initiativeId))
+    .innerJoin(deliveriesTable, eq(deliveriesTable.id, initiativesTable.deliveryId))
+    .innerJoin(projectsTable, eq(projectsTable.id, deliveriesTable.projectId))
+    .innerJoin(organizations, eq(organizations.id, projectsTable.organizationId))
     .where(eq(initiativeMilestones.id, milestoneId))
     .limit(1);
 
-  if (!milestone) {
+  if (!row) {
     throw Object.assign(new Error('Marco não encontrado'), { status: 404, code: 'NOT_FOUND' });
   }
-  await assertInitiativeAccess(milestone.initiativeId, userId, role);
+
+  if (row.analystId === userId) return;
+
+  const [secondary] = await db
+    .select({ id: organizationAnalysts.id })
+    .from(organizationAnalysts)
+    .where(and(eq(organizationAnalysts.organizationId, row.orgId), eq(organizationAnalysts.analystId, userId)))
+    .limit(1);
+
+  if (!secondary) {
+    throw Object.assign(new Error('Sem permissão para esta organização'), { status: 403, code: 'FORBIDDEN' });
+  }
 }
 
 /**
  * Resolve tarefa → marco → iniciativa → entrega → projeto → organização e verifica acesso.
+ * Usa JOIN único (6 tabelas) em vez de 5–6 queries sequenciais.
  */
 export async function assertTaskAccess(
   taskId: string,
@@ -181,14 +213,30 @@ export async function assertTaskAccess(
 ): Promise<void> {
   if (role === 'admin' || role === 'administrador') return;
 
-  const [task] = await db
-    .select({ milestoneId: initiativeTasks.milestoneId })
+  const [row] = await db
+    .select({ analystId: organizations.analystId, orgId: organizations.id })
     .from(initiativeTasks)
+    .innerJoin(initiativeMilestones, eq(initiativeMilestones.id, initiativeTasks.milestoneId))
+    .innerJoin(initiativesTable, eq(initiativesTable.id, initiativeMilestones.initiativeId))
+    .innerJoin(deliveriesTable, eq(deliveriesTable.id, initiativesTable.deliveryId))
+    .innerJoin(projectsTable, eq(projectsTable.id, deliveriesTable.projectId))
+    .innerJoin(organizations, eq(organizations.id, projectsTable.organizationId))
     .where(eq(initiativeTasks.id, taskId))
     .limit(1);
 
-  if (!task) {
+  if (!row) {
     throw Object.assign(new Error('Tarefa não encontrada'), { status: 404, code: 'NOT_FOUND' });
   }
-  await assertMilestoneAccess(task.milestoneId, userId, role);
+
+  if (row.analystId === userId) return;
+
+  const [secondary] = await db
+    .select({ id: organizationAnalysts.id })
+    .from(organizationAnalysts)
+    .where(and(eq(organizationAnalysts.organizationId, row.orgId), eq(organizationAnalysts.analystId, userId)))
+    .limit(1);
+
+  if (!secondary) {
+    throw Object.assign(new Error('Sem permissão para esta organização'), { status: 403, code: 'FORBIDDEN' });
+  }
 }

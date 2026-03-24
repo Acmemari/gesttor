@@ -15,6 +15,13 @@
       "when": 1774223490761,
       "tag": "0001_tense_punisher",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774354010533,
+      "tag": "0002_smiling_maverick",
+      "breakpoints": true
     }
   ]
 }

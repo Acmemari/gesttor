@@ -633,8 +633,8 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
     }
     setLoading(true);
     try {
-      const filters: { clientId?: string; farmId?: string } = {};
-      if (selectedClient?.id) filters.clientId = selectedClient.id;
+      const filters: { organizationId?: string; farmId?: string } = {};
+      if (selectedClient?.id) filters.organizationId = selectedClient.id;
       if (selectedFarm?.id) filters.farmId = selectedFarm.id;
 
       const list = await fetchInitiatives(effectiveUserId, Object.keys(filters).length > 0 ? filters : undefined);
@@ -672,7 +672,7 @@ const InitiativesActivities: React.FC<InitiativesActivitiesProps> = ({ onToast }
       setProjects([]);
       return;
     }
-    const filters = selectedClient?.id ? { clientId: selectedClient.id } : undefined;
+    const filters = selectedClient?.id ? { organizationId: selectedClient.id } : undefined;
     fetchProjects(effectiveUserId, filters)
       .then(setProjects)
       .catch(err => {

@@ -446,7 +446,7 @@ const AntonioAdmin: React.FC = () => {
           <div className="p-6 space-y-5">
             {/* Upload area */}
             <div
-              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
                 dragOver
                   ? 'border-ai-accent bg-ai-accent/5'
                   : 'border-ai-border bg-ai-surface/30 hover:bg-ai-surface/50'
@@ -454,6 +454,7 @@ const AntonioAdmin: React.FC = () => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={28} className="mx-auto mb-3 text-ai-subtext" />
               <p className="text-sm font-medium text-ai-text mb-1">Arraste um arquivo ou clique para selecionar</p>

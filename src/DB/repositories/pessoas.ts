@@ -1,4 +1,4 @@
-import { eq, and, ilike, or, inArray } from 'drizzle-orm';
+import { eq, and, ilike, or, inArray, exists } from 'drizzle-orm';
 import { db } from '../index.js';
 import {
   people, perfils, cargoFuncao, personProfiles, personFarms, personPermissions,
@@ -48,7 +48,6 @@ export type CreatePessoaInput = {
   endereco?: string;
   observacoes?: string;
   created_by?: string;
-  farm_id?: string;
 };
 
 export type UpdatePessoaInput = Partial<CreatePessoaInput>;
@@ -77,7 +76,15 @@ export async function listPessoas(
     eq(people.ativo, ativo),
   ];
   if (search) conditions.push(ilike(people.fullName, `%${search}%`));
-  if (farmId) conditions.push(eq(people.farmId, farmId));
+  // Filtro por fazenda via junction personFarms (sem coluna direta legada)
+  if (farmId) {
+    conditions.push(
+      exists(
+        db.select({ _: personFarms.id }).from(personFarms)
+          .where(and(eq(personFarms.pessoaId, people.id), eq(personFarms.farmId, farmId))),
+      ),
+    );
+  }
 
   // If filtering by perfilId, get matching person IDs first via junction table
   if (opts.perfilId) {
@@ -105,23 +112,12 @@ export async function listPessoasByFarm(
   farmId: string,
   params: { offset?: number; limit?: number; assumeTarefas?: boolean } = {},
 ) {
-  // Query 1: pessoas vinculadas via tabela de junção (abordagem nova)
+  // Pessoas vinculadas via tabela de junção personFarms
   const fromJunction = await db.select({ pessoa: people }).from(personFarms)
-    .innerJoin(people, eq(personFarms.pessoaId, people.id))
+    .innerJoin(people, and(eq(personFarms.pessoaId, people.id), eq(people.ativo, true)))
     .where(eq(personFarms.farmId, farmId));
 
-  // Query 2: pessoas vinculadas via coluna direta people.farmId (abordagem legada)
-  const fromDirect = await db.select().from(people)
-    .where(and(eq(people.farmId, farmId), eq(people.ativo, true)));
-
-  // Mescla e deduplica por id
-  const seen = new Set<string>();
-  const merged: (typeof people.$inferSelect)[] = [];
-  for (const p of [...fromJunction.map(r => r.pessoa), ...fromDirect]) {
-    if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
-  }
-
-  let result = merged;
+  let result = fromJunction.map(r => r.pessoa);
 
   if (params.assumeTarefas !== undefined) {
     // Carrega permissões explícitas para esta fazenda
@@ -168,7 +164,6 @@ export async function createPessoa(data: CreatePessoaInput) {
     endereco: data.endereco ?? null,
     observacoes: data.observacoes ?? null,
     createdBy: data.created_by ?? null,
-    farmId: data.farm_id ?? null,
     ativo: true,
   }).returning();
   return row;
@@ -189,7 +184,6 @@ export async function updatePessoa(id: string, data: UpdatePessoaInput) {
   if (data.data_contratacao !== undefined) mapped.dataContratacao = data.data_contratacao;
   if (data.endereco !== undefined) mapped.endereco = data.endereco;
   if (data.observacoes !== undefined) mapped.observacoes = data.observacoes;
-  if (data.farm_id !== undefined) mapped.farmId = data.farm_id;
   const [row] = await db.update(people).set(mapped).where(eq(people.id, id as any)).returning();
   return row;
 }
@@ -405,17 +399,17 @@ export async function analystCanAccessOrg(analystId: string, orgId: string): Pro
 }
 
 export async function analystCanAccessPessoa(analystId: string, pessoaId: string): Promise<boolean> {
-  const [person] = await db.select().from(people).where(eq(people.id, pessoaId as any)).limit(1);
+  const [person] = await db.select({ organizationId: people.organizationId })
+    .from(people).where(eq(people.id, pessoaId as any)).limit(1);
   if (!person) return false;
   if (person.organizationId) return analystCanAccessOrg(analystId, person.organizationId);
-  if (person.farmId) {
-    const [farm] = await db.select({ organizationId: farms.organizationId })
-      .from(farms)
-      .where(eq(farms.id, person.farmId))
-      .limit(1);
-    if (farm && farm.organizationId) {
-      return analystCanAccessOrg(analystId, farm.organizationId);
-    }
-  }
+  // Fallback: verificar via fazenda(s) vinculadas na junction personFarms
+  const [pf] = await db
+    .select({ organizationId: farms.organizationId })
+    .from(personFarms)
+    .innerJoin(farms, eq(farms.id, personFarms.farmId))
+    .where(eq(personFarms.pessoaId, pessoaId as any))
+    .limit(1);
+  if (pf?.organizationId) return analystCanAccessOrg(analystId, pf.organizationId);
   return false;
 }

@@ -26,8 +26,8 @@ import {
 } from '../src/DB/repositories/hierarchy.js';
 import { mapFarmFromDatabase, mapFarmsFromDatabase } from '../lib/utils/farmMapper.js';
 
-/** Gera slug a partir do nome da fazenda e da organização. */
-function generateFarmId(farmName: string, orgName: string): string {
+/** Gera slug de exibição a partir do nome da fazenda e da organização. */
+function generateFarmSlug(farmName: string, orgName: string): string {
   return `${orgName}-${farmName}`
     .toLowerCase()
     .normalize('NFD')
@@ -212,11 +212,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .where(eq(organizations.id, body.organizationId))
       .limit(1);
 
-    const baseSlug = generateFarmId(farmName, org?.name ?? body.organizationId);
+    const slug = generateFarmSlug(farmName, org?.name ?? body.organizationId);
 
     try {
       const farmData: CreateFarmInput = {
-        id: baseSlug,
+        id: crypto.randomUUID(),
+        slug,
         name: farmName,
         country: body.country ?? 'Brasil',
         state: body.state ?? null,

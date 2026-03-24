@@ -74,10 +74,10 @@ const InitiativesKanban: React.FC<InitiativesKanbanProps> = ({ onToast }) => {
 
   const refresh = useCallback(async () => {
     if (!effectiveUserId) return;
-    const filters = { clientId: selectedClient?.id, farmId: selectedFarm?.id };
+    const filters = { organizationId: selectedClient?.id, farmId: selectedFarm?.id };
     const [inits, dels, ppl] = await Promise.all([
       fetchInitiatives(effectiveUserId, filters),
-      fetchDeliveries(effectiveUserId, { clientId: selectedClient?.id }),
+      fetchDeliveries(effectiveUserId, { organizationId: selectedClient?.id }),
       fetchPeople(effectiveUserId, { farmId: selectedFarm?.id, sharedScope: Boolean(selectedFarm?.id) }),
     ]);
     setInitiatives(inits);

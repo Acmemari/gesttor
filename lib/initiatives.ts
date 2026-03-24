@@ -120,7 +120,9 @@ function unwrap<T>(result: { ok: true; data: T } | { ok: false; error: string },
 }
 
 function mapInitiativeRow(r: initiativesApi.InitiativeRow): InitiativeRow {
-  return { ...r, client_id: r.organization_id };
+  const rawTags = r.tags as unknown;
+  const tags = Array.isArray(rawTags) ? (rawTags as string[]).join(' ') || null : (rawTags as string | null);
+  return { ...r, tags, client_id: r.organization_id };
 }
 
 function calcProgress(milestones: InitiativeMilestoneRow[]): number {

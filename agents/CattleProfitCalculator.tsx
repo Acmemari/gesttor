@@ -430,7 +430,7 @@ const CattleProfitCalculator: React.FC<CattleProfitCalculatorProps> = ({
     setIsSaving(true);
     try {
       await saveScenario(user.id, name, inputs, results, {
-        clientId: selectedClient?.id || null,
+        organizationId: selectedClient?.id || null,
         farmId: selectedFarm?.id || null,
         farmName: selectedFarm?.name || null,
       });

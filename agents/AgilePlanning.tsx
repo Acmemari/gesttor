@@ -1766,7 +1766,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       const base64 = generateAgilePlanningReportPDFAsBase64(reportData);
       const reportName = `Planejamento Ágil - ${reportData.header.farmName} - ${new Date().toLocaleDateString('pt-BR')}`;
       await saveReportPdf(user.id, reportName, base64, 'agile_planning_pdf', {
-        clientId: selectedClient?.id ?? null,
+        organizationId: selectedClient?.id ?? null,
         farmId: selectedFarm?.id ?? null,
         farmName: reportData.header.farmName || null,
       });

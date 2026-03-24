@@ -45,7 +45,7 @@ function serializeInitiative(row: Record<string, unknown>) {
     weight: row.weight,
     percent: row.percent,
     sort_order: row.sortOrder ?? row.sort_order,
-    tags: row.tags,
+    tags: Array.isArray(row.tags) ? (row.tags as string[]).join(' ') || null : (row.tags as string | null),
     created_at: row.createdAt ?? row.created_at,
     updated_at: row.updatedAt ?? row.updated_at,
   };

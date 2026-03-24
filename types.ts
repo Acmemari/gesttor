@@ -89,6 +89,7 @@ export interface Organization {
   updatedAt: string;
 }
 
+/** @deprecated Alias legado. Prefira `Organization` em novos tipos e componentes. */
 export type Client = Organization;
 
 export interface AuthContextType {
@@ -219,6 +220,7 @@ export interface OrganizationFarm {
   createdAt: string;
 }
 
+/** @deprecated Alias legado. Prefira `OrganizationFarm`. */
 export type ClientFarm = OrganizationFarm;
 
 export interface OrganizationAnalyst {
@@ -228,6 +230,7 @@ export interface OrganizationAnalyst {
   createdAt: string;
 }
 
+/** @deprecated Alias legado. Prefira `OrganizationAnalyst`. */
 export type ClientAnalyst = OrganizationAnalyst;
 
 export interface OrganizationOwner {
@@ -241,6 +244,7 @@ export interface OrganizationOwner {
   updatedAt: string;
 }
 
+/** @deprecated Alias legado. Prefira `OrganizationOwner`. */
 export type ClientOwner = OrganizationOwner;
 
 // ============================================================================

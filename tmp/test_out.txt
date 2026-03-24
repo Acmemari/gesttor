@@ -1,0 +1,50 @@
+Searching for organization 'Reunidas Floresta'...
+Found orgs: [{"id":"ffba116a-5538-492e-bacf-7656ed546dfb","name":"Reunidas Floresta","analystId":"user_3Aug1G7lSf0DyLFrq78yV8UxcHv"}]
+
+People in org Reunidas Floresta (ffba116a-5538-492e-bacf-7656ed546dfb):
+Count: 5
+[
+  {
+    "id": "a0a07278-51fd-48e0-836e-3a57d64e754f",
+    "fullName": "Antonio Chaker Neto",
+    "ativo": false
+  },
+  {
+    "id": "59a0faa1-a3a9-4324-b30c-aa7823615f24",
+    "fullName": "Felipe Medice",
+    "ativo": true
+  },
+  {
+    "id": "e723f633-7b0c-4268-8379-a21260125224",
+    "fullName": "Yasmain",
+    "ativo": true
+  },
+  {
+    "id": "9b1c41da-ad14-4797-b889-00114971c4a3",
+    "fullName": "Antonio Chaker Analista",
+    "ativo": true
+  },
+  {
+    "id": "b0c7bfb5-f72e-4385-abbe-21fee8d345ec",
+    "fullName": "Fernando Siqueira de Paula",
+    "ativo": true
+  }
+]
+
+People without organization:
+Count: (limiting 10)
+[]
+
+People with Felipe in name:
+[
+  {
+    "id": "9a6a22e6-7a18-4285-9ef6-d0baa66b96ef",
+    "fullName": "Felipe Beltrâo",
+    "orgId": "1f773cb5-fbc9-46cc-b1c9-ab8cdd060ceb"
+  },
+  {
+    "id": "59a0faa1-a3a9-4324-b30c-aa7823615f24",
+    "fullName": "Felipe Medice",
+    "orgId": "ffba116a-5538-492e-bacf-7656ed546dfb"
+  }
+]

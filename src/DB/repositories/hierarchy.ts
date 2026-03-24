@@ -8,6 +8,7 @@ export type FarmRow = typeof farms.$inferSelect;
 
 export type CreateFarmInput = {
   id: string;
+  slug?: string | null;
   name: string;
   country: string;
   state?: string | null;
@@ -68,6 +69,7 @@ export async function getFarms(
 export async function createFarm(data: CreateFarmInput, createdBy?: string) {
   const [row] = await db.insert(farms).values({
     id: data.id,
+    slug: data.slug ?? null,
     name: data.name,
     country: data.country,
     state: data.state ?? null,

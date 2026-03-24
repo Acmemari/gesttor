@@ -140,7 +140,7 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
   );
 
   const clientFilter = useMemo(
-    () => (selectedClient?.id ? { clientId: selectedClient.id } : undefined),
+    () => (selectedClient?.id ? { organizationId: selectedClient.id } : undefined),
     [selectedClient?.id],
   );
 
@@ -230,7 +230,7 @@ const ProjectStructureReport: React.FC<ProjectStructureReportProps> = ({ onToast
           const base64 = generateProjectStructurePdfAsBase64(pdfPayload);
           const reportName = `Estrutura - ${selectedProject.name} - ${new Date().toLocaleDateString('pt-BR')}`;
           await saveReportPdf(user.id, reportName, base64, 'project_structure_pdf', {
-            clientId: selectedClient?.id ?? null,
+            organizationId: selectedClient?.id ?? null,
           });
         } catch (saveErr) {
           console.error('Erro ao salvar PDF em Meus Salvos:', saveErr);

@@ -302,7 +302,7 @@ const QuestionnaireFiller: React.FC<QuestionnaireFillerProps> = ({
         const name = generateQuestionnaireName(selectedFarm.name);
 
         const newQuestionnaire = await saveQuestionnaire(user!.id, name, {
-          clientId: selectedClient?.id,
+          organizationId: selectedClient?.id,
           farmId: selectedFarm.id,
           farmName: selectedFarm.name,
           productionSystem: selectedFarm.productionSystem,
