@@ -22,6 +22,26 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ form, onChange, onSa
     subtitle="Preencha os detalhes para criar uma nova atividade."
     onClose={saving ? () => {} : onClose}
   >
+    <div>
+      <label className="block text-sm font-medium text-ai-text mb-2">Tipo de Projeto</label>
+      <div className="inline-flex rounded-lg border border-ai-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => onChange({ ...form, program_type: 'assessoria' })}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${form.program_type === 'assessoria' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
+        >
+          Assessoria
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange({ ...form, program_type: 'fazenda' })}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-l border-ai-border ${form.program_type === 'fazenda' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
+        >
+          Fazenda
+        </button>
+      </div>
+    </div>
+
     <SectionHeader icon={<Info size={14} className="text-ai-accent" />} label="Informações Básicas" />
     <div>
       <label className="block text-sm font-medium text-ai-text mb-1">
@@ -44,25 +64,6 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ form, onChange, onSa
         placeholder="Descreva os objetivos principais e o contexto do projeto..."
         className="w-full rounded-lg border border-ai-border bg-ai-surface px-3 py-2.5 text-sm text-ai-text placeholder:text-ai-subtext/50 resize-none"
       />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-ai-text mb-2">Tipo de Projeto</label>
-      <div className="inline-flex rounded-lg border border-ai-border overflow-hidden">
-        <button
-          type="button"
-          onClick={() => onChange({ ...form, program_type: 'assessoria' })}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${form.program_type === 'assessoria' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
-        >
-          Assessoria
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange({ ...form, program_type: 'fazenda' })}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-l border-ai-border ${form.program_type === 'fazenda' ? 'bg-ai-accent text-white' : 'bg-ai-surface text-ai-subtext hover:text-ai-text'}`}
-        >
-          Fazenda
-        </button>
-      </div>
     </div>
 
     <SectionHeader icon={<Calendar size={14} className="text-ai-accent" />} label="Cronograma" />

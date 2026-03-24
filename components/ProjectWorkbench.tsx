@@ -153,6 +153,8 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
   const [people, setPeople] = useState<Person[]>([]);
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
 
+  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+
   const activeProjectType = useMemo(
     () => projects.find(p => p.id === selectedProgramId)?.program_type ?? 'assessoria',
     [projects, selectedProgramId],
@@ -165,8 +167,6 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
     () => activeProjectType === 'fazenda' ? people : peopleFilteredForLiderInterno(people),
     [people, activeProjectType],
   );
-
-  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
 
