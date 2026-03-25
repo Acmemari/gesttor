@@ -62,6 +62,13 @@ export const baVerification = pgTable('ba_verification', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+export const baRateLimit = pgTable('ba_rate_limit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+});
+
 // ── Organization Owners ────────────────────────────────────────────────────────
 
 export const organizationOwners = pgTable('organization_owners', {

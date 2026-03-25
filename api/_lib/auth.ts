@@ -17,7 +17,7 @@ import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
 import { db } from '../../src/DB/index.js';
-import { baUser, baSession, baAccount, baVerification, userProfiles } from '../../src/DB/schema.js';
+import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles } from '../../src/DB/schema.js';
 
 if (!process.env.BETTER_AUTH_SECRET) {
   console.warn('[auth] BETTER_AUTH_SECRET não configurado — usando valor temporário inseguro');
@@ -88,6 +88,7 @@ export const auth = betterAuth({
       session: baSession,
       account: baAccount,
       verification: baVerification,
+      rateLimit: baRateLimit,
     },
   }),
 
