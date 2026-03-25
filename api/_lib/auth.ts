@@ -17,11 +17,7 @@ import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
 import { db } from '../../src/DB/index.js';
-import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles } from '../../src/DB/schema.js';
-
-if (!process.env.BETTER_AUTH_SECRET) {
-  console.warn('[auth] BETTER_AUTH_SECRET não configurado — usando valor temporário inseguro');
-}
+import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles, people } from '../../src/DB/schema.js';
 
 // ── Resend (lazy — evita falha se RESEND_API_KEY não estiver definido) ────────
 
@@ -75,7 +71,14 @@ function getResetPasswordHtml(resetUrl: string, userName?: string): string {
 // ── Better Auth ────────────────────────────────────────────────────────────────
 
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET ?? 'dev-insecure-secret-change-me',
+  secret: (() => {
+    const s = process.env.BETTER_AUTH_SECRET;
+    if (s) return s;
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      throw new Error('[auth] BETTER_AUTH_SECRET não configurado em produção');
+    }
+    return 'dev-insecure-secret-change-me';
+  })(),
   baseURL: process.env.BETTER_AUTH_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3333'),
   basePath: '/api/auth',
@@ -115,7 +118,7 @@ export const auth = betterAuth({
           if (result.error) {
             console.error('[auth] Erro ao enviar email de reset:', result.error);
           } else {
-            console.log('[auth] Email de reset enviado para:', user.email);
+            console.log('[auth] Email de reset enviado com sucesso');
           }
         }).catch((err) => {
           console.error('[auth] Erro ao enviar email de reset:', err);
@@ -126,7 +129,7 @@ export const auth = betterAuth({
     },
 
     onPasswordReset: async ({ user }) => {
-      console.log(`[auth] Senha redefinida com sucesso para: ${user.email}`);
+      console.log('[auth] Senha redefinida com sucesso');
     },
 
     password: {
@@ -193,6 +196,17 @@ export const auth = betterAuth({
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
+            }
+
+            // Vincular registros people com o mesmo email (convites pendentes)
+            try {
+              const { isNull, and } = await import('drizzle-orm');
+              await db
+                .update(people)
+                .set({ userId: user.id, updatedAt: new Date() })
+                .where(and(eq(people.email, user.email), isNull(people.userId)));
+            } catch (linkErr) {
+              console.error('[auth] Erro ao vincular people ao novo usuário:', linkErr);
             }
           } catch (err) {
             console.error('[auth] Erro ao criar user_profiles após signup:', err);

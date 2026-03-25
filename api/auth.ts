@@ -8,6 +8,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
+import { getUserRole } from './_lib/orgAccess.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { db, pool, userProfiles, organizations } from '../src/DB/index.js';
 
@@ -48,7 +49,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── GET /api/auth — retorna perfil do usuário autenticado ───────────────────
   if (req.method === 'GET') {
-    const profile = await getProfileWithClientId(userId);
+    let profile = await getProfileWithClientId(userId);
+
+    // Reconciliação: se ba_user existe mas user_profiles não, criar automaticamente
+    if (!profile) {
+      try {
+        const result = await pool.query<{ id: string; email: string; name: string }>(
+          'SELECT id, email, name FROM ba_user WHERE id = $1',
+          [userId],
+        );
+        const baUser = result.rows[0];
+        if (baUser) {
+          await db.insert(userProfiles).values({
+            id: baUser.id,
+            email: baUser.email,
+            name: baUser.name ?? baUser.email.split('@')[0],
+            role: 'visitante',
+            status: 'active',
+            ativo: true,
+            avatar: (baUser.name ?? baUser.email).charAt(0).toUpperCase(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          profile = await getProfileWithClientId(userId);
+        }
+      } catch (err) {
+        console.error('[auth] Erro na reconciliação de user_profiles:', err);
+      }
+    }
+
     if (!profile) {
       jsonError(res, 'Perfil não encontrado', { code: 'NOT_FOUND', status: 404 });
       return;
@@ -66,10 +95,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       plan?: string;
     };
 
-    const name = (body.name ?? '').trim();
+    const name = (body.name ?? '').trim().slice(0, 200);
     const imageUrl = typeof body.imageUrl === 'string' && body.imageUrl.startsWith('http') ? body.imageUrl : null;
     const phone = body.phone !== undefined ? body.phone : undefined;
     const plan = body.plan;
+
+    // Apenas administrador pode alterar o plan
+    const userRole = await getUserRole(userId).catch(() => 'visitante');
+    const safePlan = userRole === 'administrador' ? plan : undefined;
 
     try {
       await db
@@ -78,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ...(name ? { name } : {}),
           ...(imageUrl !== null ? { imageUrl, avatar: imageUrl } : {}),
           ...(phone !== undefined ? { phone } : {}),
-          ...(plan ? { plan } : {}),
+          ...(safePlan ? { plan: safePlan } : {}),
           updatedAt: new Date(),
         })
         .where(eq(userProfiles.id, userId));

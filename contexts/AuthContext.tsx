@@ -132,14 +132,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await authClient.signIn.email({ email, password });
 
       if (result.error) {
-        let msg = result.error.message || result.error.statusText || 'Credenciais inválidas';
+        let msg = result.error.message || result.error.statusText || 'Email ou senha inválidos';
         if (
           msg.toLowerCase().includes('password') ||
           msg.toLowerCase().includes('credential') ||
+          msg.toLowerCase().includes('email') ||
+          msg.toLowerCase().includes('user') ||
           result.error.code === 'INVALID_PASSWORD' ||
+          result.error.code === 'USER_NOT_FOUND' ||
           msg === 'Invalid email or password'
         ) {
-          msg = 'senha errada';
+          msg = 'Email ou senha inválidos';
         }
         log.error('signIn error', new Error(msg), { code: result.error.code, status: result.error.status });
         return { success: false, error: msg };
@@ -160,6 +163,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setUser(profile);
+
+      // Salvar phone pendente do signup (autoSignIn: false → phone salvo no primeiro login)
+      const pendingPhone = sessionStorage.getItem('pendingPhone');
+      if (pendingPhone) {
+        apiFetch('/api/auth', { method: 'POST', body: JSON.stringify({ phone: pendingPhone }) }).catch(() => {});
+        sessionStorage.removeItem('pendingPhone');
+      }
+
       return { success: true };
     } catch {
       return { success: false, error: 'Erro de conexão. Verifique sua internet.' };
@@ -167,7 +178,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ── Signup ───────────────────────────────────────────────────────────────────
-  const signup = useCallback(async (email: string, password: string, name: string): Promise<{ success: boolean; error?: string }> => {
+  const signup = useCallback(async (
+    email: string,
+    password: string,
+    name: string,
+    phone?: string,
+    _organizationName?: string,
+  ): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
     try {
       const result = await authClient.signUp.email({ email, password, name });
@@ -186,6 +203,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         log.error('signUp error', new Error(msg), { code: result.error.code, status: result.error.status });
         return { success: false, error: msg };
+      }
+
+      // autoSignIn: false → sem token agora. Salvar phone para enviar no primeiro login.
+      if (phone) {
+        sessionStorage.setItem('pendingPhone', phone);
       }
 
       return { success: true };

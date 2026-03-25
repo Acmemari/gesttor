@@ -102,7 +102,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
 
   // Real-time password validation
   const passwordsMatch = isSignup ? confirmPassword === '' || password === confirmPassword : true;
-  const passwordLengthValid = isSignup ? password === '' || password.length >= 6 : true;
+  const passwordLengthValid = isSignup ? password === '' || password.length >= 8 : true;
 
   return (
     <div className="w-full min-h-screen bg-[#f5f5f5] text-ai-text font-sans overflow-y-auto flex items-center justify-center">
@@ -243,7 +243,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
               <label className="block text-[11px] sm:text-xs font-medium text-gray-700 mb-1">
                 Senha
                 {isSignup && password && !passwordLengthValid && (
-                  <span className="text-rose-500 ml-1">(mínimo 6 caracteres)</span>
+                  <span className="text-rose-500 ml-1">(mínimo 8 caracteres)</span>
                 )}
               </label>
               <div className="relative">
@@ -263,8 +263,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500'
                       : 'border-gray-200 focus:border-gray-500'
                   }`}
-                  placeholder={isSignup ? 'Mínimo 6 caracteres' : '••••••••'}
-                  minLength={isSignup ? 6 : undefined}
+                  placeholder={isSignup ? 'Mínimo 8 caracteres' : '••••••••'}
+                  minLength={isSignup ? 8 : undefined}
                 />
                 <button
                   type="button"

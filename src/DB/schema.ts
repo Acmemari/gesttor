@@ -232,6 +232,7 @@ export const people = pgTable('people', {
 }, (t) => [
   index('idx_people_organization_id').on(t.organizationId),
   index('idx_people_ativo').on(t.ativo),
+  index('idx_people_user_id').on(t.userId),
   // Partial unique index on CPF (nulls allowed, but non-null CPF must be unique)
   // Note: Drizzle doesn't support partial indexes natively; enforced via SQL migration
 ]);
