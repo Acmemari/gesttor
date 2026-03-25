@@ -402,7 +402,7 @@ export const initiativeTasks = pgTable('initiative_tasks', {
   completedAt: timestamp('completed_at'),
   dueDate: date('due_date'),
   sortOrder: integer('sort_order').notNull().default(0),
-  kanbanStatus: text('kanban_status').notNull().default('A Fazer'),
+  kanbanStatus: text('kanban_status').notNull().default('a fazer'),
   kanbanOrder: integer('kanban_order').notNull().default(0),
   responsiblePersonId: uuid('responsible_person_id').references(() => people.id, { onDelete: 'set null' }),
   activityDate: date('activity_date'),

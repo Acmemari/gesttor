@@ -10,6 +10,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
 import {
   getCurrentSemana,
   getSemanaById,
@@ -20,19 +21,43 @@ import {
 } from '../src/DB/repositories/semanas.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
 
   const userId = await getAuthUserIdFromRequest(req);
   if (!userId) { jsonError(res, 'Não autorizado', { status: 401 }); return; }
+
+  let role: string;
+  try {
+    role = await getUserRole(userId);
+  } catch (err: any) {
+    jsonError(res, err.message, { status: err.status ?? 401 });
+    return;
+  }
 
   if (req.method === 'GET') {
     const { id, modo, farmId, current, numero } = req.query as Record<string, string | undefined>;
 
     if (id) {
       const row = await getSemanaById(id);
+      // Verifica acesso: se a semana tem farmId, valida; caso contrário, apenas admin/analista
+      if (row?.farmId) {
+        try { await assertFarmAccess(row.farmId, userId, role); } catch (err: any) {
+          jsonError(res, err.message, { status: err.status ?? 403 }); return;
+        }
+      } else if (role !== 'admin' && role !== 'administrador') {
+        jsonError(res, 'Sem permissão', { status: 403 }); return;
+      }
       jsonSuccess(res, row);
       return;
+    }
+
+    if (farmId) {
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+    } else if (role !== 'admin' && role !== 'administrador') {
+      jsonError(res, 'farmId é obrigatório', { status: 400 }); return;
     }
 
     if (numero && modo) {
@@ -60,6 +85,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       jsonError(res, 'numero, modo, data_inicio e data_fim são obrigatórios', { status: 400 });
       return;
     }
+    if (farm_id) {
+      try { await assertFarmAccess(String(farm_id), userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+    } else if (role !== 'admin' && role !== 'administrador') {
+      jsonError(res, 'farm_id é obrigatório', { status: 400 }); return;
+    }
     const row = await createSemana({
       numero: Number(numero),
       modo: String(modo),
@@ -75,6 +107,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'PATCH') {
     const id = typeof req.query?.id === 'string' ? req.query.id : null;
     if (!id) { jsonError(res, 'id é obrigatório', { status: 400 }); return; }
+    const semana = await getSemanaById(id);
+    if (!semana) { jsonError(res, 'Semana não encontrada', { status: 404 }); return; }
+    if (semana.farmId) {
+      try { await assertFarmAccess(semana.farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+    } else if (role !== 'admin' && role !== 'administrador') {
+      jsonError(res, 'Sem permissão', { status: 403 }); return;
+    }
     const body = (req.body || {}) as Record<string, unknown>;
     const partial: Record<string, unknown> = {};
     if (body.aberta !== undefined) partial.aberta = Boolean(body.aberta);
@@ -88,6 +129,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'DELETE') {
     const id = typeof req.query?.id === 'string' ? req.query.id : null;
     if (!id) { jsonError(res, 'id é obrigatório', { status: 400 }); return; }
+    const semana = await getSemanaById(id);
+    if (!semana) { jsonError(res, 'Semana não encontrada', { status: 404 }); return; }
+    if (semana.farmId) {
+      try { await assertFarmAccess(semana.farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+    } else if (role !== 'admin' && role !== 'administrador') {
+      jsonError(res, 'Sem permissão', { status: 403 }); return;
+    }
     await deleteSemana(id);
     jsonSuccess(res, { deleted: true });
     return;

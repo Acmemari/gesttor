@@ -12,20 +12,35 @@ import type { VercelRequest } from '@vercel/node';
 import { auth } from './auth.js';
 
 /**
- * Extrai e valida o Bearer token da requisição via Better Auth.
+ * Extrai e valida o token de sessão da requisição via Better Auth.
+ * Suporta duas estratégias (em ordem de prioridade):
+ *   1. Authorization: Bearer {token}  — clientes que usam localStorage/sessionStorage
+ *   2. Cookie: {session_cookie}       — clientes que usam httpOnly cookies (mais seguro)
+ *
  * Retorna o userId (= user_profiles.id) ou null se não autenticado.
  */
 export async function getAuthUserIdFromRequest(req: VercelRequest): Promise<string | null> {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
+  const cookieHeader = req.headers.cookie;
 
-  const value = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-  const token = value.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-  if (!token) return null;
+  // Precisa de pelo menos um dos dois para tentar validar
+  if (!authHeader && !cookieHeader) return null;
 
   try {
     // Chamada in-process — não faz HTTP para evitar chamadas circulares no Vercel
-    const headers = new Headers({ Authorization: `Bearer ${token}` });
+    const headers = new Headers();
+
+    if (authHeader) {
+      const value = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+      const token = value.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    if (cookieHeader) {
+      const cookie = Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader;
+      headers.set('Cookie', cookie);
+    }
+
     const session = await auth.api.getSession({ headers });
     return session?.user?.id ?? null;
   } catch {

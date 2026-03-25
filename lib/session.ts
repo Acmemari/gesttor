@@ -1,30 +1,34 @@
 /**
  * Helpers de sessão — agora powered by Better Auth.
- * O token de sessão opaco é armazenado em localStorage sob BA_TOKEN_KEY.
+ * O token de sessão opaco é armazenado em sessionStorage sob BA_TOKEN_KEY.
+ *
+ * sessionStorage (vs localStorage):
+ *  - Escopo por aba: apagado ao fechar aba/navegador
+ *  - Menor superfície de exposição a XSS persistente
  *
  * A interface pública (setToken, clearToken, getAccessToken, getAuthHeaders)
  * permanece idêntica para não quebrar nenhum caller existente.
  */
 import { BA_TOKEN_KEY } from './auth/betterAuthClient';
 
-/** Salva o session token no localStorage. */
+function getStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return window.sessionStorage;
+}
+
+/** Salva o session token no sessionStorage. */
 export function setToken(token: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(BA_TOKEN_KEY, token);
-  }
+  getStorage()?.setItem(BA_TOKEN_KEY, token);
 }
 
-/** Remove o session token do localStorage. */
+/** Remove o session token do sessionStorage. */
 export function clearToken(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(BA_TOKEN_KEY);
-  }
+  getStorage()?.removeItem(BA_TOKEN_KEY);
 }
 
-/** Obtém o session token atual do localStorage. */
+/** Obtém o session token atual do sessionStorage. */
 export function getAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return Promise.resolve(null);
-  return Promise.resolve(localStorage.getItem(BA_TOKEN_KEY));
+  return Promise.resolve(getStorage()?.getItem(BA_TOKEN_KEY) ?? null);
 }
 
 /** Retorna headers prontos para requisições autenticadas. */

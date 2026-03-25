@@ -34,7 +34,7 @@ async function getProfileWithClientId(userId: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;

@@ -181,7 +181,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           lower.includes('registered') ||
           result.error.code === 'USER_ALREADY_EXISTS'
         ) {
-          msg = 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.';
+          // Mensagem neutra para evitar enumeração de e-mails (user enumeration attack)
+          msg = 'Não foi possível criar a conta com essas informações. Verifique os dados e tente novamente.';
         }
         log.error('signUp error', new Error(msg), { code: result.error.code, status: result.error.status });
         return { success: false, error: msg };

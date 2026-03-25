@@ -7,7 +7,7 @@ import { semanas, atividades, historicoSemanas } from '../schema.js';
 export async function getCurrentSemana(modo: string, farmId?: string | null) {
   const conditions = farmId
     ? and(eq(semanas.aberta, true), eq(semanas.modo, modo), eq(semanas.farmId, farmId))
-    : and(eq(semanas.aberta, true), eq(semanas.modo, modo));
+    : and(eq(semanas.aberta, true), eq(semanas.modo, modo), isNull(semanas.farmId));
   const [row] = await db.select().from(semanas).where(conditions).orderBy(desc(semanas.numero)).limit(1);
   return row;
 }
@@ -20,7 +20,7 @@ export async function getSemanaById(id: string) {
 export async function getSemanaByNumero(numero: number, modo: string, farmId?: string | null) {
   const conditions = farmId
     ? and(eq(semanas.numero, numero), eq(semanas.modo, modo), eq(semanas.farmId, farmId))
-    : and(eq(semanas.numero, numero), eq(semanas.modo, modo));
+    : and(eq(semanas.numero, numero), eq(semanas.modo, modo), isNull(semanas.farmId));
   const [row] = await db.select().from(semanas).where(conditions).limit(1);
   return row;
 }
@@ -64,6 +64,11 @@ export async function deleteSemana(id: string) {
 
 export async function listAtividadesBySemana(semanaId: string) {
   return db.select().from(atividades).where(eq(atividades.semanaId, semanaId));
+}
+
+export async function getAtividadeById(id: string) {
+  const [row] = await db.select().from(atividades).where(eq(atividades.id, id)).limit(1);
+  return row;
 }
 
 export async function createAtividade(data: {
@@ -162,6 +167,11 @@ export async function createHistorico(data: {
     concluidas: data.concluidas,
     pendentes: data.pendentes,
   }).returning();
+  return row;
+}
+
+export async function getHistoricoById(id: string) {
+  const [row] = await db.select().from(historicoSemanas).where(eq(historicoSemanas.id, id)).limit(1);
   return row;
 }
 

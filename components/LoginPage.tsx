@@ -37,8 +37,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
         return;
       }
 
-      if (password.length < 6) {
-        setLoginError('A senha deve ter pelo menos 6 caracteres.');
+      if (password.length < 8) {
+        setLoginError('A senha deve ter pelo menos 8 caracteres.');
         setIsSubmitting(false);
         return;
       }
@@ -65,8 +65,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
 
       if (!result.success) {
         const errMsg = result.error || '';
-        const isEmailTaken = errMsg.toLowerCase().includes('already') || errMsg.toLowerCase().includes('exist') || errMsg.toLowerCase().includes('registered');
-        setLoginError(isEmailTaken ? 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.' : errMsg || 'Erro ao criar conta. Tente novamente.');
+        setLoginError(errMsg || 'Não foi possível criar a conta com essas informações. Verifique os dados e tente novamente.');
         setIsSubmitting(false);
         return;
       }

@@ -4,7 +4,7 @@ import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { pool } from '../src/DB/index.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
 
   const userId = await getAuthUserIdFromRequest(req);

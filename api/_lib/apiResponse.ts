@@ -55,11 +55,40 @@ function mapErrorCodeToStatus(code?: string): number {
   return 500;
 }
 
+// Origens permitidas para CORS (nunca usar '*' em produção)
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://localhost:3004',
+  'http://localhost:3013',
+  'http://localhost:3014',
+  'http://localhost:3333',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  ...(process.env.VITE_APP_URL ? [process.env.VITE_APP_URL] : []),
+  ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+];
+
 /**
  * Define CORS headers para rotas de dados.
+ * Usa allowlist de origens — nunca expõe '*'.
  */
-export function setCorsHeaders(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+export function setCorsHeaders(res: VercelResponse, req?: import('@vercel/node').VercelRequest): void {
+  const origin = req?.headers?.origin as string | undefined;
+
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else if (!origin) {
+    // Requisição server-to-server sem Origin header — permitir
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  // Se origin vier mas não estiver na lista, não define o header (bloqueio implícito)
+
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }

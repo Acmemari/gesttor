@@ -10,6 +10,7 @@ import {
   userProfiles,
   organizations,
   organizationAnalysts,
+  farms,
   projects as projectsTable,
   deliveries as deliveriesTable,
   initiatives as initiativesTable,
@@ -71,6 +72,36 @@ export async function assertOrgAccess(orgId: string, userId: string, role: strin
       code: 'FORBIDDEN',
     });
   }
+}
+
+/**
+ * Verifica se o usuário tem acesso à fazenda.
+ * Admin passa direto. Demais roles precisam ter acesso à organização da fazenda.
+ * Retorna o organizationId da fazenda.
+ */
+export async function assertFarmAccess(
+  farmId: string,
+  userId: string,
+  role: string,
+): Promise<string> {
+  const [farm] = await db
+    .select({ organizationId: farms.organizationId })
+    .from(farms)
+    .where(eq(farms.id, farmId))
+    .limit(1);
+
+  if (!farm) {
+    throw Object.assign(new Error('Fazenda não encontrada'), {
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  }
+
+  if (role !== 'admin' && role !== 'administrador') {
+    await assertOrgAccess(farm.organizationId, userId, role);
+  }
+
+  return farm.organizationId;
 }
 
 /**

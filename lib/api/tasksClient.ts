@@ -7,7 +7,7 @@ const API_BASE = '/api';
 
 const fetchApi = fetchWithAuth as <T>(url: string, options?: RequestInit) => Promise<ApiSuccess<T> | ApiError>;
 
-export type KanbanStatus = 'A Fazer' | 'Andamento' | 'Pausado' | 'Concluído';
+export type KanbanStatus = 'a fazer' | 'em andamento' | 'pausada' | 'concluída';
 
 export interface TaskRow {
   id: string;
@@ -26,6 +26,30 @@ export interface TaskRow {
   weight: string;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Campos retornados por listTasksByWeek (camelCase — Drizzle ORM).
+ * Diferente de TaskRow (snake_case) que era o formato de outros endpoints.
+ */
+export interface WeekTaskRow {
+  id: string;
+  milestoneId: string;
+  title: string;
+  description: string | null;
+  completed: boolean;
+  completedAt: string | null;
+  dueDate: string | null;
+  sortOrder: number;
+  responsiblePersonId: string | null;
+  kanbanStatus: string;
+  kanbanOrder: number;
+  activityDate: string | null;
+  durationDays: number | null;
+  createdAt: string;
+  updatedAt: string;
+  initiativeName: string;
+  initiativeId: string;
 }
 
 export interface TaskPayload {
@@ -48,6 +72,13 @@ export async function listTasksByMilestone(milestoneId: string) {
 
 export async function listTasksByInitiative(initiativeId: string) {
   return fetchApi<TaskRow[]>(`${API_BASE}/tasks?initiativeId=${encodeURIComponent(initiativeId)}`);
+}
+
+/** Busca tarefas de projetos com activity_date dentro da semana informada. */
+export async function listTasksByWeek(weekStart: string, weekEnd: string) {
+  return fetchApi<WeekTaskRow[]>(
+    `${API_BASE}/tasks?weekStart=${encodeURIComponent(weekStart)}&weekEnd=${encodeURIComponent(weekEnd)}`,
+  );
 }
 
 export async function createTask(payload: TaskPayload) {

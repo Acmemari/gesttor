@@ -104,7 +104,7 @@ async function assertAnalystOrgAccess(analystId: string, orgId: string, res: Ver
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;

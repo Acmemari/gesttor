@@ -119,7 +119,7 @@ export async function runIngestionPipeline(documentId: string): Promise<void> {
       await pool.query(
         `INSERT INTO knowledge_chunks (document_id, chunk_index, content, token_count, metadata, embedding)
          SELECT
-           unnest($1::text[]),
+           unnest($1::uuid[]),
            unnest($2::int[]),
            unnest($3::text[]),
            unnest($4::int[]),

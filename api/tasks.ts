@@ -1,13 +1,21 @@
 /**
  * API de tarefas de marcos (initiative_tasks). Suporta kanban.
+ *
+ * GET  /api/tasks?milestoneId=...              → tarefas de um marco
+ * GET  /api/tasks?initiativeId=...             → tarefas de uma iniciativa
+ * GET  /api/tasks?weekStart=YYYY-MM-DD&weekEnd=YYYY-MM-DD → tarefas da semana (por activity_date)
+ * POST /api/tasks                              → criar tarefa
+ * PATCH/PUT /api/tasks?id=...                  → atualizar tarefa (action=kanban para drag-drop)
+ * DELETE /api/tasks?id=...                     → deletar tarefa
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
-import { getUserRole, assertMilestoneAccess, assertTaskAccess } from './_lib/orgAccess.js';
+import { getUserRole, assertMilestoneAccess, assertTaskAccess, assertInitiativeAccess } from './_lib/orgAccess.js';
 import {
   listTasksByMilestone,
   listTasksByInitiative,
+  listTasksByWeek,
   createTask,
   updateTask,
   updateTaskKanban,
@@ -15,7 +23,7 @@ import {
 } from '../src/DB/repositories/tasks.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
 
   const userId = await getAuthUserIdFromRequest(req);
@@ -30,6 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const milestoneId = typeof req.query?.milestoneId === 'string' ? req.query.milestoneId : null;
       const initiativeId = typeof req.query?.initiativeId === 'string' ? req.query.initiativeId : null;
+      const weekStart = typeof req.query?.weekStart === 'string' ? req.query.weekStart : null;
+      const weekEnd = typeof req.query?.weekEnd === 'string' ? req.query.weekEnd : null;
 
       if (milestoneId) {
         await assertMilestoneAccess(milestoneId, userId, role);
@@ -43,7 +53,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonSuccess(res, rows);
         return;
       }
-      jsonError(res, 'milestoneId ou initiativeId é obrigatório', { status: 400 });
+      if (weekStart && weekEnd) {
+        const rows = await listTasksByWeek(userId, weekStart, weekEnd);
+        jsonSuccess(res, rows);
+        return;
+      }
+      jsonError(res, 'milestoneId, initiativeId ou weekStart+weekEnd é obrigatório', { status: 400 });
       return;
     }
 
@@ -63,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         due_date: body?.due_date ? String(body.due_date) : null,
         sort_order: body?.sort_order !== undefined ? Number(body.sort_order) : undefined,
         responsible_person_id: body?.responsible_person_id ? String(body.responsible_person_id) : null,
-        kanban_status: body?.kanban_status ? String(body.kanban_status) : 'A Fazer',
+        kanban_status: body?.kanban_status ? String(body.kanban_status) : 'a fazer',
         kanban_order: body?.kanban_order !== undefined ? Number(body.kanban_order) : 0,
         activity_date: body?.activity_date ? String(body.activity_date) : null,
         duration_days: body?.duration_days !== undefined ? Number(body.duration_days) : null,
@@ -83,9 +98,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Atualização rápida kanban (drag-and-drop)
       if (body?.action === 'kanban') {
-        const kanbanStatus = String(body?.kanban_status ?? 'A Fazer');
+        const kanbanStatus = String(body?.kanban_status ?? 'a fazer');
         const kanbanOrder = Number(body?.kanban_order ?? 0);
-        const row = await updateTaskKanban(id, kanbanStatus, kanbanOrder);
+        const row = await updateTaskKanban(id, { kanban_status: kanbanStatus, kanban_order: kanbanOrder });
         jsonSuccess(res, row);
         return;
       }

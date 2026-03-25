@@ -137,6 +137,19 @@ export const auth = betterAuth({
 
   plugins: [bearer()],
 
+  rateLimit: {
+    enabled: true,
+    window: 60,  // 60 segundos
+    max: 100,    // limite global (maioria das rotas)
+    storage: 'database',
+    customRules: {
+      '/sign-in/email':          { window: 60,  max: 5  }, // 5 tentativas/min por IP
+      '/sign-up/email':          { window: 60,  max: 5  }, // 5 cadastros/min por IP
+      '/request-password-reset': { window: 900, max: 3  }, // 3 resets por 15 min por IP
+      '/reset-password':         { window: 60,  max: 5  },
+    },
+  },
+
   trustedOrigins: [
     'http://localhost:3000',
     'http://localhost:3001',

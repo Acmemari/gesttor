@@ -6,7 +6,7 @@ import { agentRegistry } from '../src/DB/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
 
   const userId = await getAuthUserIdFromRequest(req);

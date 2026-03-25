@@ -13,7 +13,7 @@ import { sql, eq } from 'drizzle-orm';
 import { projects, deliveries, initiatives, initiativeMilestones, initiativeTasks } from '../src/DB/schema.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'GET') { jsonError(res, 'Método não permitido', { status: 405 }); return; }
 
