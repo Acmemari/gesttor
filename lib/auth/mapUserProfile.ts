@@ -69,7 +69,7 @@ export const mapUserProfile = (input: unknown): User | null => {
 
   const validPlans = ['essencial', 'gestor', 'pro'] as const;
   let plan: 'essencial' | 'gestor' | 'pro' | undefined = undefined;
-  if (profile.plan) {
+  if (profile.plan && profile.role?.toLowerCase() === 'cliente') {
     if (validPlans.includes(profile.plan as (typeof validPlans)[number])) {
       plan = profile.plan as 'essencial' | 'gestor' | 'pro';
     } else {

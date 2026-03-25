@@ -31,8 +31,10 @@ export const checkPermission = (user: User | null, feature: string): boolean => 
  * @returns true se está dentro do limite, false caso contrário
  */
 export const checkLimit = (user: User | null, limit: keyof Plan['limits'], currentValue: number): boolean => {
-  if (!user || !user.plan) return false;
+  if (!user) return false;
   if (user.role === 'admin') return true;
+  if (user.qualification === 'analista') return true;
+  if (!user.plan) return false;
 
   const userPlan = PLANS.find(p => p.id === user.plan);
   if (!userPlan) return false;
