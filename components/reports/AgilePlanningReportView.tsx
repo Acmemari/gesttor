@@ -292,6 +292,10 @@ const AgilePlanningReportView: React.FC<AgilePlanningReportViewProps> = ({
                     <p className="text-lg font-bold text-gray-900">{formatNum(zootechnical.recriaTerminacao.lotacaoUaHa, 2)}</p>
                   </div>
                   <div className="bg-white border border-gray-200 rounded-lg p-3">
+                    <p className="text-[10px] uppercase text-gray-500">Lotação Cab/ha</p>
+                    <p className="text-lg font-bold text-gray-900">{formatNum(zootechnical.recriaTerminacao.lotacaoCabHa, 2)}</p>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-lg p-3">
                     <p className="text-[10px] uppercase text-gray-500">Produção @/HA</p>
                     <p className="text-lg font-bold text-gray-900">{formatNum(zootechnical.recriaTerminacao.producaoArrobaHa, 2)}</p>
                   </div>
@@ -359,15 +363,15 @@ const AgilePlanningReportView: React.FC<AgilePlanningReportViewProps> = ({
               { label: 'Desembolso/@', value: formatCurrency(financial.desembolsoPorArroba), sub: 'Desembolso por arroba produzida' },
               {
                 label:
-                  productionSystem === 'Recria-Engorda' || productionSystem === 'Ciclo Completo'
+                  productionSystem === 'Recria e Engorda' || productionSystem === 'Ciclo Completo'
                     ? 'Desembolso/cabeça/mês'
                     : 'Desembolso/bezerro',
                 value:
-                  productionSystem === 'Recria-Engorda' || productionSystem === 'Ciclo Completo'
+                  productionSystem === 'Recria e Engorda' || productionSystem === 'Ciclo Completo'
                     ? formatCurrency(financial.desembolsoPorCabecaMes || 0, 1)
                     : formatCurrency(financial.desembolsoPorBezerro),
                 sub:
-                  productionSystem === 'Recria-Engorda' || productionSystem === 'Ciclo Completo'
+                  productionSystem === 'Recria e Engorda' || productionSystem === 'Ciclo Completo'
                     ? 'Desembolso total por cabeça ao mês'
                     : 'Desembolso por animal desmamado',
               },

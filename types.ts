@@ -171,7 +171,7 @@ export interface SavedQuestionnaire {
 
 export type PropertyType = 'Própria' | 'Arrendada' | 'Parceria' | 'Comodato' | 'Mista';
 export type WeightMetric = 'Arroba (@)' | 'Kg';
-export type ProductionSystem = 'Cria' | 'Recria' | 'Engorda' | 'Ciclo Completo' | 'Cria e Recria' | 'Recria e Engorda' | 'Recria-Engorda';
+export type ProductionSystem = 'Cria' | 'Ciclo Completo' | 'Recria e Engorda';
 
 export interface Farm {
   id: string;                          // text (slug), imutável após criação

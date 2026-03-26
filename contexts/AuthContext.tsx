@@ -196,10 +196,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           lower.includes('already') ||
           lower.includes('exist') ||
           lower.includes('registered') ||
-          result.error.code === 'USER_ALREADY_EXISTS'
+          result.error.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL'
         ) {
           // Mensagem neutra para evitar enumeração de e-mails (user enumeration attack)
-          msg = 'Não foi possível criar a conta com essas informações. Verifique os dados e tente novamente.';
+          msg = 'Não foi possível criar a conta com essas informações. Se já tem uma conta, tente fazer login ou recupere sua senha.';
         }
         log.error('signUp error', new Error(msg), { code: result.error.code, status: result.error.status });
         return { success: false, error: msg };

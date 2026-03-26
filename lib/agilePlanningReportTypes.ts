@@ -3,7 +3,7 @@
  * Data is consolidated in AgilePlanning.tsx and passed to the report view and PDF generator.
  */
 
-export type ProductionSystemLabel = 'Cria' | 'Ciclo Completo' | 'Recria-Engorda';
+export type ProductionSystemLabel = 'Cria' | 'Ciclo Completo' | 'Recria e Engorda';
 
 export interface AgilePlanningReportHeader {
   farmName: string;
@@ -54,6 +54,8 @@ export interface AgilePlanningReportZootechnical {
   totalUAs: number;
   pesoMedio: number;
   pesoMedioUA: number;
+  lotacaoUA: number;
+  lotacaoCabecas: number;
   /** Only for Cria / Ciclo Completo */
   reproductive?: {
     fertilidade: number;
@@ -65,11 +67,12 @@ export interface AgilePlanningReportZootechnical {
     taxaDesmame: number;
     taxaDesmameRef: string;
   };
-  /** Only for Ciclo Completo / Recria-Engorda */
+  /** Only for Ciclo Completo / Recria e Engorda */
   recriaTerminacao?: {
     gmdPosDesmame: number;
     gmdGlobal: number;
     lotacaoUaHa: number;
+    lotacaoCabHa: number;
     producaoArrobaHa: number;
   };
   /** Highlight card */

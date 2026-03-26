@@ -4,5 +4,5 @@ export interface Question {
   group: string;
   question: string;
   positiveAnswer: 'Sim' | 'Não';
-  applicableTypes: ('Cria' | 'Recria-Engorda' | 'Ciclo Completo')[];
+  applicableTypes: ('Cria' | 'Recria e Engorda' | 'Ciclo Completo')[];
 }

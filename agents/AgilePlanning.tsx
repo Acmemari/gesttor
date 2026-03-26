@@ -118,7 +118,7 @@ const getMarginConfig = (system: Farm['productionSystem'] | ''): MarginConfig =>
       return { min: 30, max: 50, default: 40 };
     case 'Ciclo Completo':
       return { min: 22, max: 37, default: 30 };
-    case 'Recria-Engorda':
+    case 'Recria e Engorda':
       return { min: 10, max: 30, default: 20 };
     default:
       return { min: 10, max: 50, default: 30 };
@@ -149,7 +149,7 @@ const getInitialPercentages = (system: Farm['productionSystem'] | ''): Record<st
         [CATEGORY_IDS.BOI_GORDO]: 45,
         [CATEGORY_IDS.VACA_DESCARTE]: 33,
       };
-    case 'Recria-Engorda':
+    case 'Recria e Engorda':
       return {
         ...defaults,
         [CATEGORY_IDS.BEZERRO]: 0,
@@ -307,12 +307,12 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const weightInfoRefs = useRef<Partial<Record<WeightInfoCategory, HTMLDivElement | null>>>({});
   const weightButtonRefs = useRef<Partial<Record<WeightInfoCategory, HTMLButtonElement | null>>>({});
 
-  // Estados de índices de Recria-Engorda
+  // Estados de índices de Recria e Engorda
   const [recriaGmd, setRecriaGmd] = useState(0.65); // Ganho Médio Diário: 0.4 a 1.1 kg/dia, default 0.65
   const [recriaMortalidade, setRecriaMortalidade] = useState(0.8); // Mortalidade: 0.2% a 2%, default 0.8%
   const [recriaRendimentoCarcaca, setRecriaRendimentoCarcaca] = useState(54.5); // Rendimento de Carcaça: 50% a 60%, default 54.5%
 
-  // Estados de Compra e Venda - Recria-Engorda
+  // Estados de Compra e Venda - Recria e Engorda
   const [recriaPesoCompra, setRecriaPesoCompra] = useState(220); // Peso de Compra: 160 a 400 kg, default 220
   const [recriaValorCompra, setRecriaValorCompra] = useState(15); // Valor de Compra: R$ 10 a R$ 20/kg, default R$ 15
   const [recriaPesoVenda, setRecriaPesoVenda] = useState(550); // Peso de Venda: 360 a 600 kg, default 550
@@ -545,15 +545,15 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     return weight * valuePerKg;
   }, []);
 
-  /** Valor do Boi Recria-Engorda: Peso de venda × valor de venda × rendimento de carcaça / 15 */
+  /** Valor do Boi Recria e Engorda: Peso de venda × valor de venda × rendimento de carcaça / 15 */
   const recriaValorBoi = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda') return 0;
+    if (productionSystem !== 'Recria e Engorda') return 0;
     return (recriaPesoVenda * recriaValorVenda * (recriaRendimentoCarcaca / 100)) / 15;
   }, [productionSystem, recriaPesoVenda, recriaValorVenda, recriaRendimentoCarcaca]);
 
-  /** Valor médio de venda: Recria-Engorda usa valor do boi (premissas); demais sistemas usam soma ponderada das categorias */
+  /** Valor médio de venda: Recria e Engorda usa valor do boi (premissas); demais sistemas usam soma ponderada das categorias */
   const averageValue = useMemo(() => {
-    if (productionSystem === 'Recria-Engorda') return recriaValorBoi;
+    if (productionSystem === 'Recria e Engorda') return recriaValorBoi;
     return animalCategories.reduce((sum, category) => {
       const valuePerHead = calculateValuePerHead(category);
       return sum + safeDivide(category.percentage * valuePerHead, 100);
@@ -574,7 +574,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   /** Vendas necessárias (faturamento necessário ÷ valor do boi ou valor médio) */
   const requiredSales = useMemo(() => {
     if (averageValue <= 0 || requiredRevenue <= 0) return 0;
-    if (productionSystem === 'Recria-Engorda') return Math.round(safeDivide(requiredRevenue, averageValue));
+    if (productionSystem === 'Recria e Engorda') return Math.round(safeDivide(requiredRevenue, averageValue));
     if (!isPercentageSumValid) return 0;
     return Math.round(safeDivide(requiredRevenue, averageValue));
   }, [productionSystem, isPercentageSumValid, averageValue, requiredRevenue]);
@@ -609,7 +609,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   // CÁLCULOS FINANCEIROS (OTIMIZADO - Consolidado)
   // ============================================================================
 
-  const isRecriaTerminacao = productionSystem === 'Recria-Engorda' || productionSystem === 'Ciclo Completo';
+  const isRecriaTerminacao = productionSystem === 'Recria e Engorda' || productionSystem === 'Ciclo Completo';
 
   /** Cálculos financeiros consolidados para melhor performance */
   const financialCalculations = useMemo(() => {
@@ -1103,9 +1103,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     return rebanhoMedioCalculado * averageValue;
   }, [productionSystem, showReproductiveIndices, rebanhoMedioCalculado, averageValue]);
 
-  /** Rebanho Médio Recria-Engorda: vendas × (ciclo em meses / 12) */
+  /** Rebanho Médio Recria e Engorda: vendas × (ciclo em meses / 12) */
   const recriaRebanhoMedio = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || recriaGmd <= 0 || requiredSales <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || recriaGmd <= 0 || requiredSales <= 0) return 0;
     const cicloDias = (recriaPesoVenda - recriaPesoCompra) / recriaGmd;
     const cicloMeses = cicloDias / 30.4;
     return requiredSales * (cicloMeses / 12);
@@ -1113,39 +1113,39 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
   /** Rebanho médio da recria ajustado pela mortalidade */
   const recriaRebanhoMedioAjustado = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || recriaRebanhoMedio <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || recriaRebanhoMedio <= 0) return 0;
     return recriaRebanhoMedio * (1 + safeDivide(recriaMortalidade, 100));
   }, [productionSystem, recriaRebanhoMedio, recriaMortalidade]);
 
-  /** Tempo de Permanência Recria-Engorda (meses): (Peso final - Peso inicial) / GMD / 30,4166666667 */
+  /** Tempo de Permanência Recria e Engorda (meses): (Peso final - Peso inicial) / GMD / 30,4166666667 */
   const recriaTempoPermanenciaMeses = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || recriaGmd <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || recriaGmd <= 0) return 0;
     const meses = (recriaPesoVenda - recriaPesoCompra) / recriaGmd / 30.4166666667;
     return meses > 0 ? meses : 0;
   }, [productionSystem, recriaPesoVenda, recriaPesoCompra, recriaGmd]);
 
-  /** Giro de Estoque Recria-Engorda: 12 / tempo de permanência (meses) × 100 */
+  /** Giro de Estoque Recria e Engorda: 12 / tempo de permanência (meses) × 100 */
   const recriaGiroEstoque = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || recriaTempoPermanenciaMeses <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || recriaTempoPermanenciaMeses <= 0) return 0;
     return (12 / recriaTempoPermanenciaMeses) * 100;
   }, [productionSystem, recriaTempoPermanenciaMeses]);
 
-  /** Lotação Cab/ha Recria-Engorda: Rebanho médio ÷ área pecuária */
+  /** Lotação Cab/ha Recria e Engorda: Rebanho médio ÷ área pecuária */
   const recriaLotacaoCabHa = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || !farm?.pastureArea || farm.pastureArea <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || !farm?.pastureArea || farm.pastureArea <= 0) return 0;
     return safeDivide(recriaRebanhoMedioAjustado, farm.pastureArea);
   }, [productionSystem, recriaRebanhoMedioAjustado, farm?.pastureArea]);
 
-  /** Lotação UA/ha Recria-Engorda: ((peso entrada + peso venda) / 450) × lotação cabeça */
+  /** Lotação UA/ha Recria e Engorda: ((peso entrada + peso venda) / 450) × lotação cabeça */
   const recriaLotacaoUaHa = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || recriaLotacaoCabHa <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || recriaLotacaoCabHa <= 0) return 0;
     const pesoMedio = (recriaPesoCompra + recriaPesoVenda) / 2;
     return (pesoMedio / 450) * recriaLotacaoCabHa;
   }, [productionSystem, recriaPesoCompra, recriaPesoVenda, recriaLotacaoCabHa]);
 
-  /** Peso em @ Recria-Engorda: Peso de venda (kg) × (Rendimento de carcaça % / 100) / 15 */
+  /** Peso em @ Recria e Engorda: Peso de venda (kg) × (Rendimento de carcaça % / 100) / 15 */
   const recriaPesoArroba = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda') return 0;
+    if (productionSystem !== 'Recria e Engorda') return 0;
     return (recriaPesoVenda * (recriaRendimentoCarcaca / 100)) / 15;
   }, [productionSystem, recriaPesoVenda, recriaRendimentoCarcaca]);
 
@@ -1155,20 +1155,20 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   }, [animalCategories]);
 
   const rebanhoMedioParaRecriaTerminacao = useMemo(() => {
-    if (productionSystem === 'Recria-Engorda') return recriaRebanhoMedio;
+    if (productionSystem === 'Recria e Engorda') return recriaRebanhoMedio;
     if (productionSystem === 'Ciclo Completo') return rebanhoMedioCalculado;
     return 0;
   }, [productionSystem, recriaRebanhoMedio, rebanhoMedioCalculado]);
 
-  /** Investimento em Reposição (Recria-Engorda): peso de compra × valor de compra × vendas necessárias */
+  /** Investimento em Reposição (Recria e Engorda): peso de compra × valor de compra × vendas necessárias */
   const investimentoReposicao = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda' || requiredSales <= 0) return 0;
+    if (productionSystem !== 'Recria e Engorda' || requiredSales <= 0) return 0;
     return recriaPesoCompra * recriaValorCompra * requiredSales;
   }, [productionSystem, recriaPesoCompra, recriaValorCompra, requiredSales]);
 
-  /** Desembolso Produção (Recria-Engorda): Receita necessária - investimento em reposição - resultado esperado */
+  /** Desembolso Produção (Recria e Engorda): Receita necessária - investimento em reposição - resultado esperado */
   const desembolsoProducao = useMemo(() => {
-    if (productionSystem !== 'Recria-Engorda') return 0;
+    if (productionSystem !== 'Recria e Engorda') return 0;
     return Math.max(0, requiredRevenue - investimentoReposicao - calculatedValue);
   }, [productionSystem, requiredRevenue, investimentoReposicao, calculatedValue]);
 
@@ -1181,12 +1181,12 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const producaoArrobaHa = useMemo(() => {
     if (!selectedFarm?.pastureArea || selectedFarm.pastureArea <= 0) return 0;
     if (isRecriaTerminacao) {
-      const pesoVendaKg = productionSystem === 'Recria-Engorda' ? recriaPesoVenda : cicloPesoAbate;
-      const pesoEntradaKg = productionSystem === 'Recria-Engorda' ? recriaPesoCompra : maleWeaningWeight;
+      const pesoVendaKg = productionSystem === 'Recria e Engorda' ? recriaPesoVenda : cicloPesoAbate;
+      const pesoEntradaKg = productionSystem === 'Recria e Engorda' ? recriaPesoCompra : maleWeaningWeight;
       const rendimentoCarcaca =
-        productionSystem === 'Recria-Engorda' ? recriaRendimentoCarcaca : cicloRendimentoCarcaca;
+        productionSystem === 'Recria e Engorda' ? recriaRendimentoCarcaca : cicloRendimentoCarcaca;
       const tempoPermanenciaMeses =
-        productionSystem === 'Recria-Engorda'
+        productionSystem === 'Recria e Engorda'
           ? recriaGmd > 0
             ? (recriaPesoVenda - recriaPesoCompra) / recriaGmd / 30.4166666667
             : 0
@@ -1223,11 +1223,11 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const rebanhoMedioReaisRecriaTerminacao = useMemo(() => {
     if (!isRecriaTerminacao || rebanhoMedioParaRecriaTerminacao <= 0) return 0;
 
-    const pesoCompra = productionSystem === 'Recria-Engorda' ? recriaPesoCompra : maleWeaningWeight;
-    const pesoVenda = productionSystem === 'Recria-Engorda' ? recriaPesoVenda : cicloPesoAbate;
+    const pesoCompra = productionSystem === 'Recria e Engorda' ? recriaPesoCompra : maleWeaningWeight;
+    const pesoVenda = productionSystem === 'Recria e Engorda' ? recriaPesoVenda : cicloPesoAbate;
     const rendimentoCarcaca =
-      productionSystem === 'Recria-Engorda' ? recriaRendimentoCarcaca : cicloRendimentoCarcaca;
-    const valorVenda = productionSystem === 'Recria-Engorda' ? recriaValorVenda : boiGordoSaleValue;
+      productionSystem === 'Recria e Engorda' ? recriaRendimentoCarcaca : cicloRendimentoCarcaca;
+    const valorVenda = productionSystem === 'Recria e Engorda' ? recriaValorVenda : boiGordoSaleValue;
 
     if (valorVenda <= 0 || pesoVenda <= 0) return 0;
 
@@ -1268,7 +1268,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   }, [result, valorRebanhoCalculadoCria]);
 
   const hasDisbursementPerCalfData = useMemo(() => {
-    if (productionSystem === 'Recria-Engorda')
+    if (productionSystem === 'Recria e Engorda')
       return rebanhoMedioParaRecriaTerminacao > 0; // usa desembolsoProducao / rebanho / 12
     if (productionSystem === 'Ciclo Completo')
       return totalDisbursement > 0 && rebanhoMedioParaRecriaTerminacao > 0;
@@ -1287,12 +1287,12 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     return resultOnLivestockAssetLegacy;
   }, [result, isRecriaTerminacao, rebanhoMedioReaisRecriaTerminacao, resultOnLivestockAssetLegacy]);
 
-  /** Desembolso/cabeça/mês para Recria-Engorda: orçamento operacional / rebanho necessário / 12
+  /** Desembolso/cabeça/mês para Recria e Engorda: orçamento operacional / rebanho necessário / 12
    * (orçamento operacional = Desembolso Produção)
    * Para Ciclo Completo: usa fórmula legada (totalDisbursement / rebanho / 12) */
   const disbursementPerHeadMonth = useMemo(() => {
     if (totalDisbursement <= 0) return 0;
-    if (productionSystem === 'Recria-Engorda') {
+    if (productionSystem === 'Recria e Engorda') {
       if (rebanhoMedioParaRecriaTerminacao <= 0) return 0;
       return safeDivide(safeDivide(desembolsoProducao, rebanhoMedioParaRecriaTerminacao), 12);
     }
@@ -1464,7 +1464,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const MAX_RECRIA_PERFORMANCE_INDICATORS = 5;
   const recriaPerformanceIndicators = useMemo(
     () =>
-      productionSystem === 'Recria-Engorda'
+      productionSystem === 'Recria e Engorda'
         ? [
           { id: 'tempoPerm', label: 'Tempo Perm.', value: recriaTempoPermanenciaMeses, format: (v: number) => `${v.toFixed(1)} meses` },
           { id: 'pesoArroba', label: 'Peso em @', value: recriaPesoArroba, format: (v: number) => `${v.toFixed(1)} @` },
@@ -1612,7 +1612,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
         });
       }
 
-      if (productionSystem === 'Recria-Engorda' && requiredSales > 0 && recriaRebanhoMedioAjustado > 0) {
+      if (productionSystem === 'Recria e Engorda' && requiredSales > 0 && recriaRebanhoMedioAjustado > 0) {
         const avgWeight = recriaPesoCompra + (recriaPesoVenda - recriaPesoCompra) / 2;
         rows.push({
           categoria: 'Animais em recria/terminação',
@@ -1628,9 +1628,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
     const herdRows = buildHerdRows();
     const totalRebanhoMedio =
-      showReproductiveIndices && productionSystem !== 'Recria-Engorda'
+      showReproductiveIndices && productionSystem !== 'Recria e Engorda'
         ? Math.round(rebanhoMedioAjustado)
-        : productionSystem === 'Recria-Engorda'
+        : productionSystem === 'Recria e Engorda'
           ? Math.round(recriaRebanhoMedioAjustado)
           : 0;
     const totalPesoVivo =
@@ -1647,8 +1647,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     };
 
     const rebanhoMedioForReport =
-      productionSystem === 'Recria-Engorda' ? recriaRebanhoMedioAjustado : rebanhoMedioAjustado;
-    const totalUAsForReport = totalUAsAjustado;
+      productionSystem === 'Recria e Engorda' ? recriaRebanhoMedioAjustado : rebanhoMedioAjustado;
+
+    // Ajuste: Para Recria e Engorda, calculamos UAs com base na lotação UA/ha e área
+    const totalUAsForReport =
+      productionSystem === 'Recria e Engorda'
+        ? recriaLotacaoUaHa * (farm?.pastureArea ?? 0)
+        : totalUAsAjustado;
+
     const pesoMedioForReport =
       totalRebanhoMedio > 0
         ? herdRows.reduce((s, r) => s + r.rebanhoMedio * r.pesoVivoKg, 0) / totalRebanhoMedio
@@ -1661,6 +1667,14 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       totalUAs: Math.round(totalUAsForReport * 10) / 10,
       pesoMedio: Math.round(pesoMedioForReport),
       pesoMedioUA: Math.round(pesoMedioUAForReport * 100) / 100,
+      lotacaoUA:
+        productionSystem === 'Recria e Engorda'
+          ? Math.round(recriaLotacaoUaHa * 100) / 100
+          : Math.round(lotacaoCabHa * 100) / 100,
+      lotacaoCabecas:
+        productionSystem === 'Recria e Engorda'
+          ? Math.round(recriaLotacaoCabHa * 100) / 100
+          : Math.round(lotacaoCabecasHa * 100) / 100,
       gmdGlobal: gmdGlobal,
       producaoArrobaHaAno: Math.round(producaoArrobaHa * 100) / 100,
       ...(showReproductiveIndices && {
@@ -1675,23 +1689,27 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
           taxaDesmameRef: '> 75%',
         },
       }),
-      ...((productionSystem === 'Ciclo Completo' || productionSystem === 'Recria-Engorda') && {
+      ...((productionSystem === 'Ciclo Completo' || productionSystem === 'Recria e Engorda') && {
         recriaTerminacao: {
-          gmdPosDesmame: productionSystem === 'Recria-Engorda' ? recriaGmd : cicloGmdPosDesmame,
+          gmdPosDesmame: productionSystem === 'Recria e Engorda' ? recriaGmd : cicloGmdPosDesmame,
           gmdGlobal: gmdGlobal,
           lotacaoUaHa:
-            productionSystem === 'Recria-Engorda'
+            productionSystem === 'Recria e Engorda'
               ? Math.round(recriaLotacaoUaHa * 100) / 100
               : Math.round(lotacaoCabHa * 100) / 100,
+          lotacaoCabHa:
+            productionSystem === 'Recria e Engorda'
+              ? Math.round(recriaLotacaoCabHa * 100) / 100
+              : Math.round(lotacaoCabecasHa * 100) / 100,
           producaoArrobaHa: Math.round(producaoArrobaHa * 100) / 100,
         },
       }),
     };
 
     const denomPct =
-      productionSystem === 'Recria-Engorda' ? gmdGlobal * 10 * recriaValorVenda : 0;
+      productionSystem === 'Recria e Engorda' ? gmdGlobal * 10 * recriaValorVenda : 0;
     const pctArrobaPor100g =
-      productionSystem === 'Recria-Engorda' && denomPct > 0
+      productionSystem === 'Recria e Engorda' && denomPct > 0
         ? Math.round((disbursementPerHeadMonth / denomPct) * 1000) / 10
         : undefined;
 
@@ -1905,9 +1923,9 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     }
   }, [productionSystem]);
 
-  // Sincronizar valor de venda do slider com a tabela de categorias (Recria-Engorda)
+  // Sincronizar valor de venda do slider com a tabela de categorias (Recria e Engorda)
   useEffect(() => {
-    if (productionSystem === 'Recria-Engorda') {
+    if (productionSystem === 'Recria e Engorda') {
       setAnimalCategories(prev =>
         prev.map(cat => (cat.id === CATEGORY_IDS.BOI_GORDO ? { ...cat, valuePerKg: recriaValorVenda } : cat)),
       );
@@ -1955,7 +1973,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const handleProductionSystemChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as Farm['productionSystem'] | '';
     // Validação de segurança
-    if (value === '' || ['Cria', 'Ciclo Completo', 'Recria-Engorda'].includes(value)) {
+    if (value === '' || ['Cria', 'Ciclo Completo', 'Recria e Engorda'].includes(value)) {
       setProductionSystem(value);
     }
   }, []);
@@ -2082,7 +2100,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
   // Tela principal do Planejamento Ágil
   return (
-    <div className="h-full flex flex-col p-6 bg-ai-bg">
+    <div className="h-full flex flex-col p-4 bg-ai-bg">
       {/* Header - Sistema de Produção e Informações da Fazenda */}
       <div className="mb-6 flex-shrink-0">
         <div className="flex items-center gap-2 md:gap-3 text-xs md:text-sm text-ai-subtext flex-wrap">
@@ -2113,7 +2131,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 <option value="">Selecione...</option>
                 <option value="Cria">Cria</option>
                 <option value="Ciclo Completo">Ciclo Completo</option>
-                <option value="Recria-Engorda">Recria-Engorda</option>
+                <option value="Recria e Engorda">Recria e Engorda</option>
               </select>
             </div>
           )}
@@ -2173,7 +2191,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
 
       {/* Conteúdo principal */}
       <div className="bg-white rounded-lg border border-ai-border p-4 min-h-0">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-full">
           {/* Barras de Deslizamento com Valores ao Lado */}
           <div className="mb-4">
             <div className="grid grid-cols-2 gap-3">
@@ -2326,7 +2344,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
           </div>
 
           {/* Valor Médio de Venda */}
-          <div className="mb-4">
+          <div className="mb-4 overflow-x-auto">
             <div className="flex items-stretch gap-4">
               {/* Caixa de Valor Médio */}
               <div className="bg-white border border-ai-border/70 rounded-lg p-2 min-w-[180px] flex flex-col">
@@ -2342,7 +2360,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                           <br />
                           Venda
                         </span>
-                        {productionSystem !== 'Recria-Engorda' && (
+                        {productionSystem !== 'Recria e Engorda' && (
                           <button
                             onClick={() => setIsModalOpen(true)}
                             className="p-0.5 rounded hover:bg-ai-surface2 transition-colors"
@@ -2356,7 +2374,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                       <span className="text-[12.6px] font-bold text-ai-text">{formatCurrency(averageValue)}</span>
                     </div>
                     <div
-                      className={`flex items-start justify-between ${showReproductiveIndices || productionSystem === 'Recria-Engorda' ? 'pb-2 border-b border-ai-border/60' : ''}`}
+                      className={`flex items-start justify-between ${showReproductiveIndices || productionSystem === 'Recria e Engorda' ? 'pb-2 border-b border-ai-border/60' : ''}`}
                     >
                       <span className="text-[9px] text-ai-subtext leading-tight">
                         Vendas
@@ -2367,7 +2385,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                         {requiredSales > 0 ? `${requiredSales} Cabeças` : '-'}
                       </span>
                     </div>
-                    {productionSystem === 'Recria-Engorda' && (
+                    {productionSystem === 'Recria e Engorda' && (
                       <div className="flex items-start justify-between">
                         <span className="text-[9px] text-ai-subtext leading-tight">
                           Rebanho
@@ -2432,8 +2450,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 )}
               </div>
 
-              {/* Card de Índices de Referência - Recria-Engorda (na mesma linha que Valores) */}
-              {productionSystem === 'Recria-Engorda' && (
+              {/* Card de Índices de Referência - Recria e Engorda (na mesma linha que Valores) */}
+              {productionSystem === 'Recria e Engorda' && (
                 <div className="bg-white border border-ai-border/70 rounded-lg p-1 flex-1 flex flex-col min-w-0">
                   <div className="pb-0.5 mb-1 border-b border-ai-border/60">
                     <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text">
@@ -2513,8 +2531,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 </div>
               )}
 
-              {/* Card de Valores de Compra e Venda - Recria-Engorda */}
-              {productionSystem === 'Recria-Engorda' && (
+              {/* Card de Valores de Compra e Venda - Recria e Engorda */}
+              {productionSystem === 'Recria e Engorda' && (
                 <div className="bg-white border border-ai-border/70 rounded-lg p-1 flex-1 flex flex-col min-w-0">
                   <div className="pb-0.5 mb-1 border-b border-ai-border/60">
                     <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text">
@@ -2617,8 +2635,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 </div>
               )}
 
-              {/* Resultados de Performance - Recria-Engorda */}
-              {productionSystem === 'Recria-Engorda' && (
+              {/* Resultados de Performance - Recria e Engorda */}
+              {productionSystem === 'Recria e Engorda' && (
                 <div className="bg-white border border-ai-border/70 rounded-lg p-2 min-w-[150px] flex flex-col">
                   <div className="pb-1.5 mb-2 border-b border-ai-border/60 flex items-center justify-between gap-1">
                     <h3 className="text-[10px] font-bold uppercase tracking-wide text-ai-text">
@@ -3062,7 +3080,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 Finanças: <span className="text-green-700">Meta de Resultado: {formatCurrency(calculatedValue)}</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-1.5">
-                {/* Coluna A: Receita/Desembolso (Recria-Engorda: + Invest. Reposição, Desemb. Produção) */}
+                {/* Coluna A: Receita/Desembolso (Recria e Engorda: + Invest. Reposição, Desemb. Produção) */}
                 <div className="space-y-0.5">
                   <div className="bg-white/70 rounded-md px-1 py-0.5 border border-indigo-200/50">
                     <div className="text-[7px] text-indigo-600 mb-0 font-medium">Receita</div>
@@ -3084,7 +3102,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     <div className="text-[6px] text-indigo-500 mt-0 leading-tight">Custo operacional efetivo</div>
                   </div>
 
-                  {productionSystem === 'Recria-Engorda' && (
+                  {productionSystem === 'Recria e Engorda' && (
                     <>
                       <div className="bg-white/70 rounded-md px-1 py-0.5 border border-indigo-200/50">
                         <div className="text-[7px] text-indigo-600 mb-0 font-medium">Investimento em Reposição</div>
@@ -3127,7 +3145,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                     <div className="text-[6px] text-indigo-500 mt-0 leading-tight">Custo por arroba produzida</div>
                   </div>
 
-                  {productionSystem === 'Recria-Engorda' && (
+                  {productionSystem === 'Recria e Engorda' && (
                     <>
                       <div className="bg-white/70 rounded-md px-1 py-0.5 border border-indigo-200/50">
                         <div className="text-[7px] text-indigo-600 mb-0 font-medium">Desembolso/Cab/Mês</div>
@@ -3329,7 +3347,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
         </div>
       )}
 
-      {/* Modal - Seleção de Indicadores Recria-Engorda */}
+      {/* Modal - Seleção de Indicadores Recria e Engorda */}
       {isRecriaIndicatorsModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"

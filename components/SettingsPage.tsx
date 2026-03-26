@@ -134,7 +134,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
     group: '',
     question: '',
     positiveAnswer: 'Sim' as 'Sim' | 'Não',
-    applicableTypes: [] as ('Cria' | 'Recria-Engorda' | 'Ciclo Completo')[],
+    applicableTypes: [] as ('Cria' | 'Recria e Engorda' | 'Ciclo Completo')[],
   });
 
   // Filtros na listagem de perguntas (apenas visualização; não altera ordem de preenchimento)
@@ -300,7 +300,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
     }
   };
 
-  const handleToggleApplicableType = (type: 'Cria' | 'Recria-Engorda' | 'Ciclo Completo') => {
+  const handleToggleApplicableType = (type: 'Cria' | 'Recria e Engorda' | 'Ciclo Completo') => {
     setQuestionForm(prev => ({
       ...prev,
       applicableTypes: prev.applicableTypes.includes(type)
@@ -1335,10 +1335,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
   );
 
   // Função para converter códigos de sistema para o formato aplicável
-  const convertSystemCodes = (systemCode: string): ('Cria' | 'Recria-Engorda' | 'Ciclo Completo')[] => {
+  const convertSystemCodes = (systemCode: string): ('Cria' | 'Recria e Engorda' | 'Ciclo Completo')[] => {
     const raw = systemCode.replace(/,/g, ';');
     const parts = raw.split(';').map(p => p.trim());
-    const result: ('Cria' | 'Recria-Engorda' | 'Ciclo Completo')[] = [];
+    const result: ('Cria' | 'Recria e Engorda' | 'Ciclo Completo')[] = [];
     const upper = (s: string) => s.toUpperCase();
     for (const p of parts) {
       const u = upper(p);
@@ -1347,7 +1347,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       } else if (u === 'CR' || u.startsWith('CR ') || u.startsWith('CR-') || u === 'CRIA') {
         if (!result.includes('Cria')) result.push('Cria');
       } else if (u === 'RE' || u.startsWith('RE ') || u.startsWith('RE-') || u.startsWith('RECRIA')) {
-        if (!result.includes('Recria-Engorda')) result.push('Recria-Engorda');
+        if (!result.includes('Recria e Engorda')) result.push('Recria e Engorda');
       }
     }
     return result;
@@ -1739,7 +1739,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
                   Tipos de Questionário Aplicáveis <span className="text-red-500">*</span>
                 </label>
                 <div className="flex gap-2 flex-wrap">
-                  {(['Cria', 'Recria-Engorda', 'Ciclo Completo'] as const).map(type => (
+                  {(['Cria', 'Recria e Engorda', 'Ciclo Completo'] as const).map(type => (
                     <button
                       key={type}
                       type="button"

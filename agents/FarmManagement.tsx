@@ -1264,10 +1264,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 >
                   <option value="">Selecione um sistema</option>
                   <option value="Cria">Cria</option>
-                  <option value="Recria">Recria</option>
-                  <option value="Engorda">Engorda</option>
                   <option value="Ciclo Completo">Ciclo Completo</option>
-                  <option value="Cria e Recria">Cria e Recria</option>
                   <option value="Recria e Engorda">Recria e Engorda</option>
                 </select>
                 {errors.productionSystem && <p className="text-red-500 text-xs mt-1">{errors.productionSystem}</p>}

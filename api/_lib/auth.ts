@@ -17,7 +17,7 @@ import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
 import { db } from '../../src/DB/index.js';
-import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles, people } from '../../src/DB/schema.js';
+import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles, people, organizations } from '../../src/DB/schema.js';
 
 // ── Resend (lazy — evita falha se RESEND_API_KEY não estiver definido) ────────
 
@@ -97,7 +97,7 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 8,
+    minPasswordLength: 6,
     autoSignIn: false,
     resetPasswordTokenExpiresIn: 3600, // 1 hora
     revokeSessionsOnPasswordReset: true,
@@ -198,13 +198,53 @@ export const auth = betterAuth({
               });
             }
 
-            // Vincular registros people com o mesmo email (convites pendentes)
+            // Verificar convite pendente e aplicar role/org corretos
             try {
-              const { isNull, and } = await import('drizzle-orm');
-              await db
-                .update(people)
-                .set({ userId: user.id, updatedAt: new Date() })
-                .where(and(eq(people.email, user.email), isNull(people.userId)));
+              const { isNull, and, gt, isNotNull } = await import('drizzle-orm');
+              const now = new Date();
+              const [invitePerson] = await db
+                .select()
+                .from(people)
+                .where(
+                  and(
+                    eq(people.email, user.email),
+                    eq(people.inviteStatus, 'pending'),
+                    isNotNull(people.inviteExpiresAt),
+                  ),
+                )
+                .limit(1);
+
+              if (invitePerson && invitePerson.inviteExpiresAt && invitePerson.inviteExpiresAt > now) {
+                // Convite válido: aplicar role e organização
+                const inviteRole = invitePerson.inviteRole ?? 'visitante';
+                await db
+                  .update(userProfiles)
+                  .set({
+                    role: inviteRole,
+                    organizationId: inviteRole === 'cliente' ? invitePerson.organizationId : null,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(userProfiles.id, user.id));
+
+                // Marcar convite como aceito
+                await db
+                  .update(people)
+                  .set({
+                    userId: user.id,
+                    inviteStatus: 'accepted',
+                    inviteToken: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(people.id, invitePerson.id));
+
+                console.log(`[auth] Convite aceito: role=${inviteRole} para ${user.email}`);
+              } else {
+                // Sem convite: apenas vincular people pelo email (cadastro normal)
+                await db
+                  .update(people)
+                  .set({ userId: user.id, updatedAt: new Date() })
+                  .where(and(eq(people.email, user.email), isNull(people.userId)));
+              }
             } catch (linkErr) {
               console.error('[auth] Erro ao vincular people ao novo usuário:', linkErr);
             }

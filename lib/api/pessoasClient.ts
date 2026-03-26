@@ -25,6 +25,9 @@ export interface Pessoa {
   endereco: string | null;
   observacoes: string | null;
   ativo: boolean;
+  inviteStatus: string | null;
+  inviteRole: string | null;
+  inviteSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -281,6 +284,17 @@ export async function updateCargoFuncao(id: string, data: { nome?: string; ativo
   const res = await fetchApi<CargoFuncao>(`${API_BASE}/pessoas`, {
     method: 'POST',
     body: JSON.stringify({ action: 'update-cargo', id, ...data }),
+  });
+  if (!res.ok) throw new Error((res as ApiError).error);
+  return res.data;
+}
+
+// ─── Convites ────────────────────────────────────────────────────────────────
+
+export async function sendInvite(pessoaId: string): Promise<{ email: string; inviteRole: string; expiresAt: string }> {
+  const res = await fetchApi<{ email: string; inviteRole: string; expiresAt: string }>(`${API_BASE}/invite`, {
+    method: 'POST',
+    body: JSON.stringify({ pessoaId }),
   });
   if (!res.ok) throw new Error((res as ApiError).error);
   return res.data;

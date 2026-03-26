@@ -227,12 +227,19 @@ export const people = pgTable('people', {
   createdBy: text('created_by'),
   podeAlterarSemanaFechada: boolean('pode_alterar_semana_fechada').default(false),
   podeApagarSemana: boolean('pode_apagar_semana').default(false),
+  // Convite
+  inviteToken:     text('invite_token'),
+  inviteStatus:    text('invite_status').default('none'),  // 'none' | 'pending' | 'accepted' | 'expired'
+  inviteRole:      text('invite_role'),                    // 'analista' | 'cliente'
+  inviteExpiresAt: timestamp('invite_expires_at'),
+  inviteSentAt:    timestamp('invite_sent_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_people_organization_id').on(t.organizationId),
   index('idx_people_ativo').on(t.ativo),
   index('idx_people_user_id').on(t.userId),
+  index('idx_people_invite_token').on(t.inviteToken),
   // Partial unique index on CPF (nulls allowed, but non-null CPF must be unique)
   // Note: Drizzle doesn't support partial indexes natively; enforced via SQL migration
 ]);

@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (action === 'list-my') {
         const { rows } = await pool.query(
-          `SELECT t.*, st::text as status
+          `SELECT t.*, t.status::text as status
            FROM support_tickets t
            WHERE t.created_by = $1
            ORDER BY t.last_message_at DESC`, [userId]

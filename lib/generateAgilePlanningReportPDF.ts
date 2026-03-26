@@ -165,6 +165,18 @@ function buildAgilePlanningPdfDoc(data: AgilePlanningReportData): jsPDF {
     yPos += 5;
     addText(doc, `Fertilidade: ${zootechnical.reproductive.fertilidade}% | Perda pré-parto: ${zootechnical.reproductive.perdaPreParto}% | Taxa desmame: ${zootechnical.reproductive.taxaDesmame}%`, margin, yPos, 8, false, contentWidth);
   }
+  if (zootechnical.recriaTerminacao) {
+    yPos += 5;
+    addText(
+      doc,
+      `GMD Pós desmame: ${Number(zootechnical.recriaTerminacao.gmdPosDesmame || 0).toFixed(2)} kg/dia | Lotação: ${formatNum(zootechnical.recriaTerminacao.lotacaoUaHa, 2)} UA/ha | ${formatNum(zootechnical.recriaTerminacao.lotacaoCabHa, 2)} Cab/ha`,
+      margin,
+      yPos,
+      8,
+      false,
+      contentWidth,
+    );
+  }
   yPos += 12;
 
   // ANÁLISE FINANCEIRA — texto primeiro, traço por baixo
@@ -190,7 +202,7 @@ function buildAgilePlanningPdfDoc(data: AgilePlanningReportData): jsPDF {
   addText(doc, `Desembolso/@: ${formatCurrency(financial.desembolsoPorArroba)}`, margin, yPos, 9);
   addText(
     doc,
-    productionSystem === 'Recria-Engorda' || productionSystem === 'Ciclo Completo'
+    productionSystem === 'Recria e Engorda' || productionSystem === 'Ciclo Completo'
       ? `Desembolso/cabeça/mês: ${formatCurrency(financial.desembolsoPorCabecaMes || 0, 1)}`
       : `Desembolso/bezerro: ${formatCurrency(financial.desembolsoPorBezerro)}`,
     margin + 65,

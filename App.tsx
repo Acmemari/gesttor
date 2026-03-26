@@ -6,6 +6,7 @@ import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
 import ForgotPasswordPage from './components/ForgotPasswordPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
+import ConvitePage from './components/ConvitePage';
 import SubscriptionPage from './components/SubscriptionPage';
 import SettingsPage from './components/SettingsPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -425,7 +426,7 @@ const AppContent: React.FC = () => {
   // Auth routes — SignIn/SignUp/ForgotPassword/ResetPassword
   if (typeof window !== 'undefined') {
     const pathname = window.location.pathname;
-    const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up' || pathname === '/forgot-password' || pathname === '/reset-password';
+    const isAuthPage = pathname === '/sign-in' || pathname === '/sign-up' || pathname === '/forgot-password' || pathname === '/reset-password' || pathname === '/convite';
 
     if (pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up')) {
       // Se já está logado, vai para home
@@ -460,6 +461,16 @@ const AppContent: React.FC = () => {
       );
     }
 
+    // Aceitar convite — cria conta via link de convite
+    if (pathname === '/convite') {
+      return (
+        <ConvitePage
+          onToast={handleToast}
+          onSuccess={() => window.location.replace('/sign-in')}
+        />
+      );
+    }
+
     // Legacy OAuth callback — redirect to home
     if (pathname === '/auth/callback') {
       window.location.replace('/');
@@ -471,8 +482,8 @@ const AppContent: React.FC = () => {
     }
   }
 
-  const isAuthPage = typeof window !== 'undefined' && 
-    (window.location.pathname === '/sign-in' || window.location.pathname === '/sign-up' || window.location.pathname === '/forgot-password' || window.location.pathname === '/reset-password');
+  const isAuthPage = typeof window !== 'undefined' &&
+    (window.location.pathname === '/sign-in' || window.location.pathname === '/sign-up' || window.location.pathname === '/forgot-password' || window.location.pathname === '/reset-password' || window.location.pathname === '/convite');
 
   if (authError && !isAuthPage) {
     return (
