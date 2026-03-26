@@ -29,7 +29,7 @@ import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
 import { db } from '../src/DB/index.js';
-import { userProfiles, farms as farmsTable, personProfiles, perfils, cargoFuncao } from '../src/DB/schema.js';
+import { userProfiles, people, farms as farmsTable, personProfiles, perfils, cargoFuncao } from '../src/DB/schema.js';
 import {
   getPessoa,
   listPessoas,
@@ -607,6 +607,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Pessoa não encontrada', { code: 'NOT_FOUND', status: 404 });
         return;
       }
+
+      // Propagar name/phone/foto para user_profiles vinculado (se existir)
+      if (updated.userId) {
+        const profileSyncFields: Record<string, unknown> = { updatedAt: new Date() };
+        if (updates.full_name !== undefined) profileSyncFields.name = updates.full_name;
+        if (updates.phone_whatsapp !== undefined) profileSyncFields.phone = updates.phone_whatsapp;
+        if (updates.photo_url !== undefined) { profileSyncFields.imageUrl = updates.photo_url; profileSyncFields.avatar = updates.photo_url; }
+        if (Object.keys(profileSyncFields).length > 1) {
+          await db.update(userProfiles).set(profileSyncFields).where(eq(userProfiles.id, updated.userId)).catch(() => {});
+        }
+      }
+
       jsonSuccess(res, updated);
     } catch (err) {
       const msg = (err instanceof Error ? err.message : '') + String((err as Record<string, unknown>)?.detail ?? '');

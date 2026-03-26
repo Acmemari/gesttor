@@ -237,13 +237,37 @@ export const auth = betterAuth({
                   })
                   .where(eq(people.id, invitePerson.id));
 
+                // Copiar phone/foto do registro people → user_profiles
+                const inviteSyncFields: Record<string, unknown> = { updatedAt: new Date() };
+                if (invitePerson.phoneWhatsapp) inviteSyncFields.phone = invitePerson.phoneWhatsapp;
+                if (invitePerson.photoUrl) { inviteSyncFields.imageUrl = invitePerson.photoUrl; inviteSyncFields.avatar = invitePerson.photoUrl; }
+                if (Object.keys(inviteSyncFields).length > 1) {
+                  await db.update(userProfiles).set(inviteSyncFields).where(eq(userProfiles.id, user.id));
+                }
+
                 console.log(`[auth] Convite aceito: role=${inviteRole} para ${user.email}`);
               } else {
-                // Sem convite: apenas vincular people pelo email (cadastro normal)
-                await db
-                  .update(people)
-                  .set({ userId: user.id, updatedAt: new Date() })
+                // Sem convite: buscar people pelo email para obter phone/foto antes de vincular
+                const linkedPeople = await db
+                  .select()
+                  .from(people)
                   .where(and(eq(people.email, user.email), isNull(people.userId)));
+
+                if (linkedPeople.length > 0) {
+                  await db
+                    .update(people)
+                    .set({ userId: user.id, updatedAt: new Date() })
+                    .where(and(eq(people.email, user.email), isNull(people.userId)));
+
+                  // Copiar phone/foto do primeiro registro people → user_profiles
+                  const source = linkedPeople[0];
+                  const syncFields: Record<string, unknown> = { updatedAt: new Date() };
+                  if (source.phoneWhatsapp) syncFields.phone = source.phoneWhatsapp;
+                  if (source.photoUrl) { syncFields.imageUrl = source.photoUrl; syncFields.avatar = source.photoUrl; }
+                  if (Object.keys(syncFields).length > 1) {
+                    await db.update(userProfiles).set(syncFields).where(eq(userProfiles.id, user.id));
+                  }
+                }
               }
             } catch (linkErr) {
               console.error('[auth] Erro ao vincular people ao novo usuário:', linkErr);

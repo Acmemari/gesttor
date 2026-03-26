@@ -91,7 +91,10 @@ export async function storageUpload(
   });
 
   if (!uploadRes.ok) {
-    throw new Error(`B2 upload failed (${uploadRes.status})`);
+    const hint = uploadRes.status === 0
+      ? ' (possível erro de CORS — verifique a configuração do bucket B2)'
+      : '';
+    throw new Error(`B2 upload failed (${uploadRes.status})${hint}`);
   }
 }
 

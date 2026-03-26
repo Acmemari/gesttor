@@ -476,7 +476,7 @@ const AntonioAdmin: React.FC = () => {
               )}
 
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 disabled={uploadingFile}
                 className="px-4 py-2 text-sm bg-ai-text text-white rounded-lg hover:bg-ai-text/90 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
               >

@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { getUserRole } from './_lib/orgAccess.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
-import { db, pool, userProfiles, organizations } from '../src/DB/index.js';
+import { db, pool, userProfiles, organizations, people } from '../src/DB/index.js';
 
 async function getProfileWithClientId(userId: string) {
   const [profile] = await db
@@ -115,6 +115,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updatedAt: new Date(),
         })
         .where(eq(userProfiles.id, userId));
+
+      // Propagar name/phone/imageUrl para todos os registros people vinculados
+      const peopleSyncFields: Record<string, unknown> = { updatedAt: new Date() };
+      if (name) peopleSyncFields.fullName = name;
+      if (phone !== undefined) peopleSyncFields.phoneWhatsapp = phone;
+      if (imageUrl !== null) peopleSyncFields.photoUrl = imageUrl;
+      if (Object.keys(peopleSyncFields).length > 1) {
+        await db.update(people).set(peopleSyncFields).where(eq(people.userId, userId)).catch(() => {});
+      }
 
       const profile = await getProfileWithClientId(userId);
       if (!profile) {

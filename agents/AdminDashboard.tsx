@@ -12,6 +12,9 @@ import {
   Save,
   X,
   Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { User as UserType } from '../types';
 import { mapUserProfile } from '../lib/auth/mapUserProfile';
@@ -50,6 +53,7 @@ const AdminDashboard: React.FC = () => {
     total: 0,
     active: 0,
   });
+  const [sortByLastAccess, setSortByLastAccess] = useState<'asc' | 'desc' | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -140,14 +144,21 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const filteredClients = clients.filter(client => {
-    const matchesSearch =
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesQualification =
-      qualificationFilter === 'all' || client.qualification === qualificationFilter;
-    return matchesSearch && matchesQualification;
-  });
+  const filteredClients = clients
+    .filter(client => {
+      const matchesSearch =
+        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesQualification =
+        qualificationFilter === 'all' || client.qualification === qualificationFilter;
+      return matchesSearch && matchesQualification;
+    })
+    .sort((a, b) => {
+      if (!sortByLastAccess) return 0;
+      const aTime = a.lastLogin ? new Date(a.lastLogin).getTime() : 0;
+      const bTime = b.lastLogin ? new Date(b.lastLogin).getTime() : 0;
+      return sortByLastAccess === 'desc' ? bTime - aTime : aTime - bTime;
+    });
 
   const formatLastLogin = (lastLogin?: string) => {
     if (!lastLogin) return 'Nunca';
@@ -723,8 +734,16 @@ const AdminDashboard: React.FC = () => {
                 <th className="px-6 py-3 text-[10px] font-bold text-ai-subtext uppercase tracking-wider border-b border-ai-border">
                   Status
                 </th>
-                <th className="px-6 py-3 text-[10px] font-bold text-ai-subtext uppercase tracking-wider border-b border-ai-border">
-                  Último Acesso
+                <th
+                  className="px-6 py-3 text-[10px] font-bold text-ai-subtext uppercase tracking-wider border-b border-ai-border cursor-pointer select-none hover:text-ai-text transition-colors"
+                  onClick={() => setSortByLastAccess(prev => prev === null ? 'desc' : prev === 'desc' ? 'asc' : null)}
+                >
+                  <span className="flex items-center gap-1">
+                    Último Acesso
+                    {sortByLastAccess === 'desc' && <ArrowDown className="w-3 h-3" />}
+                    {sortByLastAccess === 'asc' && <ArrowUp className="w-3 h-3" />}
+                    {sortByLastAccess === null && <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                  </span>
                 </th>
                 <th className="px-6 py-3 text-[10px] font-bold text-ai-subtext uppercase tracking-wider border-b border-ai-border text-right">
                   Ações
