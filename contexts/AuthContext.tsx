@@ -134,6 +134,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (result.error) {
         let msg = result.error.message || result.error.statusText || 'Email ou senha inválidos';
         if (
+          result.error.status === 429 ||
+          msg.toLowerCase().includes('too many requests')
+        ) {
+          msg = 'Muitas tentativas de login. Aguarde 1 minuto e tente novamente.';
+        } else if (
           msg.toLowerCase().includes('password') ||
           msg.toLowerCase().includes('credential') ||
           msg.toLowerCase().includes('email') ||

@@ -35,6 +35,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Lista todos os usuários (exceto administradores)
       if (action === 'list-users') {
+        // Reconciliação: garante que todo ba_user tem user_profiles (cobre usuários antigos)
+        await pool.query(`
+          INSERT INTO user_profiles (id, email, name, role, status, ativo, avatar, created_at, updated_at)
+          SELECT b.id, b.email, COALESCE(b.name, split_part(b.email, '@', 1)),
+                 'visitante', 'active', true,
+                 upper(left(COALESCE(b.name, b.email), 1)), now(), now()
+          FROM ba_user b
+          WHERE NOT EXISTS (SELECT 1 FROM user_profiles up WHERE up.id = b.id)
+          ON CONFLICT (id) DO NOTHING
+        `);
+
         const search = (req.query.search as string)?.trim() || null;
         const offset = Number(req.query.offset) || 0;
         const limit = Math.min(Number(req.query.limit) || 500, 500);

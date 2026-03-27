@@ -1,7 +1,7 @@
 {
   "name": "gesttor",
   "private": true,
-  "version": "1.5.40",
+  "version": "1.5.41",
   "type": "module",
   "engines": {
     "node": ">=20 <25"
