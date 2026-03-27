@@ -169,17 +169,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `UPDATE organizations SET analyst_id = $1 WHERE id = $2`,
             [targetUserId, organizationId],
           );
+          // Analista não usa organization_id em user_profiles
+          await pool.query(
+            `UPDATE user_profiles SET organization_id = NULL WHERE id = $1`,
+            [targetUserId],
+          );
         } else {
           // Limpa qualquer vínculo owner_id anterior deste usuário
           await pool.query(
             `UPDATE organizations SET owner_id = NULL WHERE owner_id = $1`,
             [targetUserId],
           );
-          // Se for cliente com organização selecionada, vincula como proprietário
+          // Se for cliente com organização selecionada, vincula como proprietário e atualiza organization_id
           if (role === 'cliente' && clientOrgId) {
             await pool.query(
               `UPDATE organizations SET owner_id = $1 WHERE id = $2`,
               [targetUserId, clientOrgId],
+            );
+            await pool.query(
+              `UPDATE user_profiles SET organization_id = $1 WHERE id = $2`,
+              [clientOrgId, targetUserId],
+            );
+          } else {
+            // Visitante ou cliente sem org: limpa organization_id
+            await pool.query(
+              `UPDATE user_profiles SET organization_id = NULL WHERE id = $1`,
+              [targetUserId],
             );
           }
         }

@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import type { Request, Response } from 'express';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -92,6 +93,68 @@ app.all('/api/auth/{*path}', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ error: message });
     }
+  }
+});
+
+// ── Upload de áudio (multipart) — ANTES do json parser ────────────────────────
+// Este route usa multer diretamente porque o createVercelAdapter só passa
+// req.body (JSON); req.file ficaria invisível para o handler Vercel.
+// A lógica de transcrição é compartilhada via api/_lib/transcription.ts.
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB — chunking automático acima de 25 MB
+});
+
+app.post('/api/transcrever-reuniao', audioUpload.single('audio'), async (req, res) => {
+  try {
+    const { getAuthUserIdFromRequest } = await import('./api/_lib/betterAuthAdapter.js');
+    const { transcribeAudioWithChunking, validateAudioFile, TRANSCRIPTION_MODEL } = await import('./api/_lib/transcription.js');
+
+    // Adapta o Request do Express para VercelRequest (headers são suficientes para auth)
+    const fakeVercelReq = { headers: req.headers } as VercelRequest;
+    const userId = await getAuthUserIdFromRequest(fakeVercelReq);
+    if (!userId) {
+      res.status(401).json({ ok: false, error: 'Não autenticado.' });
+      return;
+    }
+
+    interface UploadedFile {
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+      size: number;
+    }
+    const file = req.file as unknown as UploadedFile | undefined;
+
+    if (!file) {
+      res.status(400).json({ ok: false, error: 'Arquivo de áudio não enviado. Use o campo "audio".' });
+      return;
+    }
+
+    const validationError = validateAudioFile(file.mimetype, file.size);
+    if (validationError) {
+      res.status(400).json({ ok: false, error: validationError });
+      return;
+    }
+
+    const { texto, chunks } = await transcribeAudioWithChunking(file.buffer, file.originalname, file.mimetype);
+    res.json({
+      ok: true,
+      data: {
+        texto,
+        modelo: TRANSCRIPTION_MODEL,
+        chunks,
+        reuniao_id: null,
+        resumo: null,
+        decisoes: null,
+        tarefas: null,
+        ata: null,
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erro interno.';
+    console.error('[server-dev] transcrever-reuniao:', msg);
+    if (!res.headersSent) res.status(500).json({ ok: false, error: msg });
   }
 });
 

@@ -29,6 +29,15 @@ async function getProfileWithClientId(userId: string) {
       .where(eq(organizations.ownerId, userId))
       .limit(1);
     clientId = org?.id ?? null;
+
+    // Self-healing: se organization_id está nulo mas owner_id está correto, sincroniza
+    if (!profile.organizationId && clientId) {
+      await db
+        .update(userProfiles)
+        .set({ organizationId: clientId, updatedAt: new Date() })
+        .where(eq(userProfiles.id, userId));
+      profile.organizationId = clientId;
+    }
   }
 
   return { ...profile, client_id: clientId };

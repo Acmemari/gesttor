@@ -166,6 +166,22 @@ function getSafraLabel(): string {
   return now.getMonth() >= 6 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
+/** Drizzle retorna camelCase; normaliza para snake_case usado no frontend. */
+function normalizeAtividade(row: Record<string, unknown>): Atividade {
+  return {
+    id: String(row.id ?? ''),
+    semana_id: String(row.semana_id ?? row.semanaId ?? ''),
+    titulo: String(row.titulo ?? ''),
+    descricao: String(row.descricao ?? ''),
+    pessoa_id: (row.pessoa_id ?? row.pessoaId ?? null) as string | null,
+    data_termino: (row.data_termino ?? row.dataTermino ?? null) as string | null,
+    tag: String(row.tag ?? '#planejamento'),
+    status: (row.status ?? 'a fazer') as Atividade['status'],
+    parent_id: (row.parent_id ?? row.parentId ?? null) as string | null,
+    created_at: String(row.created_at ?? row.createdAt ?? ''),
+  };
+}
+
 const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '', status: '' };
 
 interface GestaoSemanalProps {
@@ -315,7 +331,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
       if (semanaData) {
         const atRes = await semanasApi.listAtividades(semanaData.id);
-        setAtividades(atRes.ok ? (atRes.data as Atividade[]) : []);
+        setAtividades(atRes.ok ? (atRes.data as Record<string, unknown>[]).map(normalizeAtividade) : []);
       } else {
         setAtividades([]);
       }
@@ -386,19 +402,13 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   }, [sourceTab, atividades, projectTasks]);
 
   const stats = useMemo(() => {
-    let concluidas = 0, em_andamento = 0, pausada = 0, a_fazer = 0;
-    for (const a of activeTasks) {
-      switch (a.status) {
-        case 'concluída': concluidas++; break;
-        case 'em andamento': em_andamento++; break;
-        case 'pausada': pausada++; break;
-        case 'a fazer': a_fazer++; break;
-      }
-    }
-    const total = activeTasks.length;
-    const progresso = total > 0 ? Math.round((concluidas / total) * 100) : 0;
-    return { total, concluidas, em_andamento, pausada, a_fazer, progresso };
-  }, [activeTasks]);
+    const totalGeral = atividades.length;
+    const totalTarefas = atividades.filter(a => !a.parent_id).length;
+    const concluidas = atividades.filter(a => a.status === 'concluída').length;
+    const aFazer = totalGeral - concluidas;
+    const progresso = totalGeral > 0 ? Math.round((concluidas / totalGeral) * 100) : 0;
+    return { totalGeral, totalTarefas, concluidas, aFazer, progresso };
+  }, [atividades]);
 
   const pessoaMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -421,9 +431,19 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     return { parentTasks: parents, subtasksMap: subs };
   }, [atividades]);
 
+  const uniqueTags = useMemo(() => {
+    const tags = new Set(atividades.map(a => a.tag).filter(Boolean));
+    return Array.from(tags).sort();
+  }, [atividades]);
+
   const filteredParentTasks = useMemo(() => {
     let result = [...parentTasks];
-    if (filters.titulo)      result = result.filter(a => a.titulo.toLowerCase().includes(filters.titulo.toLowerCase()));
+    if (filters.titulo) {
+      const q = filters.titulo.toLowerCase();
+      result = result.filter(a =>
+        a.titulo.toLowerCase().includes(q) || (a.tag && a.tag.toLowerCase().includes(q))
+      );
+    }
     if (filters.pessoaId)    result = result.filter(a => a.pessoa_id === filters.pessoaId);
     if (filters.dataTermino) result = result.filter(a => a.data_termino === filters.dataTermino);
     if (filters.status)      result = result.filter(a => a.status === filters.status);
@@ -475,9 +495,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
   const resetForm = useCallback(() => {
-    setNewForm({ titulo: '', descricao: '', pessoaId: pessoas[0]?.id || '', dataTermino: '', tag: '#planejamento' });
+    setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
     setEditingId(null);
-  }, [pessoas]);
+  }, []);
 
   const handleEditStart = useCallback((at: Atividade) => {
     setNewForm({
@@ -501,6 +521,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     const pessoaId = newForm.pessoaId || pessoas[0]?.id;
     if (!pessoaId) {
       onToast?.('Selecione uma pessoa responsável antes de salvar.', 'warning');
+      return;
+    }
+    if (!newForm.dataTermino) {
+      onToast?.('Data de término é obrigatória.', 'warning');
       return;
     }
 
@@ -536,7 +560,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         status: 'a fazer',
       });
       if (!res.ok) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
-      setAtividades(prev => [...prev, res.data as Atividade]);
+      setAtividades(prev => [...prev, normalizeAtividade(res.data as Record<string, unknown>)]);
       setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
       setShowTaskModal(false);
     }
@@ -561,42 +585,63 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   }, [deletingId, editingId, resetForm, onToast]);
 
   const handleStatusChange = useCallback(async (id: string, status: string) => {
+    if (status === 'concluída') {
+      const openSubs = atividades.filter(a => a.parent_id === id && a.status !== 'concluída');
+      if (openSubs.length > 0) {
+        onToast?.(`Conclua as subtarefas desta atividade antes de concluí-la. (${openSubs.length} em aberto)`, 'warning');
+        return;
+      }
+    }
     const res = await semanasApi.updateAtividade(id, { status });
     if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, [onToast]);
+  }, [atividades, onToast]);
 
   const handleCheckboxChange = useCallback(async (id: string, checked: boolean) => {
+    if (checked) {
+      const openSubs = atividades.filter(a => a.parent_id === id && a.status !== 'concluída');
+      if (openSubs.length > 0) {
+        onToast?.(`Conclua as subtarefas desta atividade antes de concluí-la. (${openSubs.length} em aberto)`, 'warning');
+        return;
+      }
+    }
     const status = checked ? 'concluída' : 'a fazer';
     const res = await semanasApi.updateAtividade(id, { status });
     if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, [onToast]);
+  }, [atividades, onToast]);
 
   const handleSaveSubtask = useCallback(async (parentId: string) => {
     if (operating || !subtaskForm.titulo.trim() || !semana) return;
+    if (!subtaskForm.dataTermino) {
+      onToast?.('Data de término é obrigatória para a subtarefa.', 'warning');
+      return;
+    }
+    if (!subtaskForm.pessoaId) {
+      onToast?.('Responsável é obrigatório para a subtarefa.', 'warning');
+      return;
+    }
+    const parent = atividades.find(a => a.id === parentId);
     setOperating(true);
     try {
-      const parent = atividades.find(a => a.id === parentId);
-      const pessoaId = subtaskForm.pessoaId || parent?.pessoa_id || pessoas[0]?.id;
       const res = await semanasApi.createAtividade({
         semana_id: semana.id,
         titulo: subtaskForm.titulo.trim(),
         descricao: '',
-        pessoa_id: pessoaId,
-        data_termino: subtaskForm.dataTermino || parent?.data_termino || null,
+        pessoa_id: subtaskForm.pessoaId,
+        data_termino: subtaskForm.dataTermino,
         tag: parent?.tag || '#planejamento',
         status: 'a fazer',
         parent_id: parentId,
       });
       if (!res.ok) { onToast?.('Erro ao adicionar subtarefa.', 'error'); return; }
-      setAtividades(prev => [...prev, res.data as Atividade]);
-      setSubtaskForm(prev => ({ ...prev, titulo: '' }));
+      setAtividades(prev => [...prev, normalizeAtividade(res.data as Record<string, unknown>)]);
+      setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' });
       setExpandedTasks(prev => new Set(prev).add(parentId));
     } finally {
       setOperating(false);
     }
-  }, [subtaskForm, semana, pessoas, atividades, operating, onToast]);
+  }, [subtaskForm, semana, atividades, operating, onToast]);
 
   const handleFecharSemana = useCallback(async () => {
     if (operating || !semana?.aberta || !canFecharSemana) return;
@@ -648,7 +693,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       }
       setSemana(semanaData);
       const atRes = await semanasApi.listAtividades(semanaData.id);
-      setAtividades(atRes.ok ? (atRes.data as Atividade[]) : []);
+      setAtividades(atRes.ok ? (atRes.data as Record<string, unknown>[]).map(normalizeAtividade) : []);
     } finally {
       setLoading(false);
     }
@@ -1000,23 +1045,6 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               <span>{sourceTab === 'semana' ? '📅 Semana' : '📁 Projetos'}</span>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>▼</span>
             </button>
-            {/* Nova Tarefa button */}
-            {canEditInWeek && sourceTab === 'semana' && (
-              <button
-                onClick={() => {
-                  setNewForm({ titulo: '', descricao: '', pessoaId: pessoas[0]?.id || '', dataTermino: toDateStr(new Date()), tag: '#planejamento' });
-                  setEditingId(null);
-                  setShowTaskModal(true);
-                }}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, border: 'none',
-                  background: '#3B82F6', color: '#FFF',
-                  fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
-                }}
-              >
-                + Nova Tarefa
-              </button>
-            )}
             {semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
               <button
                 onClick={handleVoltarSemanaAtual}
@@ -1120,13 +1148,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         )}
 
         {/* ── 3. STATS CARDS ────────────────────────────────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
           {[
-            { label: 'Total',        value: stats.total,        color: '#475569' },
-            { label: 'A fazer',      value: stats.a_fazer,      color: '#6B7280' },
-            { label: 'Em andamento', value: stats.em_andamento, color: '#2563EB' },
-            { label: 'Pausada',      value: stats.pausada,      color: '#D97706' },
-            { label: 'Concluídas',   value: stats.concluidas,   color: '#059669' },
+            { label: 'Total geral', value: stats.totalGeral,   color: '#475569' },
+            { label: 'Tarefas',     value: stats.totalTarefas, color: '#6366F1' },
+            { label: 'Concluídas',  value: stats.concluidas,   color: '#059669' },
+            { label: 'A fazer',     value: stats.aFazer,       color: '#6B7280' },
           ].map(card => (
             <div key={card.label} style={{ background: '#FFF', borderRadius: 8, padding: '6px 10px', border: '1px solid #F1F5F9' }}>
               <p style={{ fontSize: 10, color: '#94A3B8', fontWeight: 500, margin: '0 0 2px' }}>{card.label}</p>
@@ -1152,6 +1179,26 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           </div>
         </div>
 
+        {/* ── 5. NOVA TAREFA BUTTON ───────────────────────────────────────── */}
+        {canEditInWeek && sourceTab === 'semana' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button
+              onClick={() => {
+                setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
+                setEditingId(null);
+                setShowTaskModal(true);
+              }}
+              style={{
+                padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: '#3B82F6', color: '#FFF',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
+              }}
+            >
+              + Nova Tarefa
+            </button>
+          </div>
+        )}
+
         {/* ── 6. LISTA ─────────────────────────────────────────────── */}
         <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', marginBottom: 8 }}>
 
@@ -1173,8 +1220,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               <div style={{ flex: '0 0 28px' }} />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-              <input type="text" placeholder="Filtrar título..." value={filters.titulo}
+              <input type="text" placeholder="Filtrar título..." value={filters.titulo} list="titulo-tags-list"
                 onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={{ ...FILTER_ST, flex: '1 1 160px' }} />
+              <datalist id="titulo-tags-list">
+                {uniqueTags.map(tag => <option key={tag} value={tag} />)}
+              </datalist>
               <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 130px' }}>
                 <option value="">Todos</option>
                 {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -1271,7 +1321,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   onMouseEnter={() => setHoveredRow(at.id)}
                   onMouseLeave={() => setHoveredRow(null)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
                     background: isEditing ? '#F5F3FF' : isHovered ? '#F8FAFC' : '#FFF',
                     transition: 'background 0.15s',
                     borderLeft: isEditing ? '3px solid #6366F1' : '3px solid transparent',
@@ -1281,7 +1331,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   <div
                     onClick={e => { e.stopPropagation(); handleCheckboxChange(at.id, !isConcluida); }}
                     style={{
-                      flexShrink: 0, width: 18, height: 18, borderRadius: 9,
+                      flexShrink: 0, alignSelf: 'flex-start', marginTop: 2,
+                      width: 18, height: 18, borderRadius: 9,
                       border: isConcluida ? 'none' : '2px solid #CBD5E1',
                       background: isConcluida ? '#059669' : 'transparent',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1290,36 +1341,38 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                     {isConcluida && <span style={{ color: '#FFF', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                   </div>
 
-                  {/* Title + badge */}
+                  {/* Title + secondary info */}
                   <div
                     onClick={() => handleEditStart(at)}
-                    style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                    style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
                   >
-                    <span style={{
-                      fontSize: 14, fontWeight: 600, color: isConcluida ? '#94A3B8' : '#1E293B',
-                      textDecoration: isConcluida ? 'line-through' : 'none',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {at.titulo}
-                    </span>
-                    {subs.length > 0 && (
-                      <span style={{ fontSize: 12, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', flexShrink: 0, fontFamily: mono }}>
-                        {subsDone}/{subs.length}
+                    {/* Row 1: title + badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        fontSize: 14, fontWeight: 600, color: isConcluida ? '#94A3B8' : '#1E293B',
+                        textDecoration: isConcluida ? 'line-through' : 'none',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {at.titulo}
                       </span>
-                    )}
+                      {subs.length > 0 && (
+                        <span style={{ fontSize: 11, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', flexShrink: 0, fontFamily: mono }}>
+                          {subsDone}/{subs.length}
+                        </span>
+                      )}
+                    </div>
+                    {/* Row 2: date + person */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 3 }}>
+                      {at.data_termino && (
+                        <span style={{ fontSize: 12, color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ fontSize: 11 }}>⏰</span> {formatDatePtBr(at.data_termino)}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 12, color: '#64748B', display: 'flex', alignItems: 'center', gap: 3, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: 11 }}>👤</span> {getPessoaNome(at.pessoa_id)}
+                      </span>
+                    </div>
                   </div>
-
-                  {/* Date */}
-                  {at.data_termino && (
-                    <span style={{ fontSize: 12, color: '#64748B', flexShrink: 0 }}>
-                      📅 {formatDatePtBr(at.data_termino)}
-                    </span>
-                  )}
-
-                  {/* Person */}
-                  <span style={{ fontSize: 12, color: '#475569', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {getPessoaNome(at.pessoa_id)}
-                  </span>
 
                   {/* Status */}
                   <select
@@ -1334,7 +1387,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   {/* Add subtask button */}
                   {canEditInWeek && (
                     <button
-                      onClick={e => { e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: at.pessoa_id || '', dataTermino: at.data_termino || '' }); }}
+                      onClick={e => { e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); }}
                       title="Adicionar subtarefa"
                       style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isHovered || addingSubtaskFor === at.id ? 1 : 0, transition: 'opacity 0.15s' }}
                     >+</button>
@@ -1361,56 +1414,66 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                 </div>
 
                 {/* ── Subtasks ────────────────────────────────────── */}
-                {isExpanded && subs.map(sub => {
-                  const subConcluida = sub.status === 'concluída';
-                  const subHovered = hoveredRow === sub.id;
-                  const subDeleting = deletingId === sub.id;
-                  return (
-                    <div
-                      key={sub.id}
-                      onMouseEnter={() => setHoveredRow(sub.id)}
-                      onMouseLeave={() => setHoveredRow(null)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px 6px 46px', borderTop: '1px solid #F1F5F9', background: subHovered ? '#F8FAFC' : '#FAFAFA', transition: 'background 0.15s' }}
-                    >
-                      {/* Circular checkbox (smaller) */}
-                      <div
-                        onClick={e => { e.stopPropagation(); handleCheckboxChange(sub.id, !subConcluida); }}
-                        style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 8, border: subConcluida ? 'none' : '2px solid #CBD5E1', background: subConcluida ? '#059669' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        {subConcluida && <span style={{ color: '#FFF', fontSize: 9, fontWeight: 700, lineHeight: 1 }}>✓</span>}
-                      </div>
-
-                      {/* Title */}
-                      <div
-                        onClick={() => handleEditStart(sub)}
-                        style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 400, color: subConcluida ? '#94A3B8' : '#475569', textDecoration: subConcluida ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-                      >
-                        {sub.titulo}
-                      </div>
-
-                      {/* Date */}
-                      <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, fontFamily: mono }}>{formatDatePtBr(sub.data_termino)}</span>
-
-                      {/* Person */}
-                      <span style={{ fontSize: 11, color: '#475569', flexShrink: 0, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPessoaNome(sub.pessoa_id)}</span>
-
-                      {/* Delete */}
-                      {canEditInWeek && (
-                        <button
-                          onClick={e => { e.stopPropagation(); handleRemoveAtividade(sub.id); }}
-                          title={subDeleting ? 'Clique novamente para confirmar' : 'Excluir subtarefa'}
-                          style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: 'none', background: subDeleting ? '#FEE2E2' : 'transparent', color: subDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 11, opacity: subHovered || subDeleting ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: subDeleting ? 700 : 400 }}
+                {isExpanded && subs.length > 0 && (
+                  <div style={{ margin: '0 14px 6px 44px', borderLeft: '2px solid #E2E8F0', borderRadius: '0 6px 6px 0', background: '#F8FAFC', overflow: 'hidden' }}>
+                    {subs.map((sub, idx) => {
+                      const subConcluida = sub.status === 'concluída';
+                      const subHovered = hoveredRow === sub.id;
+                      const subDeleting = deletingId === sub.id;
+                      return (
+                        <div
+                          key={sub.id}
+                          onMouseEnter={() => setHoveredRow(sub.id)}
+                          onMouseLeave={() => setHoveredRow(null)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderTop: idx === 0 ? 'none' : '1px solid #EEF2F7', background: subHovered ? '#EFF6FF' : 'transparent', transition: 'background 0.15s' }}
                         >
-                          {subDeleting ? '?' : '✕'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                          {/* Circular checkbox (smaller) */}
+                          <div
+                            onClick={e => { e.stopPropagation(); handleCheckboxChange(sub.id, !subConcluida); }}
+                            style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 7, border: subConcluida ? 'none' : '1.5px solid #CBD5E1', background: subConcluida ? '#059669' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            {subConcluida && <span style={{ color: '#FFF', fontSize: 7, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+                          </div>
+
+                          {/* Title */}
+                          <div
+                            onClick={() => handleEditStart(sub)}
+                            style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 400, color: subConcluida ? '#94A3B8' : '#475569', textDecoration: subConcluida ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                          >
+                            {sub.titulo}
+                          </div>
+
+                          {/* Date */}
+                          {sub.data_termino && (
+                            <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <span style={{ fontSize: 10 }}>⏰</span> {formatDatePtBr(sub.data_termino)}
+                            </span>
+                          )}
+
+                          {/* Person */}
+                          <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <span style={{ fontSize: 10 }}>👤</span> {getPessoaNome(sub.pessoa_id)}
+                          </span>
+
+                          {/* Delete */}
+                          {canEditInWeek && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleRemoveAtividade(sub.id); }}
+                              title={subDeleting ? 'Clique novamente para confirmar' : 'Excluir subtarefa'}
+                              style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, border: 'none', background: subDeleting ? '#FEE2E2' : 'transparent', color: subDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 10, opacity: subHovered || subDeleting ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: subDeleting ? 700 : 400 }}
+                            >
+                              {subDeleting ? '?' : '✕'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* ── Inline subtask form ─────────────────────────── */}
                 {addingSubtaskFor === at.id && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px 6px 46px', borderTop: '1px solid #F1F5F9', background: '#F0F9FF' }}>
+                  <div style={{ margin: '0 14px 6px 44px', borderLeft: '2px solid #6366F1', borderRadius: '0 6px 6px 0', background: '#F0F9FF', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <input
                       autoFocus
                       type="text" placeholder="Nova subtarefa..." value={subtaskForm.titulo}
@@ -1431,8 +1494,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                     </div>
                     <button
                       onClick={() => handleSaveSubtask(at.id)}
-                      disabled={!subtaskForm.titulo.trim() || operating}
-                      style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 6, border: 'none', background: subtaskForm.titulo.trim() ? '#3B82F6' : '#BFDBFE', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: subtaskForm.titulo.trim() ? 'pointer' : 'default', fontFamily: FONT, whiteSpace: 'nowrap' }}
+                      disabled={!subtaskForm.titulo.trim() || !subtaskForm.pessoaId || !subtaskForm.dataTermino || operating}
+                      style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 6, border: 'none', background: (subtaskForm.titulo.trim() && subtaskForm.pessoaId && subtaskForm.dataTermino) ? '#3B82F6' : '#BFDBFE', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: (subtaskForm.titulo.trim() && subtaskForm.pessoaId && subtaskForm.dataTermino) ? 'pointer' : 'default', fontFamily: FONT, whiteSpace: 'nowrap' }}
                     >
                       Adicionar
                     </button>
@@ -1504,7 +1567,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
               <div style={{ flex: '1 1 160px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título <span style={{ color: '#EF4444' }}>*</span></label>
                 <input
                   autoFocus
                   type="text" placeholder="Título" value={newForm.titulo}
@@ -1522,14 +1585,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                 />
               </div>
               <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável <span style={{ color: '#EF4444' }}>*</span></label>
                 <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
                   <option value="">Selecione</option>
                   {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                 </select>
               </div>
               <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Data Término</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Data Término <span style={{ color: '#EF4444' }}>*</span></label>
                 <DateInputBR
                   value={newForm.dataTermino}
                   onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
@@ -1552,13 +1615,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               >
                 Cancelar
               </button>
-              <button
-                onClick={handleSave}
-                disabled={operating || !newForm.titulo.trim()}
-                style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: newForm.titulo.trim() ? '#3B82F6' : '#BFDBFE', color: '#FFF', cursor: newForm.titulo.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, fontFamily: FONT }}
-              >
-                {editingId ? 'Salvar' : 'Adicionar'}
-              </button>
+              {(() => {
+                const canSave = !!newForm.titulo.trim() && !!newForm.pessoaId && !!newForm.dataTermino;
+                return (
+                  <button
+                    onClick={handleSave}
+                    disabled={operating || !canSave}
+                    style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: canSave ? '#3B82F6' : '#BFDBFE', color: '#FFF', cursor: canSave ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, fontFamily: FONT }}
+                  >
+                    {editingId ? 'Salvar' : 'Adicionar'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

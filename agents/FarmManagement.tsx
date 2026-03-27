@@ -216,7 +216,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
         ? Object.fromEntries(farms.map(f => [f.id, FULL_ACCESS]))
         : batchPerms;
   const formReadOnly = editingFarm ? !effectiveFormPerms.canEdit('farms:form') : false;
-  const needsOrgForCreate = !editingFarm && !selectedClient && !(isCliente && user?.clientId);
+  const needsOrgForCreate = !editingFarm && !selectedClient && !(isCliente && user?.organizationId);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -628,7 +628,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     const newErrors: Record<string, string> = {};
 
     // Validar se há cliente/organização (obrigatório para criar fazenda; cliente usa user.clientId quando não há selectedClient)
-    const clientIdForValidation = selectedClient?.id ?? (isCliente && user?.clientId ? user.clientId : null);
+    const clientIdForValidation = selectedClient?.id ?? (isCliente && user?.organizationId ? user.organizationId : null);
     if (!editingFarm && !clientIdForValidation) {
       const isAwaitingClients = !loadingClientsAvailability && (availableClientsCount ?? 0) === 0;
       newErrors.client = isAwaitingClients
@@ -740,7 +740,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
     setIsSubmitting(true);
 
     try {
-      const clientIdForNewFarm = selectedClient?.id ?? (isCliente ? user?.clientId ?? null : null);
+      const clientIdForNewFarm = selectedClient?.id ?? (isCliente ? user?.organizationId ?? null : null);
 
       // Validação adicional: não permitir criar fazenda sem organização
       if (!editingFarm && !clientIdForNewFarm) {

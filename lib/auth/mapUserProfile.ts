@@ -16,12 +16,14 @@ interface NeonProfile {
   plan?: string;
   status?: string;
   avatar?: string;
-  imageUrl?: string | null;   // camelCase — retornado pelo Drizzle ORM
-  image_url?: string | null;  // snake_case — compatibilidade legado
-  lastLogin?: string;         // camelCase — retornado pelo Drizzle ORM
-  last_login?: string;        // snake_case — compatibilidade legado
+  imageUrl?: string | null;       // camelCase — retornado pelo Drizzle ORM
+  image_url?: string | null;      // snake_case — compatibilidade legado
+  lastLogin?: string;             // camelCase — retornado pelo Drizzle ORM
+  last_login?: string;            // snake_case — compatibilidade legado
   phone?: string;
-  client_id?: string | null;  // preenchido pela API GET /api/auth para role='cliente'
+  organizationId?: string | null; // camelCase — user_profiles.organization_id via Drizzle ORM
+  organization_id?: string | null;// snake_case — compatibilidade legado
+  client_id?: string | null;      // preenchido pela API GET /api/auth para role='cliente'
 }
 
 /**
@@ -128,6 +130,6 @@ export const mapUserProfile = (input: unknown): User | null => {
     lastLogin,
     phone,
     qualification,
-    clientId: profile.client_id ?? undefined,
+    organizationId: profile.organizationId ?? profile.organization_id ?? profile.client_id ?? undefined,
   };
 };

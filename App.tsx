@@ -54,6 +54,7 @@ const FeedbackList = lazy(() => import('./agents/FeedbackList'));
 const AreaCertificadosDesktop = lazy(() => import('./agents/AreaCertificadosDesktop'));
 const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'));
 const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
+const TranscreverReuniao = lazy(() => import('./agents/TranscreverReuniao'));
 
 const LoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full">
@@ -318,6 +319,14 @@ const AppContent: React.FC = () => {
 
       // Admin exclusives
       if (user?.role === 'admin') {
+        orderedList.push({
+          id: 'transcrever-reuniao',
+          name: 'Transcrição de Reunião',
+          description: 'Transcreva áudios de reuniões automaticamente',
+          icon: 'mic',
+          category: 'admin' as const,
+          status: 'active' as const,
+        });
         orderedList.push(analystManagement);
         orderedList.push({
           id: 'antonio-admin',
@@ -546,6 +555,7 @@ const AppContent: React.FC = () => {
   const isCalendar = activeAgentId === 'calendar';
   const isRotinasFazenda = activeAgentId === 'rotinas-fazenda';
   const isGestaoSemanal = activeAgentId === 'gestao-semanal';
+  const isTranscreverReuniao = activeAgentId === 'transcrever-reuniao';
   const isAreaCertificados = activeAgentId === 'area-certificados';
   const isProjetoSubView =
     isIniciativasOverview || isIniciativasAtividades || isIniciativasKanban || isProjectStructure;
@@ -570,7 +580,9 @@ const AppContent: React.FC = () => {
                   ? 'Rotinas Fazenda'
                   : isGestaoSemanal
                     ? 'Rotina Semanal'
-                    : isAreaCertificados
+                    : isTranscreverReuniao
+                    ? 'Transcrição de Reunião'
+                  : isAreaCertificados
                     ? 'Área Certificados'
                     : isRhFeedbackList
                       ? 'RH - Feedback'
@@ -943,6 +955,12 @@ const AppContent: React.FC = () => {
         return (
           <Suspense fallback={<LoadingFallback />}>
             <GestaoSemanal onToast={handleToast} />
+          </Suspense>
+        );
+      case 'transcrever-reuniao':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <TranscreverReuniao />
           </Suspense>
         );
       case 'area-certificados':
