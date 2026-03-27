@@ -94,6 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           data_termino: item.data_termino ? String(item.data_termino) : null,
           tag: item.tag ? String(item.tag) : '#planejamento',
           status: 'a fazer',
+          parent_id: item.parent_id ? String(item.parent_id) : null,
         })),
       );
       jsonSuccess(res, rows);
@@ -113,6 +114,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isValidStatus(statusRaw)) {
       jsonError(res, `status inválido: ${statusRaw}`, { status: 400 }); return;
     }
+    // Validate parent_id
+    let parent_id: string | null = null;
+    if (body?.parent_id) {
+      parent_id = String(body.parent_id);
+      const pai = await getAtividadeById(parent_id);
+      if (!pai) { jsonError(res, 'Tarefa pai não encontrada', { status: 400 }); return; }
+      if (pai.semanaId !== semana_id) { jsonError(res, 'Tarefa pai deve pertencer à mesma semana', { status: 400 }); return; }
+      if (pai.parentId) { jsonError(res, 'Não é permitido criar subtarefa de subtarefa', { status: 400 }); return; }
+    }
     try {
       const row = await createAtividade({
         semana_id,
@@ -122,6 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         data_termino: body?.data_termino ? String(body.data_termino) : null,
         tag: body?.tag ? String(body.tag) : '#planejamento',
         status: statusRaw,
+        parent_id,
       });
       jsonSuccess(res, row);
       return;
@@ -152,6 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isValidStatus(s)) { jsonError(res, `status inválido: ${s}`, { status: 400 }); return; }
       partial.status = s;
     }
+    if (body.parent_id !== undefined) partial.parent_id = body.parent_id ? String(body.parent_id) : null;
     const row = await updateAtividade(id, partial);
     jsonSuccess(res, row);
     return;

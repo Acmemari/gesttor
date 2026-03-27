@@ -44,6 +44,7 @@ export interface AtividadeRow {
   data_termino: string | null;
   tag: string;
   status: string;
+  parent_id: string | null;
   created_at: string;
 }
 
@@ -114,6 +115,7 @@ export interface AtividadePayload {
   data_termino?: string | null;
   tag?: string;
   status?: string;
+  parent_id?: string | null;
 }
 
 export async function createAtividade(payload: AtividadePayload) {

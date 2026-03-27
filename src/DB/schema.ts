@@ -321,10 +321,12 @@ export const atividades = pgTable('activities', {
   dataTermino: date('data_termino'),
   tag: text('tag').default('#planejamento'),
   status: text('status').notNull().default('a fazer'),
+  parentId: uuid('parent_id').references((): any => atividades.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_activities_semana_id').on(t.semanaId),
   index('idx_activities_status').on(t.status),
+  index('idx_activities_parent_id').on(t.parentId),
 ]);
 
 export const historicoSemanas = pgTable('week_history', {

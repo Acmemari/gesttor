@@ -75,10 +75,11 @@ export async function createAtividade(data: {
   semana_id: string;
   titulo: string;
   descricao?: string;
-  pessoa_id?: string;
-  data_termino?: string;
+  pessoa_id?: string | null;
+  data_termino?: string | null;
   tag?: string;
   status?: string;
+  parent_id?: string | null;
 }) {
   const [row] = await db.insert(atividades).values({
     semanaId: data.semana_id,
@@ -88,6 +89,7 @@ export async function createAtividade(data: {
     dataTermino: data.data_termino ?? null,
     tag: data.tag ?? '#planejamento',
     status: data.status ?? 'a fazer',
+    parentId: data.parent_id ?? null,
   }).returning();
   return row;
 }
@@ -100,6 +102,7 @@ export async function createAtividadesBulk(items: Array<{
   data_termino?: string | null;
   tag?: string;
   status?: string;
+  parent_id?: string | null;
 }>) {
   if (items.length === 0) return [];
   return db.insert(atividades).values(items.map(item => ({
@@ -110,6 +113,7 @@ export async function createAtividadesBulk(items: Array<{
     dataTermino: item.data_termino ?? null,
     tag: item.tag ?? '#planejamento',
     status: item.status ?? 'a fazer',
+    parentId: item.parent_id ?? null,
   }))).returning();
 }
 
@@ -120,6 +124,7 @@ export async function updateAtividade(id: string, data: Partial<{
   data_termino: string | null;
   tag: string;
   status: string;
+  parent_id: string | null;
 }>) {
   const mapped: Record<string, unknown> = {};
   if (data.titulo !== undefined) mapped.titulo = data.titulo;
@@ -128,6 +133,7 @@ export async function updateAtividade(id: string, data: Partial<{
   if ('data_termino' in data) mapped.dataTermino = data.data_termino;
   if (data.tag !== undefined) mapped.tag = data.tag;
   if (data.status !== undefined) mapped.status = data.status;
+  if ('parent_id' in data) mapped.parentId = data.parent_id;
   const [row] = await db.update(atividades).set(mapped).where(eq(atividades.id, id)).returning();
   return row;
 }

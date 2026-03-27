@@ -4,14 +4,6 @@ import * as semanasApi from '../lib/api/semanasClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
 import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
-import {
-  DndContext, DragOverlay, closestCenter,
-  PointerSensor, KeyboardSensor, useSensor, useSensors,
-  useDroppable,
-  type DragEndEvent, type DragStartEvent,
-} from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { listTasksByWeek, updateTask as updateProjectTask, type WeekTaskRow } from '../lib/api/tasksClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -40,6 +32,7 @@ interface Atividade {
   data_termino: string | null;
   tag: string;
   status: 'a fazer' | 'em andamento' | 'pausada' | 'concluída';
+  parent_id: string | null;
   created_at: string;
 }
 
@@ -105,21 +98,10 @@ const STATUS_STYLES: Record<string, { text: string; bg: string; border: string }
   'concluída':    { text: '#059669', bg: '#ECFDF5', border: '#10B981' },
 };
 const STATUS_LIST = ['a fazer', 'em andamento', 'pausada', 'concluída'] as const;
-const KANBAN_COLUMN_LABELS: Record<string, string> = {
-  'a fazer': 'A Fazer', 'em andamento': 'Em Andamento',
-  'pausada': 'Pausada', 'concluída': 'Concluída',
-};
-const KANBAN_COLUMN_COLORS: Record<string, { header: string; bg: string; border: string }> = {
-  'a fazer':      { header: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' },
-  'em andamento': { header: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
-  'pausada':      { header: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-  'concluída':    { header: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
-};
 
-const GRID_COLS = '36px 2fr 3fr 110px 90px 120px 106px 28px';
 const PT_MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 const PT_DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
-const SORT_COLS = ['titulo', 'desc', 'pessoa', 'dataTermino', 'tag', 'status'] as const;
+const SORT_COLS = ['titulo', 'pessoa', 'dataTermino', 'status'] as const;
 const FONT = "'DM Sans', sans-serif";
 const INPUT_ST: React.CSSProperties = {
   padding: '7px 10px', borderRadius: 8, border: '1px solid #E2E8F0',
@@ -190,122 +172,6 @@ interface GestaoSemanalProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-// ─── Kanban sub-components ─────────────────────────────────────────────────────
-
-interface KanbanCardProps {
-  task: UnifiedTask;
-  onEdit: (task: UnifiedTask) => void;
-  pessoaMap: Map<string, string>;
-  mono: string;
-  isDragging?: boolean;
-}
-
-function KanbanCardItem({ task, onEdit, pessoaMap, mono, isDragging }: KanbanCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging: isSortDragging } = useSortable({ id: task.id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isSortDragging ? 0.3 : 1,
-    background: '#FFF', borderRadius: 8,
-    border: isDragging ? '2px solid #6366F1' : '1px solid #E2E8F0',
-    padding: '10px 12px', cursor: 'grab',
-    boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.15)' : 'none',
-    userSelect: 'none',
-  };
-  const tagSt = task.tag ? (TAG_STYLES[task.tag] ?? { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB' }) : null;
-  const pessoa = task.pessoa_id ? pessoaMap.get(task.pessoa_id) : null;
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {task.origin === 'project' && task.initiative_name && (
-            <div style={{ fontSize: 10, color: '#6366F1', fontWeight: 500, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              📁 {task.initiative_name}
-            </div>
-          )}
-          {tagSt && (
-            <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 5px', borderRadius: 3, background: tagSt.bg, color: tagSt.text, border: `1px solid ${tagSt.border}`, marginBottom: 4, display: 'inline-block' }}>
-              {task.tag}
-            </span>
-          )}
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {task.titulo}
-          </div>
-          {task.descricao && (
-            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {task.descricao}
-            </div>
-          )}
-        </div>
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onEdit(task); }}
-          style={{ flexShrink: 0, padding: 3, border: 'none', background: 'none', cursor: 'pointer', color: '#CBD5E1', fontSize: 12, borderRadius: 4 }}
-          title="Editar"
-        >✎</button>
-      </div>
-      {(pessoa || task.data_termino) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 6 }}>
-          {pessoa && <span style={{ fontSize: 10, color: '#64748B', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{pessoa}</span>}
-          {task.data_termino && <span style={{ fontSize: 10, color: '#94A3B8', fontFamily: mono, flexShrink: 0, marginLeft: 'auto' }}>{formatDatePtBr(task.data_termino)}</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface KanbanColumnProps {
-  status: string;
-  label: string;
-  tasks: UnifiedTask[];
-  colColor: { header: string; bg: string; border: string };
-  onEdit: (task: UnifiedTask) => void;
-  pessoaMap: Map<string, string>;
-  mono: string;
-  onAddTask?: () => void;
-  canAdd?: boolean;
-}
-
-function KanbanColumnContainer({ status, label, tasks, colColor, onEdit, pessoaMap, mono, onAddTask, canAdd }: KanbanColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
-  return (
-    <div ref={setNodeRef} style={{
-      background: isOver ? colColor.bg : '#F8FAFC',
-      borderRadius: 10, border: `1px solid ${isOver ? colColor.border : '#E2E8F0'}`,
-      minHeight: 200, display: 'flex', flexDirection: 'column',
-      transition: 'background 0.15s, border-color 0.15s',
-    }}>
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: colColor.header, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: colColor.header, background: '#FFF', borderRadius: 99, padding: '1px 7px', border: `1px solid ${colColor.border}` }}>{tasks.length}</span>
-      </div>
-      <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map(task => (
-            <KanbanCardItem key={task.id} task={task} onEdit={onEdit} pessoaMap={pessoaMap} mono={mono} />
-          ))}
-        </SortableContext>
-        {tasks.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '20px 8px', color: '#CBD5E1', fontSize: 12 }}>Sem tarefas</div>
-        )}
-        {canAdd && (
-          <button
-            onClick={onAddTask}
-            style={{
-              marginTop: 4, width: '100%', padding: '8px 0', borderRadius: 8,
-              border: '1.5px dashed #BFDBFE', background: 'transparent',
-              color: '#3B82F6', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            + Nova tarefa
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
@@ -340,21 +206,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const [canFecharSemana, setCanFecharSemana] = useState(false);
   const [operating, setOperating] = useState(false);
   const deletingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const formRef = useRef<HTMLDivElement>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
+  const [subtaskForm, setSubtaskForm] = useState({ titulo: '', pessoaId: '', dataTermino: '' });
 
-  // ── View mode & source tab ─────────────────────────────────────────────────
-  const [viewMode, setViewMode] = useState<'lista' | 'kanban'>(
-    () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('gestao-view-mode') as 'lista' | 'kanban') : null) ?? 'lista',
-  );
+  // ── Source tab ─────────────────────────────────────────────────────────────
   const [sourceTab, setSourceTab] = useState<'semana' | 'projetos'>('semana');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [projectTasks, setProjectTasks] = useState<UnifiedTask[]>([]);
   const [loadingProjectTasks, setLoadingProjectTasks] = useState(false);
-  const [activeDragTask, setActiveDragTask] = useState<UnifiedTask | null>(null);
   const [editingProjectTask, setEditingProjectTask] = useState<UnifiedTask | null>(null);
   const [projectEditForm, setProjectEditForm] = useState({ titulo: '', descricao: '', pessoaId: '', activityDate: '' });
-  const [kanbanAddStatus, setKanbanAddStatus] = useState<string | null>(null);
-  const [kanbanForm, setKanbanForm] = useState({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
 
   // canEditClosedWeek, canDeleteWeek e canFecharSemana: admin/analista ou pessoa com flag + email igual
   useEffect(() => {
@@ -464,7 +327,6 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   }, [modo, selectedFarm?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { localStorage.setItem('gestao-view-mode', viewMode); }, [viewMode]);
 
   const fetchProjectTasks = useCallback(async (weekStart: string, weekEnd: string) => {
     setLoadingProjectTasks(true);
@@ -497,6 +359,20 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       setProjectTasks([]);
     }
   }, [sourceTab, semana, fetchProjectTasks]);
+
+  // Expand tasks that have subtasks by default
+  useEffect(() => {
+    setExpandedTasks(prev => {
+      const next = new Set(prev);
+      for (const a of atividades) {
+        if (a.parent_id === null) {
+          const hasSubs = atividades.some(s => s.parent_id === a.id);
+          if (hasSubs) next.add(a.id);
+        }
+      }
+      return next;
+    });
+  }, [atividades]);
 
   // ─── Computed ─────────────────────────────────────────────────────────────────
 
@@ -532,36 +408,43 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
   const getPessoaNome = useCallback((id: string | null) => (id ? pessoaMap.get(id) : null) || '—', [pessoaMap]);
 
-  const filteredAndSorted = useMemo(() => {
-    let result = [...atividades];
+  const { parentTasks, subtasksMap } = useMemo(() => {
+    const parents = atividades.filter(a => !a.parent_id);
+    const subs = new Map<string, Atividade[]>();
+    for (const a of atividades) {
+      if (a.parent_id) {
+        const list = subs.get(a.parent_id) || [];
+        list.push(a);
+        subs.set(a.parent_id, list);
+      }
+    }
+    return { parentTasks: parents, subtasksMap: subs };
+  }, [atividades]);
+
+  const filteredParentTasks = useMemo(() => {
+    let result = [...parentTasks];
     if (filters.titulo)      result = result.filter(a => a.titulo.toLowerCase().includes(filters.titulo.toLowerCase()));
-    if (filters.descricao)   result = result.filter(a => (a.descricao || '').toLowerCase().includes(filters.descricao.toLowerCase()));
     if (filters.pessoaId)    result = result.filter(a => a.pessoa_id === filters.pessoaId);
     if (filters.dataTermino) result = result.filter(a => a.data_termino === filters.dataTermino);
-    if (filters.tag)         result = result.filter(a => a.tag.toLowerCase().includes(filters.tag.toLowerCase()));
     if (filters.status)      result = result.filter(a => a.status === filters.status);
-
     if (sortConfig) {
       result.sort((a, b) => {
         let va = '', vb = '';
         switch (sortConfig.column) {
-          case 'titulo':      va = a.titulo;       vb = b.titulo;       break;
-          case 'desc':        va = a.descricao;    vb = b.descricao;    break;
+          case 'titulo':      va = a.titulo; vb = b.titulo; break;
           case 'dataTermino': va = a.data_termino || ''; vb = b.data_termino || ''; break;
-          case 'tag':         va = a.tag;          vb = b.tag;          break;
-          case 'status':      va = a.status;       vb = b.status;       break;
-          case 'pessoa': {
+          case 'status':      va = a.status; vb = b.status; break;
+          case 'pessoa':
             va = (a.pessoa_id ? pessoaMap.get(a.pessoa_id) : '') || '';
             vb = (b.pessoa_id ? pessoaMap.get(b.pessoa_id) : '') || '';
             break;
-          }
         }
         const cmp = va.localeCompare(vb, 'pt-BR');
         return sortConfig.direction === 'asc' ? cmp : -cmp;
       });
     }
     return result;
-  }, [atividades, filters, sortConfig, pessoaMap]);
+  }, [parentTasks, filters, sortConfig, pessoaMap]);
 
   const hasActiveFilters = useMemo(() => Object.values(filters).some(v => v !== ''), [filters]);
 
@@ -605,11 +488,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       tag: at.tag,
     });
     setEditingId(at.id);
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setShowTaskModal(true);
   }, []);
 
   const handleEditCancel = useCallback(() => {
     resetForm();
+    setShowTaskModal(false);
   }, [resetForm]);
 
   const handleSave = useCallback(async () => {
@@ -640,6 +524,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         tag: newForm.tag,
       } : a));
       resetForm();
+      setShowTaskModal(false);
     } else {
       const res = await semanasApi.createAtividade({
         semana_id: semana.id,
@@ -653,38 +538,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       if (!res.ok) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
       setAtividades(prev => [...prev, res.data as Atividade]);
       setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
+      setShowTaskModal(false);
     }
     } finally {
       setOperating(false);
     }
   }, [newForm, semana, pessoas, editingId, resetForm, operating, onToast]);
-
-  const handleKanbanSave = useCallback(async () => {
-    if (operating || !kanbanForm.titulo.trim() || !semana || !kanbanAddStatus) return;
-    const pessoaId = kanbanForm.pessoaId || pessoas[0]?.id;
-    if (!pessoaId) {
-      onToast?.('Selecione uma pessoa responsável antes de salvar.', 'warning');
-      return;
-    }
-    setOperating(true);
-    try {
-      const res = await semanasApi.createAtividade({
-        semana_id: semana.id,
-        titulo: kanbanForm.titulo.trim(),
-        descricao: kanbanForm.descricao.trim(),
-        pessoa_id: pessoaId,
-        data_termino: kanbanForm.dataTermino || null,
-        tag: kanbanForm.tag,
-        status: kanbanAddStatus,
-      });
-      if (!res.ok) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
-      setAtividades(prev => [...prev, res.data as Atividade]);
-      setKanbanAddStatus(null);
-      setKanbanForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
-    } finally {
-      setOperating(false);
-    }
-  }, [kanbanForm, semana, pessoas, kanbanAddStatus, operating, onToast]);
 
   const handleRemoveAtividade = useCallback(async (id: string) => {
     if (deletingId !== id) {
@@ -697,7 +556,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setDeletingId(null);
     const res = await semanasApi.deleteAtividade(id);
     if (!res.ok) { onToast?.('Erro ao excluir atividade.', 'error'); return; }
-    setAtividades(prev => prev.filter(a => a.id !== id));
+    setAtividades(prev => prev.filter(a => a.id !== id && a.parent_id !== id));
     if (editingId === id) resetForm();
   }, [deletingId, editingId, resetForm, onToast]);
 
@@ -713,6 +572,31 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
   }, [onToast]);
+
+  const handleSaveSubtask = useCallback(async (parentId: string) => {
+    if (operating || !subtaskForm.titulo.trim() || !semana) return;
+    setOperating(true);
+    try {
+      const parent = atividades.find(a => a.id === parentId);
+      const pessoaId = subtaskForm.pessoaId || parent?.pessoa_id || pessoas[0]?.id;
+      const res = await semanasApi.createAtividade({
+        semana_id: semana.id,
+        titulo: subtaskForm.titulo.trim(),
+        descricao: '',
+        pessoa_id: pessoaId,
+        data_termino: subtaskForm.dataTermino || parent?.data_termino || null,
+        tag: parent?.tag || '#planejamento',
+        status: 'a fazer',
+        parent_id: parentId,
+      });
+      if (!res.ok) { onToast?.('Erro ao adicionar subtarefa.', 'error'); return; }
+      setAtividades(prev => [...prev, res.data as Atividade]);
+      setSubtaskForm(prev => ({ ...prev, titulo: '' }));
+      setExpandedTasks(prev => new Set(prev).add(parentId));
+    } finally {
+      setOperating(false);
+    }
+  }, [subtaskForm, semana, pessoas, atividades, operating, onToast]);
 
   const handleFecharSemana = useCallback(async () => {
     if (operating || !semana?.aberta || !canFecharSemana) return;
@@ -796,23 +680,38 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     if (!carryOverModal) return;
     const chosen = carryOverModal.candidates.filter(a => selectedIds.has(a.id));
     if (chosen.length > 0) {
-      const res = await semanasApi.createAtividadesBulk(
+      // Create parent tasks first
+      const parentsRes = await semanasApi.createAtividadesBulk(
         chosen.map(({ titulo, descricao, pessoa_id, data_termino, tag }) => ({
           semana_id: carryOverModal.pendingSemanaId,
-          titulo,
-          descricao,
-          pessoa_id,
-          data_termino,
-          tag,
-          status: 'a fazer' as const,
+          titulo, descricao, pessoa_id, data_termino, tag, status: 'a fazer' as const,
         })),
       );
-      if (!res.ok) { onToast?.('Erro ao transferir atividades.', 'error'); return; }
+      if (!parentsRes.ok) { onToast?.('Erro ao transferir atividades.', 'error'); return; }
+      // Map old parent ID → new parent ID
+      const newParents = parentsRes.data as Atividade[];
+      const oldToNew = new Map<string, string>();
+      chosen.forEach((oldParent, i) => { if (newParents[i]) oldToNew.set(oldParent.id, newParents[i].id); });
+      // Create pending subtasks with new parent IDs
+      const subsToCarry: Array<{ semana_id: string; titulo: string; descricao: string; pessoa_id: string | null; data_termino: string | null; tag: string; status: 'a fazer'; parent_id: string }> = [];
+      for (const oldParent of chosen) {
+        const subs = (subtasksMap.get(oldParent.id) || []).filter(s => s.status !== 'concluída');
+        for (const sub of subs) {
+          const newParentId = oldToNew.get(oldParent.id);
+          if (newParentId) {
+            subsToCarry.push({ semana_id: carryOverModal.pendingSemanaId, titulo: sub.titulo, descricao: sub.descricao, pessoa_id: sub.pessoa_id, data_termino: sub.data_termino, tag: sub.tag, status: 'a fazer', parent_id: newParentId });
+          }
+        }
+      }
+      if (subsToCarry.length > 0) {
+        const subsRes = await semanasApi.createAtividadesBulk(subsToCarry);
+        if (!subsRes.ok) onToast?.('Atividades transferidas mas houve erro nas subtarefas.', 'warning');
+      }
     }
     setCarryOverModal(null);
     setSelectedCarryOver(new Set());
     await fetchData();
-  }, [carryOverModal, fetchData, onToast]);
+  }, [carryOverModal, subtasksMap, fetchData, onToast]);
 
   const handleCancelCarryOver = useCallback(async () => {
     setCarryOverModal(null);
@@ -874,7 +773,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       }
 
       if (targetSemana) {
-        const pending = atividades.filter(a => a.status !== 'concluída');
+        const pending = atividades.filter(a => !a.parent_id && a.status !== 'concluída');
         if (pending.length > 0) {
           setCarryOverModal({
             pendingSemanaId: targetSemana.id,
@@ -895,49 +794,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     }
   }, [semana, modo, atividades, fetchData, selectedFarm?.id, operating]);
 
-  // ─── Kanban / Project handlers ────────────────────────────────────────────────
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const task = activeTasks.find(t => t.id === String(event.active.id));
-    setActiveDragTask(task ?? null);
-  }, [activeTasks]);
-
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    setActiveDragTask(null);
-    const { active, over } = event;
-    if (!over) return;
-    const overId = String(over.id);
-    // Determine target column: over.id is either a STATUS string or a task id
-    let newStatus: string | undefined = STATUS_LIST.find(s => s === overId);
-    if (!newStatus) {
-      const overTask = activeTasks.find(t => t.id === overId);
-      newStatus = overTask?.status;
-    }
-    if (!newStatus) return;
-    const task = activeTasks.find(t => t.id === String(active.id));
-    if (!task || task.status === newStatus) return;
-
-    if (task.origin === 'weekly') {
-      setAtividades(prev => prev.map(a => a.id === task.id ? { ...a, status: newStatus as Atividade['status'] } : a));
-      const res = await semanasApi.updateAtividade(task.id, { status: newStatus });
-      if (!res.ok) {
-        setAtividades(prev => prev.map(a => a.id === task.id ? { ...a, status: task.status } : a));
-        onToast?.('Erro ao atualizar status.', 'error');
-      }
-    } else {
-      setProjectTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus as TaskStatus } : t));
-      const res = await updateProjectTask(task.id, { kanban_status: newStatus as import('../lib/api/tasksClient').KanbanStatus });
-      if (!res.ok) {
-        setProjectTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
-        onToast?.('Erro ao atualizar status.', 'error');
-      }
-    }
-  }, [activeTasks, onToast]);
+  // ─── Project handlers ─────────────────────────────────────────────────────────
 
   const handleProjectTaskEditStart = useCallback((task: UnifiedTask) => {
     setEditingProjectTask(task);
@@ -987,6 +844,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         data_termino: task.data_termino,
         tag: task.tag ?? '#planejamento',
         status: task.status,
+        parent_id: null,
         created_at: task.created_at ?? '',
       });
     }
@@ -1009,19 +867,13 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
   const mono = "'JetBrains Mono', monospace";
 
-  const sortBtnStylesMap = useMemo(() => {
-    const map: Record<string, React.CSSProperties> = {};
-    SORT_COLS.forEach(col => {
-      map[col] = {
-        background: 'none', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 3,
-        fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
-        color: sortConfig?.column === col ? '#4338CA' : '#94A3B8',
-        padding: '2px 0', fontFamily: FONT,
-      };
-    });
-    return map;
-  }, [sortConfig]);
+  const sortBtnStyle = useCallback((col: string): React.CSSProperties => ({
+    background: 'none', border: 'none', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: 3,
+    fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
+    color: sortConfig?.column === col ? '#4338CA' : '#94A3B8',
+    padding: '2px 0', fontFamily: FONT,
+  }), [sortConfig]);
 
   const isAbertaForStyles = semana?.aberta === true;
   const canAbrirForStyles = semana === null || semana?.aberta === false;
@@ -1127,7 +979,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
             {/* Date range */}
             <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0 2px' }}>
-              {semana ? formatWeekRangeShort(semana.dataInicio, semana.dataFim) : ''}
+              {semana ? formatWeekRangeShort(semana.data_inicio, semana.data_fim) : ''}
             </p>
           </div>
 
@@ -1148,23 +1000,23 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               <span>{sourceTab === 'semana' ? '📅 Semana' : '📁 Projetos'}</span>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>▼</span>
             </button>
-            {/* View mode toggle */}
-            <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: 8, padding: 2, gap: 2, alignSelf: 'flex-start' }}>
-              {(['lista', 'kanban'] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 600, letterSpacing: '0.3px', transition: 'all 0.15s ease',
-                    background: viewMode === mode ? '#0F172A' : 'transparent',
-                    color: viewMode === mode ? '#FFF' : '#94A3B8', fontFamily: FONT,
-                  }}
-                >
-                  {mode === 'lista' ? '≡ Lista' : '⊞ Kanban'}
-                </button>
-              ))}
-            </div>
+            {/* Nova Tarefa button */}
+            {canEditInWeek && sourceTab === 'semana' && (
+              <button
+                onClick={() => {
+                  setNewForm({ titulo: '', descricao: '', pessoaId: pessoas[0]?.id || '', dataTermino: toDateStr(new Date()), tag: '#planejamento' });
+                  setEditingId(null);
+                  setShowTaskModal(true);
+                }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, border: 'none',
+                  background: '#3B82F6', color: '#FFF',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
+                }}
+              >
+                + Nova Tarefa
+              </button>
+            )}
             {semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
               <button
                 onClick={handleVoltarSemanaAtual}
@@ -1300,160 +1152,44 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           </div>
         </div>
 
-        {/* ── 5. FORM (somente na aba Semana, modo lista) ───────────────────── */}
-        {sourceTab === 'semana' && viewMode !== 'kanban' && <div
-          ref={formRef}
-          style={{
-            background: '#FFF', borderRadius: 12,
-            border: editingId ? '1.5px solid #6366F1' : '1px solid #E2E8F0',
-            padding: 16, marginBottom: 16,
-            opacity: (canEditInWeek || editingId) ? 1 : 0.55,
-            pointerEvents: (canEditInWeek || editingId) ? 'auto' : 'none',
-            transition: 'border-color 0.2s',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: editingId ? '#6366F1' : '#475569', letterSpacing: '0.3px', margin: 0, transition: 'color 0.2s' }}>
-              {editingId ? 'Editando atividade' : 'Nova atividade'}
-            </p>
-            {!isAberta && (
-              <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                {canAbrirSemana ? 'Abra a semana para adicionar atividades' : 'Semana fechada — é possível editar atividades existentes'}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+        {/* ── 6. LISTA ─────────────────────────────────────────────── */}
+        <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', marginBottom: 8 }}>
 
-            <div style={{ flex: '1 1 160px', minWidth: 140 }}>
-              <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Título</label>
-              <input
-                type="text" placeholder="Título" value={newForm.titulo}
-                onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && handleSave()}
-                style={INPUT_ST}
-              />
+          {/* Sort + Filter header */}
+          <div style={{ padding: '8px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={() => handleSort('titulo')} style={{ ...sortBtnStyle('titulo'), flex: '1 1 160px' }}>
+                TÍTULO {getSortIcon('titulo')}
+              </button>
+              <button onClick={() => handleSort('pessoa')} style={{ ...sortBtnStyle('pessoa'), flex: '0 0 130px' }}>
+                RESPONSÁVEL {getSortIcon('pessoa')}
+              </button>
+              <button onClick={() => handleSort('dataTermino')} style={{ ...sortBtnStyle('dataTermino'), flex: '0 0 90px' }}>
+                TÉRMINO {getSortIcon('dataTermino')}
+              </button>
+              <button onClick={() => handleSort('status')} style={{ ...sortBtnStyle('status'), flex: '0 0 110px' }}>
+                STATUS {getSortIcon('status')}
+              </button>
+              <div style={{ flex: '0 0 28px' }} />
             </div>
-
-            <div style={{ flex: '2 1 220px', minWidth: 180 }}>
-              <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Descrição</label>
-              <input
-                type="text" placeholder="Descrição breve" value={newForm.descricao}
-                onChange={e => setNewForm(p => ({ ...p, descricao: e.target.value }))}
-                style={INPUT_ST}
-              />
-            </div>
-
-            <div style={{ flex: '0 1 140px', minWidth: 120 }}>
-              <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Responsável</label>
-              <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
-                <option value="">Selecione</option>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+              <input type="text" placeholder="Filtrar título..." value={filters.titulo}
+                onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={{ ...FILTER_ST, flex: '1 1 160px' }} />
+              <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 130px' }}>
+                <option value="">Todos</option>
                 {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
+              <div style={{ flex: '0 0 90px' }}>
+                <DateInputBR value={filters.dataTermino} onChange={v => setFilters(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" />
+              </div>
+              <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 110px' }}>
+                <option value="">Todos</option>
+                {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {hasActiveFilters ? (
+                <button onClick={clearFilters} style={{ flex: '0 0 28px', width: 22, height: 22, borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              ) : <div style={{ flex: '0 0 28px' }} />}
             </div>
-
-            <div style={{ flex: '0 1 140px', minWidth: 130 }}>
-              <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Data término</label>
-              <DateInputBR
-                value={newForm.dataTermino}
-                onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
-                className="w-full"
-              />
-            </div>
-
-            <div style={{ flex: '0 1 140px', minWidth: 120 }}>
-              <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>#</label>
-              <input
-                type="text" placeholder="#tag" value={newForm.tag}
-                onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
-                style={INPUT_ST}
-              />
-            </div>
-
-            {editingId && (
-              <button
-                onClick={handleEditCancel}
-                style={{
-                  flex: '0 0 auto', padding: '7px 16px', borderRadius: 8,
-                  border: '1px solid #E2E8F0', background: '#F8FAFC',
-                  color: '#64748B', cursor: 'pointer',
-                  fontSize: 13, fontWeight: 500, fontFamily: FONT,
-                }}
-              >
-                Cancelar
-              </button>
-            )}
-
-            <button
-              onClick={handleSave}
-              disabled={operating || (editingId ? !newForm.titulo.trim() : (!canEditInWeek || !newForm.titulo.trim()))}
-              style={{
-                flex: '0 0 auto', padding: '7px 20px', borderRadius: 8, border: 'none',
-                background: (editingId ? newForm.titulo.trim() : (canEditInWeek && newForm.titulo.trim())) ? '#6366F1' : '#C7D2FE',
-                color: '#FFF', cursor: (editingId ? newForm.titulo.trim() : (canEditInWeek && newForm.titulo.trim())) ? 'pointer' : 'default',
-                fontSize: 13, fontWeight: 600, fontFamily: FONT,
-              }}
-            >
-              {editingId ? 'Salvar' : 'Adicionar'}
-            </button>
-          </div>
-        </div>}
-
-        {/* ── 6. LISTA / KANBAN ─────────────────────────────────────────────── */}
-        {viewMode === 'lista' && <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', marginBottom: 8 }}>
-
-          {/* Sort header */}
-          <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, padding: '8px 14px 0', background: '#F8FAFC', columnGap: 8 }}>
-            <div />
-            {[
-              { col: 'titulo',      label: 'TÍTULO' },
-              { col: 'desc',        label: 'DESCRIÇÃO' },
-              { col: 'pessoa',      label: 'RESPONSÁVEL' },
-              { col: 'dataTermino', label: 'TÉRMINO' },
-              { col: 'tag',         label: '#' },
-              { col: 'status',      label: 'STATUS' },
-            ].map(({ col, label }) => (
-              <button key={col} onClick={() => handleSort(col)} style={sortBtnStylesMap[col]}>
-                {label} {getSortIcon(col)}
-              </button>
-            ))}
-            <div />
-          </div>
-
-          {/* Filter header */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: GRID_COLS,
-            padding: '4px 14px 8px', background: '#F8FAFC',
-            borderBottom: '1px solid #E2E8F0', columnGap: 8,
-          }}>
-            <div />
-            <input type="text" placeholder="Filtrar..." value={filters.titulo}
-              onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={FILTER_ST} />
-            <input type="text" placeholder="Filtrar..." value={filters.descricao}
-              onChange={e => setFilters(p => ({ ...p, descricao: e.target.value }))} style={FILTER_ST} />
-            <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={FILTER_ST}>
-              <option value="">Todos</option>
-              {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </select>
-            <DateInputBR
-              value={filters.dataTermino}
-              onChange={v => setFilters(p => ({ ...p, dataTermino: v }))}
-              placeholder="dd/mm/aaaa"
-              className="w-full"
-            />
-            <input type="text" placeholder="Filtrar..." value={filters.tag}
-              onChange={e => setFilters(p => ({ ...p, tag: e.target.value }))} style={FILTER_ST} />
-            <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={FILTER_ST}>
-              <option value="">Todos</option>
-              {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            {hasActiveFilters ? (
-              <button onClick={clearFilters} style={{
-                width: 22, height: 22, borderRadius: 6, border: 'none',
-                background: '#FEE2E2', color: '#DC2626', cursor: 'pointer',
-                fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                alignSelf: 'center',
-              }}>✕</button>
-            ) : <div />}
           </div>
 
           {/* Data rows */}
@@ -1471,7 +1207,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                 onMouseLeave={() => setHoveredRow(null)}
                 onClick={() => handleProjectTaskEditStart(task)}
                 style={{
-                  display: 'grid', gridTemplateColumns: GRID_COLS,
+                  display: 'grid', gridTemplateColumns: '24px 1fr 1fr 130px 90px 110px 110px',
                   padding: '9px 14px', borderBottom: '1px solid #F8FAFC',
                   alignItems: 'center', columnGap: 8,
                   background: isHovered ? '#F8FAFC' : '#FFF',
@@ -1513,285 +1249,203 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           {sourceTab === 'projetos' && !loadingProjectTasks && filteredProjectTasks.length === 0 && (
             <div style={{ textAlign: 'center', padding: 36, color: '#94A3B8', fontSize: 13 }}>Nenhuma tarefa de projeto encontrada para esta semana.</div>
           )}
-          {sourceTab === 'semana' && filteredAndSorted.length === 0 && (
+          {sourceTab === 'semana' && filteredParentTasks.length === 0 && (
             <div style={{ textAlign: 'center', padding: 36, color: '#94A3B8', fontSize: 13 }}>
               Nenhuma atividade encontrada.
             </div>
           )}
-          {sourceTab === 'semana' && filteredAndSorted.map(at => {
+          {sourceTab === 'semana' && filteredParentTasks.map(at => {
+            const subs       = subtasksMap.get(at.id) || [];
+            const isExpanded = expandedTasks.has(at.id);
             const isConcluida = at.status === 'concluída';
-            const isHovered   = hoveredRow === at.id;
-            const isEditing   = editingId === at.id;
-            const isDeleting  = deletingId === at.id;
-            const isDisabled  = false;
-            const tagSt       = getTagStyle(at.tag);
-            const stSt        = getStatusSt(at.status);
-
-            const rowBg = isEditing
-              ? '#F5F3FF'
-              : isHovered
-                ? '#F8FAFC'
-                : isConcluida
-                  ? '#FAFFF9'
-                  : '#FFF';
-
-            const clickableCell: React.CSSProperties = {
-              cursor: isDisabled ? 'default' : 'pointer',
-            };
+            const isHovered  = hoveredRow === at.id;
+            const isDeleting = deletingId === at.id;
+            const isEditing  = editingId === at.id;
+            const stSt       = getStatusSt(at.status);
+            const subsDone   = subs.filter(s => s.status === 'concluída').length;
 
             return (
-              <div
-                key={at.id}
-                onMouseEnter={() => setHoveredRow(at.id)}
-                onMouseLeave={() => setHoveredRow(null)}
-                style={{
-                  display: 'grid', gridTemplateColumns: GRID_COLS,
-                  padding: '9px 14px', borderBottom: '1px solid #F8FAFC',
-                  alignItems: 'center', columnGap: 8,
-                  background: rowBg,
-                  transition: 'background 0.15s',
-                  opacity: isDisabled && !isConcluida ? 0.5 : 1,
-                  borderLeft: isEditing ? '3px solid #6366F1' : '3px solid transparent',
-                }}
-              >
-                {/* Checkbox */}
-                <input
-                  type="checkbox" checked={isConcluida} disabled={isDisabled}
-                  onChange={e => handleCheckboxChange(at.id, e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: '#059669', cursor: isDisabled ? 'default' : 'pointer' }}
-                />
-
-                {/* Título */}
+              <div key={at.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                {/* ── Parent row ─────────────────────────────────── */}
                 <div
-                  title={at.titulo}
-                  onClick={() => !isDisabled && handleEditStart(at)}
+                  onMouseEnter={() => setHoveredRow(at.id)}
+                  onMouseLeave={() => setHoveredRow(null)}
                   style={{
-                    fontSize: 13, fontWeight: 600, color: '#1E293B',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.5 } : {}),
-                    ...clickableCell,
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+                    background: isEditing ? '#F5F3FF' : isHovered ? '#F8FAFC' : '#FFF',
+                    transition: 'background 0.15s',
+                    borderLeft: isEditing ? '3px solid #6366F1' : '3px solid transparent',
                   }}
                 >
-                  {at.titulo}
-                </div>
-
-                {/* Descrição */}
-                <div
-                  title={at.descricao}
-                  onClick={() => !isDisabled && handleEditStart(at)}
-                  style={{
-                    fontSize: 12, color: '#64748B',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    ...(isConcluida ? { textDecoration: 'line-through', opacity: 0.4 } : {}),
-                    ...clickableCell,
-                  }}
-                >
-                  {at.descricao || '—'}
-                </div>
-
-                {/* Responsável */}
-                <div
-                  onClick={() => !isDisabled && handleEditStart(at)}
-                  style={{ fontSize: 12, color: '#475569', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...clickableCell }}
-                >
-                  {getPessoaNome(at.pessoa_id)}
-                </div>
-
-                {/* Término */}
-                <div
-                  onClick={() => !isDisabled && handleEditStart(at)}
-                  style={{ fontSize: 11, color: '#94A3B8', fontFamily: mono, ...clickableCell }}
-                >
-                  {formatDatePtBr(at.data_termino)}
-                </div>
-
-                {/* Tag */}
-                <div
-                  onClick={() => !isDisabled && handleEditStart(at)}
-                  style={clickableCell}
-                >
-                  <span style={{
-                    fontSize: 11, fontWeight: 500, padding: '1px 6px', borderRadius: 4,
-                    background: tagSt.bg, color: tagSt.text, border: `1px solid ${tagSt.border}`,
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {at.tag}
-                  </span>
-                </div>
-
-                {/* Status dropdown */}
-                <select
-                  value={at.status} disabled={isDisabled}
-                  onChange={e => handleStatusChange(at.id, e.target.value)}
-                  style={{
-                    fontSize: 11, fontWeight: 500, padding: '2px 4px', borderRadius: 4, width: '100%',
-                    color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`,
-                    cursor: isDisabled ? 'default' : 'pointer', fontFamily: FONT,
-                  }}
-                >
-                  {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-
-                {/* Delete */}
-                {canEditInWeek ? (
-                  <button
-                    onClick={() => handleRemoveAtividade(at.id)}
-                    title={isDeleting ? 'Clique novamente para confirmar exclusão' : 'Excluir'}
+                  {/* Circular checkbox */}
+                  <div
+                    onClick={e => { e.stopPropagation(); handleCheckboxChange(at.id, !isConcluida); }}
                     style={{
-                      width: 22, height: 22, borderRadius: 6, border: 'none',
-                      background: isDeleting ? '#FEE2E2' : 'transparent',
-                      color: isDeleting ? '#DC2626' : '#CBD5E1',
-                      cursor: 'pointer', fontSize: 12,
-                      opacity: isHovered || isDeleting ? 1 : 0,
-                      transition: 'opacity 0.15s, background 0.15s, color 0.15s',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: isDeleting ? 700 : 400,
+                      flexShrink: 0, width: 18, height: 18, borderRadius: 9,
+                      border: isConcluida ? 'none' : '2px solid #CBD5E1',
+                      background: isConcluida ? '#059669' : 'transparent',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
-                    {isDeleting ? '?' : '✕'}
-                  </button>
-                ) : <div />}
+                    {isConcluida && <span style={{ color: '#FFF', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+                  </div>
+
+                  {/* Title + badge */}
+                  <div
+                    onClick={() => handleEditStart(at)}
+                    style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                  >
+                    <span style={{
+                      fontSize: 14, fontWeight: 600, color: isConcluida ? '#94A3B8' : '#1E293B',
+                      textDecoration: isConcluida ? 'line-through' : 'none',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {at.titulo}
+                    </span>
+                    {subs.length > 0 && (
+                      <span style={{ fontSize: 12, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', flexShrink: 0, fontFamily: mono }}>
+                        {subsDone}/{subs.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Date */}
+                  {at.data_termino && (
+                    <span style={{ fontSize: 12, color: '#64748B', flexShrink: 0 }}>
+                      📅 {formatDatePtBr(at.data_termino)}
+                    </span>
+                  )}
+
+                  {/* Person */}
+                  <span style={{ fontSize: 12, color: '#475569', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {getPessoaNome(at.pessoa_id)}
+                  </span>
+
+                  {/* Status */}
+                  <select
+                    value={at.status}
+                    onChange={e => { e.stopPropagation(); handleStatusChange(at.id, e.target.value); }}
+                    onClick={e => e.stopPropagation()}
+                    style={{ fontSize: 11, fontWeight: 500, padding: '2px 4px', borderRadius: 4, color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, cursor: 'pointer', fontFamily: FONT, flexShrink: 0 }}
+                  >
+                    {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+
+                  {/* Add subtask button */}
+                  {canEditInWeek && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: at.pessoa_id || '', dataTermino: at.data_termino || '' }); }}
+                      title="Adicionar subtarefa"
+                      style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isHovered || addingSubtaskFor === at.id ? 1 : 0, transition: 'opacity 0.15s' }}
+                    >+</button>
+                  )}
+
+                  {/* Chevron */}
+                  {subs.length > 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setExpandedTasks(prev => { const next = new Set(prev); if (next.has(at.id)) next.delete(at.id); else next.add(at.id); return next; }); }}
+                      style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                    >▼</button>
+                  )}
+
+                  {/* Delete */}
+                  {canEditInWeek && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleRemoveAtividade(at.id); }}
+                      title={isDeleting ? 'Clique novamente para confirmar' : subs.length > 0 ? 'Excluir tarefa e subtarefas' : 'Excluir'}
+                      style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: isDeleting ? '#FEE2E2' : 'transparent', color: isDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 12, opacity: isHovered || isDeleting ? 1 : 0, transition: 'opacity 0.15s, background 0.15s, color 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: isDeleting ? 700 : 400 }}
+                    >
+                      {isDeleting ? '?' : '✕'}
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Subtasks ────────────────────────────────────── */}
+                {isExpanded && subs.map(sub => {
+                  const subConcluida = sub.status === 'concluída';
+                  const subHovered = hoveredRow === sub.id;
+                  const subDeleting = deletingId === sub.id;
+                  return (
+                    <div
+                      key={sub.id}
+                      onMouseEnter={() => setHoveredRow(sub.id)}
+                      onMouseLeave={() => setHoveredRow(null)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px 6px 46px', borderTop: '1px solid #F1F5F9', background: subHovered ? '#F8FAFC' : '#FAFAFA', transition: 'background 0.15s' }}
+                    >
+                      {/* Circular checkbox (smaller) */}
+                      <div
+                        onClick={e => { e.stopPropagation(); handleCheckboxChange(sub.id, !subConcluida); }}
+                        style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 8, border: subConcluida ? 'none' : '2px solid #CBD5E1', background: subConcluida ? '#059669' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {subConcluida && <span style={{ color: '#FFF', fontSize: 9, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+                      </div>
+
+                      {/* Title */}
+                      <div
+                        onClick={() => handleEditStart(sub)}
+                        style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 400, color: subConcluida ? '#94A3B8' : '#475569', textDecoration: subConcluida ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                      >
+                        {sub.titulo}
+                      </div>
+
+                      {/* Date */}
+                      <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, fontFamily: mono }}>{formatDatePtBr(sub.data_termino)}</span>
+
+                      {/* Person */}
+                      <span style={{ fontSize: 11, color: '#475569', flexShrink: 0, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPessoaNome(sub.pessoa_id)}</span>
+
+                      {/* Delete */}
+                      {canEditInWeek && (
+                        <button
+                          onClick={e => { e.stopPropagation(); handleRemoveAtividade(sub.id); }}
+                          title={subDeleting ? 'Clique novamente para confirmar' : 'Excluir subtarefa'}
+                          style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: 'none', background: subDeleting ? '#FEE2E2' : 'transparent', color: subDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 11, opacity: subHovered || subDeleting ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: subDeleting ? 700 : 400 }}
+                        >
+                          {subDeleting ? '?' : '✕'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── Inline subtask form ─────────────────────────── */}
+                {addingSubtaskFor === at.id && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px 6px 46px', borderTop: '1px solid #F1F5F9', background: '#F0F9FF' }}>
+                    <input
+                      autoFocus
+                      type="text" placeholder="Nova subtarefa..." value={subtaskForm.titulo}
+                      onChange={e => setSubtaskForm(p => ({ ...p, titulo: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && handleSaveSubtask(at.id)}
+                      style={{ ...FILTER_ST, flex: 1 }}
+                    />
+                    <select
+                      value={subtaskForm.pessoaId}
+                      onChange={e => setSubtaskForm(p => ({ ...p, pessoaId: e.target.value }))}
+                      style={{ ...FILTER_ST, flex: '0 0 120px' }}
+                    >
+                      <option value="">Responsável</option>
+                      {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </select>
+                    <div style={{ flex: '0 0 110px' }}>
+                      <DateInputBR value={subtaskForm.dataTermino} onChange={v => setSubtaskForm(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" />
+                    </div>
+                    <button
+                      onClick={() => handleSaveSubtask(at.id)}
+                      disabled={!subtaskForm.titulo.trim() || operating}
+                      style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 6, border: 'none', background: subtaskForm.titulo.trim() ? '#3B82F6' : '#BFDBFE', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: subtaskForm.titulo.trim() ? 'pointer' : 'default', fontFamily: FONT, whiteSpace: 'nowrap' }}
+                    >
+                      Adicionar
+                    </button>
+                    <button
+                      onClick={() => setAddingSubtaskFor(null)}
+                      style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >✕</button>
+                  </div>
+                )}
               </div>
             );
           })}
-        </div>}
-
-        {/* ── 6b. KANBAN ────────────────────────────────────────────────────── */}
-        {viewMode === 'kanban' && (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 8 }}>
-              {STATUS_LIST.map(colStatus => (
-                <KanbanColumnContainer
-                  key={colStatus}
-                  status={colStatus}
-                  label={KANBAN_COLUMN_LABELS[colStatus]}
-                  tasks={activeTasks.filter(t => t.status === colStatus)}
-                  colColor={KANBAN_COLUMN_COLORS[colStatus]}
-                  onEdit={handleUnifiedEdit}
-                  pessoaMap={pessoaMap}
-                  mono={mono}
-                  canAdd={sourceTab === 'semana' && canEditInWeek}
-                  onAddTask={() => {
-                    setKanbanForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
-                    setKanbanAddStatus(colStatus);
-                  }}
-                />
-              ))}
-            </div>
-            <DragOverlay>
-              {activeDragTask && (
-                <KanbanCardItem
-                  task={activeDragTask}
-                  isDragging
-                  onEdit={() => {}}
-                  pessoaMap={pessoaMap}
-                  mono={mono}
-                />
-              )}
-            </DragOverlay>
-          </DndContext>
-        )}
-
-        {/* ── 6c. KANBAN ADD MODAL ──────────────────────────────────────────── */}
-        {kanbanAddStatus !== null && (
-          <div
-            onClick={() => setKanbanAddStatus(null)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 1000,
-            }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#FFF', borderRadius: 16, padding: 24,
-                width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-                display: 'flex', flexDirection: 'column', gap: 16,
-                fontFamily: FONT,
-              }}
-            >
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título</label>
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Título da tarefa..."
-                  value={kanbanForm.titulo}
-                  onChange={e => setKanbanForm(p => ({ ...p, titulo: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && handleKanbanSave()}
-                  style={{ ...INPUT_ST, fontSize: 18, fontWeight: 600, color: '#1E293B', border: 'none', borderBottom: '1.5px solid #E2E8F0', borderRadius: 0, padding: '4px 0' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Descrição</label>
-                <textarea
-                  placeholder="Descrição breve..."
-                  value={kanbanForm.descricao}
-                  onChange={e => setKanbanForm(p => ({ ...p, descricao: e.target.value }))}
-                  rows={3}
-                  style={{ ...INPUT_ST, resize: 'none', lineHeight: 1.5 }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável</label>
-                  <select value={kanbanForm.pessoaId} onChange={e => setKanbanForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
-                    <option value="">Selecione</option>
-                    {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Término</label>
-                  <DateInputBR
-                    value={kanbanForm.dataTermino}
-                    onChange={v => setKanbanForm(p => ({ ...p, dataTermino: v }))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Tag</label>
-                <input
-                  type="text"
-                  placeholder="#planejamento"
-                  value={kanbanForm.tag}
-                  onChange={e => setKanbanForm(p => ({ ...p, tag: e.target.value }))}
-                  style={INPUT_ST}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-                <button
-                  onClick={() => setKanbanAddStatus(null)}
-                  style={{
-                    padding: '9px 20px', borderRadius: 10, border: '1px solid #E2E8F0',
-                    background: '#F8FAFC', color: '#64748B', cursor: 'pointer',
-                    fontSize: 14, fontWeight: 500, fontFamily: FONT,
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleKanbanSave}
-                  disabled={operating || !kanbanForm.titulo.trim()}
-                  style={{
-                    padding: '9px 24px', borderRadius: 10, border: 'none',
-                    background: kanbanForm.titulo.trim() ? '#3B82F6' : '#BFDBFE',
-                    color: '#FFF', cursor: kanbanForm.titulo.trim() ? 'pointer' : 'default',
-                    fontSize: 14, fontWeight: 600, fontFamily: FONT,
-                  }}
-                >
-                  Adicionar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
 
         {/* ── 7. COUNTER ────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px 0' }}>
@@ -1799,8 +1453,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             {sourceTab === 'projetos'
               ? `${filteredProjectTasks.length} tarefas de projetos`
               : hasActiveFilters
-                ? `${filteredAndSorted.length} de ${atividades.length} atividades`
-                : `${atividades.length} atividades`}
+                ? `${filteredParentTasks.length} de ${parentTasks.length} tarefas`
+                : `${parentTasks.length} tarefas (${atividades.length} total com subtarefas)`}
           </span>
           {hasActiveFilters && (
             <button onClick={clearFilters} style={{
@@ -1819,6 +1473,96 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         </div>
 
       </div>
+
+      {/* ── MODAL NOVA / EDITAR TAREFA ──────────────────────────────────────── */}
+      {showTaskModal && (
+        <div
+          onClick={handleEditCancel}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 24, animation: 'gsFadeIn 0.2s ease',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#FFF', borderRadius: 16, padding: 24,
+              maxWidth: 700, width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+              fontFamily: FONT,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: editingId ? '#6366F1' : '#0F172A' }}>
+                {editingId ? 'Editando atividade' : 'Nova atividade'}
+              </p>
+              <button
+                onClick={handleEditCancel}
+                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >✕</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+              <div style={{ flex: '1 1 160px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título</label>
+                <input
+                  autoFocus
+                  type="text" placeholder="Título" value={newForm.titulo}
+                  onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && handleSave()}
+                  style={INPUT_ST}
+                />
+              </div>
+              <div style={{ flex: '2 1 220px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Descrição</label>
+                <input
+                  type="text" placeholder="Descrição breve" value={newForm.descricao}
+                  onChange={e => setNewForm(p => ({ ...p, descricao: e.target.value }))}
+                  style={INPUT_ST}
+                />
+              </div>
+              <div style={{ flex: '0 1 140px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável</label>
+                <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
+                  <option value="">Selecione</option>
+                  {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '0 1 140px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Data Término</label>
+                <DateInputBR
+                  value={newForm.dataTermino}
+                  onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
+                  className="w-full"
+                />
+              </div>
+              <div style={{ flex: '0 1 140px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>#</label>
+                <input
+                  type="text" placeholder="#tag" value={newForm.tag}
+                  onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
+                  style={INPUT_ST}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={handleEditCancel}
+                style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B', cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: FONT }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={operating || !newForm.titulo.trim()}
+                style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: newForm.titulo.trim() ? '#3B82F6' : '#BFDBFE', color: '#FFF', cursor: newForm.titulo.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, fontFamily: FONT }}
+              >
+                {editingId ? 'Salvar' : 'Adicionar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL CARRY-OVER TAREFAS ────────────────────────────────────────── */}
       {carryOverModal && (
@@ -1929,6 +1673,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {at.titulo}
+                          {(subtasksMap.get(at.id)?.length ?? 0) > 0 && (
+                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 500, padding: '1px 5px', borderRadius: 10, background: '#EEF2FF', color: '#6366F1', verticalAlign: 'middle' }}>
+                              {subtasksMap.get(at.id)!.length} sub
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {getPessoaNome(at.pessoa_id)}
