@@ -50,7 +50,12 @@ export type CreatePessoaInput = {
   created_by?: string;
 };
 
-export type UpdatePessoaInput = Partial<CreatePessoaInput>;
+export type UpdatePessoaInput = Partial<CreatePessoaInput> & {
+  inviteToken?: string | null;
+  inviteStatus?: string | null;
+  inviteExpiresAt?: Date | null;
+  inviteSentAt?: Date | null;
+};
 
 export async function getPessoa(id: string) {
   const [row] = await db.select().from(people).where(eq(people.id, id as any)).limit(1);
@@ -175,6 +180,10 @@ export async function updatePessoa(id: string, data: UpdatePessoaInput) {
   if (data.preferred_name !== undefined) mapped.preferredName = data.preferred_name;
   if (data.phone_whatsapp !== undefined) mapped.phoneWhatsapp = data.phone_whatsapp;
   if (data.email !== undefined) mapped.email = data.email;
+  if (data.inviteToken !== undefined) mapped.inviteToken = data.inviteToken;
+  if (data.inviteStatus !== undefined) mapped.inviteStatus = data.inviteStatus;
+  if (data.inviteExpiresAt !== undefined) mapped.inviteExpiresAt = data.inviteExpiresAt;
+  if (data.inviteSentAt !== undefined) mapped.inviteSentAt = data.inviteSentAt;
   if (data.location_city_uf !== undefined) mapped.locationCityUf = data.location_city_uf;
   if (data.photo_url !== undefined) mapped.photoUrl = data.photo_url;
   if (data.organization_id !== undefined) mapped.organizationId = data.organization_id;

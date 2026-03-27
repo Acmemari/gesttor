@@ -219,8 +219,8 @@ export async function createPessoa(data: CreatePessoaData): Promise<Pessoa | nul
   return res.data;
 }
 
-export async function updatePessoa(id: string, data: UpdatePessoaData): Promise<Pessoa | null> {
-  const res = await fetchApi<Pessoa>(`${API_BASE}/pessoas`, {
+export async function updatePessoa(id: string, data: UpdatePessoaData): Promise<(Pessoa & { inviteWasReset?: boolean }) | null> {
+  const res = await fetchApi<Pessoa & { inviteWasReset?: boolean }>(`${API_BASE}/pessoas`, {
     method: 'PATCH',
     body: JSON.stringify({ id, ...data }),
   });

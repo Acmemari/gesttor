@@ -601,6 +601,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.email = updates.email.trim().toLowerCase();
     }
 
+    // Resetar convite pendente se o email foi alterado
+    let inviteWasReset = false;
+    if (updates.email !== undefined) {
+      const [current] = await db
+        .select({ email: people.email, inviteStatus: people.inviteStatus })
+        .from(people)
+        .where(eq(people.id, pessoaId as any))
+        .limit(1);
+      if (current?.inviteStatus === 'pending' && current.email !== updates.email) {
+        updates.inviteToken = null;
+        updates.inviteStatus = 'none';
+        updates.inviteExpiresAt = null;
+        updates.inviteSentAt = null;
+        inviteWasReset = true;
+      }
+    }
+
     try {
       const updated = await updatePessoa(pessoaId, updates);
       if (!updated) {
@@ -619,7 +636,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      jsonSuccess(res, updated);
+      jsonSuccess(res, { ...updated, inviteWasReset });
     } catch (err) {
       const msg = (err instanceof Error ? err.message : '') + String((err as Record<string, unknown>)?.detail ?? '');
       if (msg.toLowerCase().includes('idx_people_phone_org') || (msg.toLowerCase().includes('unique') && msg.toLowerCase().includes('phone'))) {

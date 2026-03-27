@@ -405,8 +405,12 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       };
 
       if (editingId) {
-        await updatePessoa(editingId, payload);
-        onToast?.('Pessoa atualizada com sucesso', 'success');
+        const result = await updatePessoa(editingId, payload);
+        if (result?.inviteWasReset) {
+          onToast?.('Email atualizado. O convite anterior foi cancelado — envie um novo convite.', 'warning');
+        } else {
+          onToast?.('Pessoa atualizada com sucesso', 'success');
+        }
         loadPessoas();
         backToList();
         return editingId;
