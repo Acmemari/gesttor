@@ -1,4 +1,4 @@
-import { getAuthHeaders } from './session';
+import { getAuthHeaders, clearToken } from './session';
 import { storageUpload, storageGetSignedUrl, storageRemove } from './storage';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -113,10 +113,16 @@ function debounce(fn: () => void, delay: number): () => void {
   };
 }
 
+function handleUnauthorized(): void {
+  clearToken();
+  if (typeof window !== 'undefined') window.location.replace('/sign-in');
+}
+
 async function apiGet<T>(action: string, params?: Record<string, string>): Promise<T> {
   const headers = await getAuthHeaders();
   const qs = new URLSearchParams({ action, ...params }).toString();
   const res = await fetch(`/api/support-tickets?${qs}`, { headers });
+  if (res.status === 401) { handleUnauthorized(); throw new Error('Sessão expirada'); }
   const json = await res.json() as { ok: boolean; data: T; error?: string };
   if (!json.ok) throw new Error(json.error || 'Erro na API');
   return json.data;
@@ -129,6 +135,7 @@ async function apiPost<T>(action: string, body: Record<string, unknown>): Promis
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, ...body }),
   });
+  if (res.status === 401) { handleUnauthorized(); throw new Error('Sessão expirada'); }
   const json = await res.json() as { ok: boolean; data: T; error?: string };
   if (!json.ok) throw new Error(json.error || 'Erro na API');
   return json.data;

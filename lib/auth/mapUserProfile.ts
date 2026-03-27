@@ -73,7 +73,7 @@ export const mapUserProfile = (input: unknown): User | null => {
     if (validPlans.includes(profile.plan as (typeof validPlans)[number])) {
       plan = profile.plan as 'essencial' | 'gestor' | 'pro';
     } else {
-      log.warn('Invalid plan value, defaulting to undefined');
+      log.warn('Invalid plan value, defaulting to undefined', { value: profile.plan });
     }
   }
 

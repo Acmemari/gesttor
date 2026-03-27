@@ -229,9 +229,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         await pool.query(`
+          WITH upd AS (
+            UPDATE support_ticket_reads
+            SET last_read_at = now(), updated_at = now()
+            WHERE ticket_id = $1 AND user_id = $2
+            RETURNING 1
+          )
           INSERT INTO support_ticket_reads (ticket_id, user_id, last_read_at)
-          VALUES ($1, $2, now())
-          ON CONFLICT (ticket_id, user_id) DO UPDATE SET last_read_at = now(), updated_at = now()
+          SELECT $1, $2, now()
+          WHERE NOT EXISTS (SELECT 1 FROM upd)
         `, [ticketId, userId]);
         jsonSuccess(res, null); return;
       }
