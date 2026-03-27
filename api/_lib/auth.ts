@@ -278,6 +278,21 @@ export const auth = betterAuth({
         },
       },
     },
+    session: {
+      create: {
+        after: async (session) => {
+          try {
+            const { eq } = await import('drizzle-orm');
+            await db
+              .update(userProfiles)
+              .set({ lastLogin: new Date() })
+              .where(eq(userProfiles.id, session.userId));
+          } catch (err) {
+            console.error('[auth] Erro ao atualizar last_login:', err);
+          }
+        },
+      },
+    },
   },
 });
 

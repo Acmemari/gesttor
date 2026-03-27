@@ -40,19 +40,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const limit = Math.min(Number(req.query.limit) || 500, 500);
 
         let sql = `
-          SELECT id, name, email, role, avatar, image_url, plan, status,
-                 last_login, phone, created_at, updated_at
-          FROM user_profiles
+          SELECT up.id, up.name, up.email, up.role, up.avatar, up.image_url, up.plan, up.status,
+                 up.last_login, up.phone, up.created_at, up.updated_at,
+                 o.id AS client_id
+          FROM user_profiles up
+          LEFT JOIN organizations o ON o.owner_id = up.id
           WHERE 1=1
         `;
         const params: unknown[] = [];
 
         if (search) {
           params.push(`%${search}%`);
-          sql += ` AND (name ILIKE $${params.length} OR email ILIKE $${params.length})`;
+          sql += ` AND (up.name ILIKE $${params.length} OR up.email ILIKE $${params.length})`;
         }
 
-        sql += ` ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        sql += ` ORDER BY up.name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
         params.push(limit, offset);
 
         const { rows } = await pool.query(sql, params);
@@ -156,12 +158,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `UPDATE organizations SET analyst_id = $1 WHERE id = $2`,
             [targetUserId, organizationId],
           );
-        } else if (role === 'cliente' && clientOrgId) {
-          // Vincula cliente como proprietário da organização
+        } else {
+          // Limpa qualquer vínculo owner_id anterior deste usuário
           await pool.query(
-            `UPDATE organizations SET owner_id = $1 WHERE id = $2`,
-            [targetUserId, clientOrgId],
+            `UPDATE organizations SET owner_id = NULL WHERE owner_id = $1`,
+            [targetUserId],
           );
+          // Se for cliente com organização selecionada, vincula como proprietário
+          if (role === 'cliente' && clientOrgId) {
+            await pool.query(
+              `UPDATE organizations SET owner_id = $1 WHERE id = $2`,
+              [targetUserId, clientOrgId],
+            );
+          }
         }
 
         const { rows: updated } = await pool.query(
