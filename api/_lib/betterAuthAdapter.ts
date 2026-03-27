@@ -41,9 +41,13 @@ export async function getAuthUserIdFromRequest(req: VercelRequest): Promise<stri
       headers.set('Cookie', cookie);
     }
 
-    const session = await auth.api.getSession({ headers });
+    // disableRefresh: true — evita UPDATE em ba_session durante validação interna.
+    // Sem isso, se a sessão tem >1 dia e o UPDATE falha (DB transiente, pool esgotado,
+    // etc.), o Better Auth lança UNAUTHORIZED que seria capturado aqui como null → 401.
+    const session = await auth.api.getSession({ headers, query: { disableRefresh: true } });
     return session?.user?.id ?? null;
-  } catch {
+  } catch (err) {
+    console.error('[betterAuthAdapter] getAuthUserIdFromRequest error:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
