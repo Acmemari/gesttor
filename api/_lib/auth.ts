@@ -66,7 +66,64 @@ function getResetPasswordHtml(resetUrl: string, userName?: string): string {
     .replace(/\{\{GREETING\}\}/g, greeting);
 }
 
-// ── Better Auth ────────────────────────────────────────────────────────────────
+// ── applyInviteCredentials ────────────────────────────────────────────────────
+
+/**
+ * Aplica as credenciais do convite ao user_profiles.
+ * Chamado tanto no signup de novo usuário quanto na aceitação por visitante.
+ *
+ * O que faz:
+ *  - Atualiza user_profiles.role com o inviteRole
+ *  - Atualiza user_profiles.organizationId (se cliente)
+ *  - Sincroniza phone/foto de people → user_profiles
+ *  - Vincula people.userId ao usuário
+ *  - Marca convite como aceito (inviteStatus='accepted', inviteToken=null)
+ *
+ * O que NÃO faz (e NÃO deve fazer):
+ *  - NÃO toca em person_farms, person_profiles, person_permissions
+ *    (essas tabelas usam pessoaId, não userId)
+ */
+export async function applyInviteCredentials(
+  userId: string,
+  invitePerson: typeof people.$inferSelect,
+): Promise<void> {
+  const { eq } = await import('drizzle-orm');
+  const inviteRole = invitePerson.inviteRole ?? 'visitante';
+
+  // 1. Atualizar role e organização no user_profiles
+  await db
+    .update(userProfiles)
+    .set({
+      role: inviteRole,
+      organizationId: inviteRole === 'cliente' ? invitePerson.organizationId : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(userProfiles.id, userId));
+
+  // 2. Vincular people → user e marcar convite como aceito
+  await db
+    .update(people)
+    .set({
+      userId: userId,
+      inviteStatus: 'accepted',
+      inviteToken: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(people.id, invitePerson.id));
+
+  // 3. Sincronizar phone/foto de people → user_profiles
+  const syncFields: Record<string, unknown> = { updatedAt: new Date() };
+  if (invitePerson.phoneWhatsapp) syncFields.phone = invitePerson.phoneWhatsapp;
+  if (invitePerson.photoUrl) {
+    syncFields.imageUrl = invitePerson.photoUrl;
+    syncFields.avatar = invitePerson.photoUrl;
+  }
+  if (Object.keys(syncFields).length > 1) {
+    await db.update(userProfiles).set(syncFields).where(eq(userProfiles.id, userId));
+  }
+
+  console.log(`[invite] Credenciais aplicadas: role=${inviteRole} userId=${userId} pessoaId=${invitePerson.id}`);
+}
 
 // ── Better Auth ────────────────────────────────────────────────────────────────
 
@@ -215,37 +272,7 @@ export const auth = betterAuth({
                 .limit(1);
 
               if (invitePerson && invitePerson.inviteExpiresAt && invitePerson.inviteExpiresAt > now) {
-                // Convite válido: aplicar role e organização
-                const inviteRole = invitePerson.inviteRole ?? 'visitante';
-                await db
-                  .update(userProfiles)
-                  .set({
-                    role: inviteRole,
-                    organizationId: inviteRole === 'cliente' ? invitePerson.organizationId : null,
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(userProfiles.id, user.id));
-
-                // Marcar convite como aceito
-                await db
-                  .update(people)
-                  .set({
-                    userId: user.id,
-                    inviteStatus: 'accepted',
-                    inviteToken: null,
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(people.id, invitePerson.id));
-
-                // Copiar phone/foto do registro people → user_profiles
-                const inviteSyncFields: Record<string, unknown> = { updatedAt: new Date() };
-                if (invitePerson.phoneWhatsapp) inviteSyncFields.phone = invitePerson.phoneWhatsapp;
-                if (invitePerson.photoUrl) { inviteSyncFields.imageUrl = invitePerson.photoUrl; inviteSyncFields.avatar = invitePerson.photoUrl; }
-                if (Object.keys(inviteSyncFields).length > 1) {
-                  await db.update(userProfiles).set(inviteSyncFields).where(eq(userProfiles.id, user.id));
-                }
-
-                console.log(`[auth] Convite aceito: role=${inviteRole} para ${user.email}`);
+                await applyInviteCredentials(user.id, invitePerson);
               } else {
                 // Sem convite: buscar people pelo email para obter phone/foto antes de vincular
                 const linkedPeople = await db

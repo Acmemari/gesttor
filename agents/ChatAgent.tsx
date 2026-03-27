@@ -264,7 +264,7 @@ const ChatAgent: React.FC = () => {
           </p>
           {user?.role === 'admin' && (
             <p className="text-xs text-ai-accent">
-              Como administrador, você pode habilitar o agente na seção "Treinar Antonio".
+              Como administrador, você pode habilitar o agente na seção "Antonio (Base RAG)".
             </p>
           )}
         </div>

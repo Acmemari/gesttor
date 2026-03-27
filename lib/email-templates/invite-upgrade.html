@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Convite — Gesttor</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          Arial,
+          sans-serif;
+        background-color: #f8f9fa;
+        color: #1f1f1f;
+      }
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+      }
+      .email-header {
+        background-color: #1f1f1f;
+        padding: 32px 24px;
+        text-align: center;
+      }
+      .logo-container {
+        display: inline-block;
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 12px;
+        margin-bottom: 16px;
+      }
+      .logo-icon {
+        width: 32px;
+        height: 32px;
+        display: block;
+      }
+      .email-title {
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0;
+        letter-spacing: -0.5px;
+      }
+      .email-subtitle {
+        color: #5f6368;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+      .email-body {
+        padding: 40px 32px;
+      }
+      .greeting {
+        font-size: 16px;
+        color: #1f1f1f;
+        margin-bottom: 16px;
+        font-weight: 500;
+      }
+      .message {
+        font-size: 14px;
+        color: #5f6368;
+        line-height: 1.6;
+        margin-bottom: 32px;
+      }
+      .button-container {
+        text-align: center;
+        margin: 32px 0;
+      }
+      .invite-button {
+        display: inline-block;
+        background-color: #1f1f1f;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 14px 32px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .link-fallback {
+        font-size: 12px;
+        color: #5f6368;
+        margin-top: 24px;
+        word-break: break-all;
+      }
+      .link-fallback a {
+        color: #1a73e8;
+        text-decoration: none;
+      }
+      .link-fallback a:hover {
+        text-decoration: underline;
+      }
+      .info-note {
+        background-color: #f8f9fa;
+        border-left: 4px solid #1a73e8;
+        padding: 16px;
+        margin: 32px 0;
+        border-radius: 4px;
+      }
+      .info-note-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1f1f1f;
+        margin-bottom: 8px;
+      }
+      .info-note-text {
+        font-size: 12px;
+        color: #5f6368;
+        line-height: 1.5;
+        margin: 0;
+      }
+      .email-footer {
+        background-color: #f8f9fa;
+        padding: 24px 32px;
+        text-align: center;
+        border-top: 1px solid #e0e3e7;
+      }
+      .footer-text {
+        font-size: 12px;
+        color: #5f6368;
+        margin: 0;
+        line-height: 1.6;
+      }
+      @media only screen and (max-width: 600px) {
+        .email-body { padding: 32px 24px; }
+        .email-header { padding: 24px 16px; }
+        .invite-button { padding: 12px 24px; font-size: 13px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <!-- Header -->
+      <div class="email-header">
+        <div class="logo-container">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#1F1F1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="#1F1F1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="#1F1F1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1 class="email-title">Gesttor</h1>
+        <p class="email-subtitle">Gestão de precisão para sua fazenda</p>
+      </div>
+
+      <!-- Body -->
+      <div class="email-body">
+        <p class="greeting">Olá, {{NAME}}!</p>
+
+        <p class="message">
+          Você foi adicionado(a) à organização <strong>{{ORG_NAME}}</strong> como <strong>{{ROLE_NAME}}</strong> no Gesttor.<br /><br />
+          Como você já possui uma conta no Gesttor, basta aceitar o convite para acessar todos os recursos
+          disponíveis para o seu novo perfil.
+        </p>
+
+        <div class="button-container">
+          <a href="{{INVITE_URL}}" class="invite-button">Aceitar convite</a>
+        </div>
+
+        <div class="link-fallback">
+          <p style="margin: 0 0 8px 0; font-size: 12px; color: #5f6368">
+            Se o botão não funcionar, copie e cole o link abaixo no seu navegador:
+          </p>
+          <a href="{{INVITE_URL}}">{{INVITE_URL}}</a>
+        </div>
+
+        <div class="info-note">
+          <p class="info-note-title">ℹ️ Informações</p>
+          <p class="info-note-text">
+            Este link de convite expira em 72 horas. Se o link expirar, peça ao administrador que envie
+            um novo convite. Se você não esperava receber este email, pode ignorá-lo com segurança.
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="email-footer">
+        <p class="footer-text">
+          Este é um email automático, por favor não responda.<br />
+          Se você tiver dúvidas, entre em contato conosco através do nosso suporte.
+        </p>
+        <p class="footer-text" style="margin-top: 16px">© 2025 Gesttor. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Lock, ArrowRight, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Lock, ArrowRight, Loader2, CheckCircle2, AlertCircle, UserCheck } from 'lucide-react';
 import { authClient } from '../lib/auth/betterAuthClient';
+import { acceptInvite } from '../lib/api/pessoasClient';
 
 interface InviteData {
   valid: boolean;
@@ -8,6 +9,8 @@ interface InviteData {
   name?: string;
   email?: string;
   role?: string;
+  inviteType?: 'new_account' | 'upgrade';
+  hasAccount?: boolean;
 }
 
 interface ConvitePageProps {
@@ -67,6 +70,30 @@ const ConvitePage: React.FC<ConvitePageProps> = ({ onToast, onSuccess }) => {
     }
   };
 
+  const handleAcceptUpgrade = async () => {
+    if (!token) return;
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      await acceptInvite(token);
+      setIsSuccess(true);
+      setIsSubmitting(false);
+      onToast?.('Convite aceito! Suas permissões foram atualizadas.', 'success');
+      setTimeout(() => {
+        window.location.replace('/');
+      }, 2500);
+    } catch (err: any) {
+      if (err.message?.includes('Não autenticado') || err.message?.includes('401')) {
+        onToast?.('Faça login primeiro e depois clique novamente no link do email.', 'warning');
+        setTimeout(() => window.location.replace('/sign-in'), 2000);
+        return;
+      }
+      setError(err.message || 'Erro ao aceitar convite. Tente novamente.');
+      setIsSubmitting(false);
+    }
+  };
+
   // Loading
   if (loading) {
     return (
@@ -99,6 +126,103 @@ const ConvitePage: React.FC<ConvitePageProps> = ({ onToast, onSuccess }) => {
             >
               Ir para login
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Upgrade — visitante com conta existente
+  if (invite?.valid && invite.inviteType === 'upgrade') {
+    // Sucesso de upgrade
+    if (isSuccess) {
+      return (
+        <div className="w-full min-h-screen bg-ai-bg text-ai-text font-sans overflow-y-auto">
+          <div className="w-full max-w-md mx-auto px-4 py-8 pb-12">
+            <div className="flex flex-col items-center mb-8">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Gesttor</h1>
+              <p className="text-ai-subtext text-xs sm:text-sm mt-1">Gestão de precisão para sua fazenda</p>
+            </div>
+            <div className="bg-white rounded-xl sm:rounded-2xl border border-ai-border shadow-sm p-6 sm:p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 size={32} className="text-green-600" />
+              </div>
+              <h2 className="text-base sm:text-lg font-semibold mb-2">Convite aceito!</h2>
+              <p className="text-xs sm:text-sm text-ai-subtext">
+                Suas permissões foram atualizadas. Você será redirecionado.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Tela de aceitação
+    return (
+      <div className="w-full min-h-screen bg-ai-bg text-ai-text font-sans overflow-y-auto">
+        <div className="w-full max-w-md mx-auto px-4 py-6 sm:py-8 pb-12">
+          <div className="flex flex-col items-center mb-6 sm:mb-8">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Gesttor</h1>
+            <p className="text-ai-subtext text-xs sm:text-sm mt-1 sm:mt-2">Gestão de precisão para sua fazenda</p>
+          </div>
+
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-ai-border shadow-sm p-4 sm:p-6 md:p-8">
+            <div className="flex items-center justify-center mb-4 sm:mb-6">
+              <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
+                <UserCheck size={28} className="text-blue-600" />
+              </div>
+            </div>
+
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-lg font-semibold mb-2">Você foi convidado!</h2>
+              <p className="text-xs sm:text-sm text-ai-subtext">
+                Sua conta será atualizada com as novas permissões.
+              </p>
+            </div>
+
+            {/* Resumo do convite */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4 sm:mb-6 space-y-2">
+              <div className="flex justify-between text-xs sm:text-sm">
+                <span className="text-ai-subtext">Nome</span>
+                <span className="font-medium">{invite.name}</span>
+              </div>
+              <div className="flex justify-between text-xs sm:text-sm">
+                <span className="text-ai-subtext">E-mail</span>
+                <span className="font-medium">{invite.email}</span>
+              </div>
+              <div className="flex justify-between text-xs sm:text-sm">
+                <span className="text-ai-subtext">Perfil</span>
+                <span className="font-medium capitalize">{invite.role}</span>
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-red-600 text-center text-sm font-medium bg-red-50 border border-red-200 rounded-lg py-3 px-4 mb-4">
+                {error}
+              </p>
+            )}
+
+            <button
+              onClick={handleAcceptUpgrade}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center py-2.5 sm:py-3 px-4 bg-ai-text text-white rounded-lg hover:bg-black transition-colors font-medium text-xs sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Aceitar convite</span>
+                  <ArrowRight size={14} className="ml-2" />
+                </>
+              )}
+            </button>
+
+            <p className="text-center text-[10px] sm:text-xs text-ai-subtext mt-4">
+              Não reconhece este convite?{' '}
+              <button onClick={() => window.location.replace('/')} className="text-ai-text hover:underline font-medium">
+                Voltar ao início
+              </button>
+            </p>
           </div>
         </div>
       </div>

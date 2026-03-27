@@ -231,6 +231,7 @@ export const people = pgTable('people', {
   inviteToken:     text('invite_token'),
   inviteStatus:    text('invite_status').default('none'),  // 'none' | 'pending' | 'accepted' | 'expired'
   inviteRole:      text('invite_role'),                    // 'analista' | 'cliente'
+  inviteType:      text('invite_type').default('new_account'), // 'new_account' | 'upgrade'
   inviteExpiresAt: timestamp('invite_expires_at'),
   inviteSentAt:    timestamp('invite_sent_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

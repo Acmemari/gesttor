@@ -30,7 +30,6 @@ const AntonioAdmin = lazy(() => import('./agents/AntonioAdmin'));
 const AdminDashboard = lazy(() => import('./agents/AdminDashboard'));
 const MarketTrends = lazy(() => import('./agents/MarketTrends'));
 const SavedScenarios = lazy(() => import('./agents/SavedScenarios'));
-const AgentTrainingAdmin = lazy(() => import('./agents/AgentTrainingAdmin'));
 const AIAgentConfigAdmin = lazy(() => import('./agents/AIAgentConfigAdmin'));
 const FarmManagement = lazy(() => import('./agents/FarmManagement'));
 const PerfisCargoConfig = lazy(() => import('./agents/PerfisCargoConfig'));
@@ -271,15 +270,6 @@ const AppContent: React.FC = () => {
         status: 'active',
       };
 
-      const agentTraining: Agent = {
-        id: 'agent-training',
-        name: 'Treinar Antonio',
-        description: 'Configurar e treinar o agente',
-        icon: 'brain',
-        category: 'admin',
-        status: 'active',
-      };
-
       const aiAgentConfig: Agent = {
         id: 'ai-config',
         name: 'Especialista IA',
@@ -329,7 +319,6 @@ const AppContent: React.FC = () => {
       // Admin exclusives
       if (user?.role === 'admin') {
         orderedList.push(analystManagement);
-        orderedList.push(agentTraining);
         orderedList.push({
           id: 'antonio-admin',
           name: 'Antonio (Base RAG)',
@@ -808,17 +797,6 @@ const AppContent: React.FC = () => {
         return user.role === 'admin' ? (
           <Suspense fallback={<LoadingFallback />}>
             <AIAgentConfigAdmin />
-          </Suspense>
-        ) : (
-          <div>Acesso negado.</div>
-        );
-      case 'agent-training':
-        if (user.qualification === 'visitante') {
-          return <VisitorContentGuard isVisitor isAllowed={false} featureName="Treinar Antonio"><div className="p-8 bg-ai-surface min-h-[200px]" /></VisitorContentGuard>;
-        }
-        return user.role === 'admin' ? (
-          <Suspense fallback={<LoadingFallback />}>
-            <AgentTrainingAdmin />
           </Suspense>
         ) : (
           <div>Acesso negado.</div>

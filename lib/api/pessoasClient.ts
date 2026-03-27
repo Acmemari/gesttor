@@ -291,10 +291,19 @@ export async function updateCargoFuncao(id: string, data: { nome?: string; ativo
 
 // ─── Convites ────────────────────────────────────────────────────────────────
 
-export async function sendInvite(pessoaId: string): Promise<{ email: string; inviteRole: string; expiresAt: string }> {
-  const res = await fetchApi<{ email: string; inviteRole: string; expiresAt: string }>(`${API_BASE}/invite`, {
+export async function sendInvite(pessoaId: string): Promise<{ email: string; inviteRole: string; inviteType: string; expiresAt: string }> {
+  const res = await fetchApi<{ email: string; inviteRole: string; inviteType: string; expiresAt: string }>(`${API_BASE}/invite`, {
     method: 'POST',
     body: JSON.stringify({ pessoaId }),
+  });
+  if (!res.ok) throw new Error((res as ApiError).error);
+  return res.data;
+}
+
+export async function acceptInvite(token: string): Promise<{ ok: boolean; role: string; message: string }> {
+  const res = await fetchApi<{ ok: boolean; role: string; message: string }>(`${API_BASE}/invite`, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'accept', token }),
   });
   if (!res.ok) throw new Error((res as ApiError).error);
   return res.data;

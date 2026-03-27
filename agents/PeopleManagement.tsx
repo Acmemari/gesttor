@@ -562,8 +562,9 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     if (!p.email) { onToast?.('Pessoa sem email cadastrado', 'warning'); return; }
     setSendingInvite(p.id);
     try {
-      await sendInvite(p.id);
-      onToast?.(`Convite enviado para ${p.email}`, 'success');
+      const result = await sendInvite(p.id);
+      const typeLabel = result.inviteType === 'upgrade' ? 'Convite de atualização' : 'Convite';
+      onToast?.(`${typeLabel} enviado para ${p.email}`, 'success');
       loadPessoas();
     } catch (e) {
       onToast?.(e instanceof Error ? e.message : 'Erro ao enviar convite', 'error');
@@ -720,32 +721,53 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            {/* Botão de convite */}
-                            {p.userId ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700" title="Usuário com conta ativa">
-                                <Check size={11} /> Ativo
-                              </span>
-                            ) : p.inviteStatus === 'pending' ? (
-                              <button
-                                onClick={() => handleSendInvite(p)}
-                                disabled={sendingInvite === p.id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
-                                title="Reenviar convite"
-                              >
-                                {sendingInvite === p.id ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
-                                Reenviar
-                              </button>
-                            ) : p.email ? (
-                              <button
-                                onClick={() => handleSendInvite(p)}
-                                disabled={sendingInvite === p.id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
-                                title="Enviar convite por email"
-                              >
-                                {sendingInvite === p.id ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
-                                Convidar
-                              </button>
-                            ) : null}
+                            {/* Botão de convite / status */}
+                            {(() => {
+                              if (p.userId) {
+                                return (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700"
+                                    title="Usuário com conta ativa e permissões configuradas"
+                                  >
+                                    <Check size={11} /> Ativo
+                                  </span>
+                                );
+                              }
+                              if (p.inviteStatus === 'pending') {
+                                return (
+                                  <button
+                                    onClick={() => handleSendInvite(p)}
+                                    disabled={sendingInvite === p.id}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                                    title="Reenviar convite"
+                                  >
+                                    {sendingInvite === p.id ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                                    Aguardando aceite
+                                  </button>
+                                );
+                              }
+                              if (!p.email) {
+                                return (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-400"
+                                    title="Cadastre um email para poder convidar"
+                                  >
+                                    <Mail size={11} /> Sem email
+                                  </span>
+                                );
+                              }
+                              return (
+                                <button
+                                  onClick={() => handleSendInvite(p)}
+                                  disabled={sendingInvite === p.id}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                  title={p.userId ? 'Convidar para atualizar permissões (visitante)' : 'Enviar convite por email'}
+                                >
+                                  {sendingInvite === p.id ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                                  Convidar
+                                </button>
+                              );
+                            })()}
                             <button
                               onClick={() => openEdit(p)}
                               className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
