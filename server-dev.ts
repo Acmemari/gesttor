@@ -240,6 +240,8 @@ app.all('/api/tasks', (req, res) => handleApiRoute('./api/tasks.ts', req, res));
 app.all('/api/semanas', (req, res) => handleApiRoute('./api/semanas.ts', req, res));
 app.all('/api/atividades', (req, res) => handleApiRoute('./api/atividades.ts', req, res));
 app.all('/api/historico-semanas', (req, res) => handleApiRoute('./api/historico-semanas.ts', req, res));
+app.all('/api/semana-participantes', (req, res) => handleApiRoute('./api/semana-participantes.ts', req, res));
+app.all('/api/desempenho', (req, res) => handleApiRoute('./api/desempenho.ts', req, res));
 
 // Evidências / Mapas de fazenda
 app.all('/api/evidence', (req, res) => handleApiRoute('./api/evidence.ts', req, res));

@@ -1,15 +1,38 @@
-import { eq, desc, and, isNull } from 'drizzle-orm';
+import { eq, desc, and, isNull, asc, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../index.js';
-import { semanas, atividades, historicoSemanas } from '../schema.js';
+import { semanas, atividades, historicoSemanas, semanaParticipantes, people } from '../schema.js';
 
 // ── Semanas ────────────────────────────────────────────────────────────────────
 
-export async function getCurrentSemana(modo: string, farmId?: string | null) {
+/**
+ * Busca semana por data de início (ignora modo), mesclando duplicatas civil/safra.
+ * Quando existem dois registros para a mesma data (um 'ano' e um 'safra'),
+ * reatribui todas as atividades ao mais antigo e exclui os duplicados.
+ */
+export async function getSemanaByDataInicio(dataInicio: string, farmId?: string | null) {
   const conditions = farmId
-    ? and(eq(semanas.aberta, true), eq(semanas.modo, modo), eq(semanas.farmId, farmId))
-    : and(eq(semanas.aberta, true), eq(semanas.modo, modo), isNull(semanas.farmId));
-  const [row] = await db.select().from(semanas).where(conditions).orderBy(desc(semanas.numero)).limit(1);
-  return row;
+    ? and(eq(semanas.dataInicio, dataInicio), eq(semanas.farmId, farmId))
+    : and(eq(semanas.dataInicio, dataInicio), isNull(semanas.farmId));
+  const rows = await db.select().from(semanas).where(conditions).orderBy(semanas.createdAt);
+  if (rows.length === 0) return undefined;
+  if (rows.length === 1) return rows[0];
+  // Mesclar: manter o mais antigo e reatribuir atividades dos duplicados
+  const [keeper, ...duplicates] = rows;
+  for (const dup of duplicates) {
+    await db.update(atividades).set({ semanaId: keeper.id }).where(eq(atividades.semanaId, dup.id));
+    await db.delete(semanas).where(eq(semanas.id, dup.id));
+  }
+  return keeper;
+}
+
+export async function getCurrentSemana(farmId?: string | null) {
+  const conditions = farmId
+    ? and(eq(semanas.aberta, true), eq(semanas.farmId, farmId))
+    : and(eq(semanas.aberta, true), isNull(semanas.farmId));
+  const [row] = await db.select().from(semanas).where(conditions).orderBy(desc(semanas.dataInicio)).limit(1);
+  if (!row) return undefined;
+  // Disparar mesclagem caso haja duplicatas civil/safra para essa data
+  return getSemanaByDataInicio(row.dataInicio, farmId);
 }
 
 export async function getSemanaById(id: string) {
@@ -183,4 +206,119 @@ export async function getHistoricoById(id: string) {
 
 export async function deleteHistorico(id: string) {
   await db.delete(historicoSemanas).where(eq(historicoSemanas.id, id));
+}
+
+// ── Semana Participantes ───────────────────────────────────────────────────────
+
+export async function listSemanaParticipantes(semanaId: string) {
+  return db
+    .select({
+      id: semanaParticipantes.id,
+      semanaId: semanaParticipantes.semanaId,
+      pessoaId: semanaParticipantes.pessoaId,
+      presenca: semanaParticipantes.presenca,
+      modalidade: semanaParticipantes.modalidade,
+      createdAt: semanaParticipantes.createdAt,
+      fullName: people.fullName,
+      preferredName: people.preferredName,
+      photoUrl: people.photoUrl,
+    })
+    .from(semanaParticipantes)
+    .innerJoin(people, eq(semanaParticipantes.pessoaId, people.id))
+    .where(eq(semanaParticipantes.semanaId, semanaId))
+    .orderBy(asc(people.fullName));
+}
+
+// ── Desempenho por período ─────────────────────────────────────────────────────
+
+export async function getDesempenhoByPeriod(
+  farmId: string,
+  dataInicio: string,
+  dataFim: string,
+) {
+  // Busca todas as atividades (tarefas + subtarefas) de semanas no período
+  const rows = await db
+    .select({
+      pessoaId: atividades.pessoaId,
+      status: atividades.status,
+      fullName: people.fullName,
+      preferredName: people.preferredName,
+    })
+    .from(atividades)
+    .innerJoin(semanas, eq(atividades.semanaId, semanas.id))
+    .leftJoin(people, eq(atividades.pessoaId, people.id))
+    .where(
+      and(
+        eq(semanas.farmId, farmId),
+        gte(semanas.dataInicio, dataInicio),
+        lte(semanas.dataInicio, dataFim),
+      ),
+    );
+
+  // Agrupa por pessoa
+  const map = new Map<string, { nome: string; concluidas: number; pendentes: number }>();
+
+  for (const row of rows) {
+    if (!row.pessoaId) continue;
+    const nome = row.preferredName || row.fullName || 'Desconhecido';
+    const existing = map.get(row.pessoaId) ?? { nome, concluidas: 0, pendentes: 0 };
+    if (row.status === 'concluída') {
+      existing.concluidas += 1;
+    } else {
+      existing.pendentes += 1;
+    }
+    map.set(row.pessoaId, existing);
+  }
+
+  const colaboradores = Array.from(map.entries()).map(([pessoaId, data]) => {
+    const total = data.concluidas + data.pendentes;
+    const eficiencia = total > 0 ? Math.round((data.concluidas / total) * 100) : 0;
+    const iniciais = data.nome
+      .split(' ')
+      .slice(0, 2)
+      .map((p: string) => p[0]?.toUpperCase() ?? '')
+      .join('');
+    return {
+      pessoaId,
+      nome: data.nome,
+      iniciais,
+      concluidas: data.concluidas,
+      pendentes: data.pendentes,
+      total,
+      eficiencia,
+      status: eficiencia >= 80 ? 'Excelente' : eficiencia >= 60 ? 'Bom' : 'Regular',
+    };
+  }).sort((a, b) => b.eficiencia - a.eficiencia);
+
+  const totalConcluidas = colaboradores.reduce((s, c) => s + c.concluidas, 0);
+  const totalPendentes = colaboradores.reduce((s, c) => s + c.pendentes, 0);
+  const eficienciaMedia = colaboradores.length > 0
+    ? Math.round(colaboradores.reduce((s, c) => s + c.eficiencia, 0) / colaboradores.length)
+    : 0;
+
+  return {
+    colaboradores,
+    totalGlobal: { concluidas: totalConcluidas, pendentes: totalPendentes, eficienciaMedia },
+  };
+}
+
+export async function bulkUpsertSemanaParticipantes(
+  semanaId: string,
+  participantes: Array<{ pessoaId: string; presenca: boolean; modalidade: string }>,
+) {
+  if (participantes.length === 0) return [];
+  const values = participantes.map(p => ({
+    semanaId,
+    pessoaId: p.pessoaId,
+    presenca: p.presenca,
+    modalidade: p.modalidade,
+  }));
+  return db
+    .insert(semanaParticipantes)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [semanaParticipantes.semanaId, semanaParticipantes.pessoaId],
+      set: { presenca: sql`excluded.presenca`, modalidade: sql`excluded.modalidade` },
+    })
+    .returning();
 }

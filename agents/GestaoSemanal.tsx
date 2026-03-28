@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import DesempenhoView from './DesempenhoView';
 import DateInputBR from '../components/DateInputBR';
 import * as semanasApi from '../lib/api/semanasClient';
 import { listSemanaParticipantes, saveParticipantes, type SemanaParticipanteRow, type ParticipantePayload } from '../lib/api/semanasClient';
@@ -260,6 +261,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
   const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'relatorios'>('rotina');
+  const [histWeekOpened, setHistWeekOpened] = useState(false);
   const activeView = activeViewProp ?? activeViewLocal;
   const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'relatorios') => {
     setActiveViewLocal(v);
@@ -784,7 +786,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
 
   const handleAbrirSemanaDoHistorico = useCallback(async (semanaId: string | null, semanaNumero: number) => {
     setLoading(true);
-    setActiveView('rotina');
+    setHistWeekOpened(true);
     try {
       let semanaData: Semana | null = null;
       if (semanaId) {
@@ -829,6 +831,20 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const handleVoltarSemanaAtual = useCallback(async () => {
     await fetchData();
   }, [fetchData]);
+
+  // Ao voltar para 'rotina' a partir do histórico com uma semana histórica aberta, recarrega a semana atual
+  const prevActiveViewRef = useRef(activeView);
+  useEffect(() => {
+    const prev = prevActiveViewRef.current;
+    prevActiveViewRef.current = activeView;
+    if (activeView !== 'historico') {
+      setHistWeekOpened(false);
+    }
+    if (activeView === 'rotina' && prev !== 'rotina') {
+      const isHistorical = semana?.aberta === false && ultimaSemanaId !== null && semana?.id !== ultimaSemanaId;
+      if (isHistorical) fetchData();
+    }
+  }, [activeView, semana, ultimaSemanaId, fetchData]);
 
   const handleSaveParticipantes = useCallback(async () => {
     if (!semana || savingParticipantes) return;
@@ -1203,7 +1219,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           </div>
 
           {/* Right side: action buttons */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ display: (activeView === 'desempenho' || activeView === 'historico') ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* Drawer source button */}
             <button
               onClick={() => setIsDrawerOpen(true)}
@@ -1250,9 +1266,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               Fechar Semana
             </button>
             {isHistoricalClosedWeek ? (
-              <button onClick={handleReopenSemana} disabled={operating || !canEditClosedWeek} style={actionBtnStReabrir}>
-                Reabrir Semana
-              </button>
+              canEditClosedWeek && (
+                <button onClick={handleReopenSemana} disabled={operating} style={actionBtnStReabrir}>
+                  Reabrir Semana
+                </button>
+              )
             ) : (
               <button onClick={handleAbrirSemana} disabled={operating || !canAbrirSemana} style={actionBtnStAbrir}>
                 Abrir Semana
@@ -1262,7 +1280,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         </div>
 
         {/* ── 2. HISTÓRICO ──────────────────────────────────────────────────── */}
-        {activeView === 'historico' && (
+        {activeView === 'historico' && !histWeekOpened && (
           <div style={{
             background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
             padding: 16, marginBottom: 16,
@@ -1338,6 +1356,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           </div>
         )}
 
+        {/* ── DESEMPENHO ────────────────────────────────────────────────── */}
+        {activeView === 'desempenho' && (
+          <DesempenhoView
+            farmId={selectedFarm?.id ?? null}
+            semana={semana}
+            onToast={onToast}
+          />
+        )}
+
         {/* ── RELATÓRIOS (placeholder) ───────────────────────────────────── */}
         {activeView === 'relatorios' && (
           <div style={{
@@ -1351,7 +1378,16 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           </div>
         )}
 
-        {activeView === 'rotina' && (<>
+        {(activeView === 'rotina' || (activeView === 'historico' && histWeekOpened)) && (<>
+        {/* ── Voltar ao histórico ────────────────────────────────────────────── */}
+        {activeView === 'historico' && histWeekOpened && (
+          <button
+            onClick={() => setHistWeekOpened(false)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3B82F6', fontSize: 13, fontWeight: 500, padding: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4, fontFamily: FONT }}
+          >
+            ← Ver histórico
+          </button>
+        )}
         {/* ── 3. STATS CARDS ────────────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
           {[
