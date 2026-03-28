@@ -18,7 +18,7 @@ import AnalystHeader from './components/AnalystHeader';
 import VisitorContentGuard from './components/VisitorContentGuard';
 import Breadcrumb, { BreadcrumbItem } from './components/shared/Breadcrumb';
 import { Agent } from './types';
-import { Menu, Construction, Loader2, ArrowLeft, Plus } from 'lucide-react';
+import { Menu, Construction, Loader2, ArrowLeft, Plus, CalendarDays, History, BarChart3, FileText } from 'lucide-react';
 import { ToastContainer, Toast } from './components/Toast';
 // Lazy load agents for code splitting
 const CattleProfitCalculator = lazy(() => import('./agents/CattleProfitCalculator'));
@@ -77,6 +77,7 @@ const AppContent: React.FC = () => {
     'desktop',
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'relatorios'>('rotina');
   const [calculatorInputs, setCalculatorInputs] = useState<any>(null);
   const [comparatorScenarios, setComparatorScenarios] = useState<any>(null);
   const [editingQuestionnaire, setEditingQuestionnaire] = useState<any>(null);
@@ -166,6 +167,10 @@ const AppContent: React.FC = () => {
       window.removeEventListener('peopleViewChange', handlePeopleViewChange as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeAgentId !== 'gestao-semanal') setGestaoView('rotina');
+  }, [activeAgentId]);
 
   const addToast = React.useCallback((toast: Toast) => {
     setToasts(prev => [...prev, toast]);
@@ -954,7 +959,7 @@ const AppContent: React.FC = () => {
       case 'gestao-semanal':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <GestaoSemanal onToast={handleToast} />
+            <GestaoSemanal onToast={handleToast} activeView={gestaoView} onViewChange={setGestaoView} />
           </Suspense>
         );
       case 'transcrever-reuniao':
@@ -1061,8 +1066,8 @@ const AppContent: React.FC = () => {
         <AnalystHeader />
 
         {/* Header - Minimalist with hamburger button */}
-        <header className="h-12 bg-ai-bg border-b border-ai-border flex items-center justify-between px-4 shrink-0 sticky top-12 z-40">
-          <div className="flex items-center gap-2 md:gap-0">
+        <header className="h-12 bg-ai-bg border-b border-ai-border flex items-center px-4 shrink-0 sticky top-12 z-40">
+          <div className="flex items-center gap-2 md:gap-0 shrink-0">
             {/* Título / Breadcrumb */}
             {activeAgentId === 'cadastros' ? (
               <Breadcrumb
@@ -1071,7 +1076,6 @@ const AppContent: React.FC = () => {
                     { label: 'Cadastros', onClick: () => setCadastroView('desktop') },
                   ];
                   if (cadastroView === 'desktop') {
-                    // só raíz — sem clique no último item
                     return [{ label: 'Cadastros' }];
                   }
                   const subLabel =
@@ -1086,6 +1090,7 @@ const AppContent: React.FC = () => {
                   const cancelEvent =
                     cadastroView === 'farm' ? 'farmCancelForm'
                     : cadastroView === 'client' ? 'clientCancelForm'
+                    : cadastroView === 'people' ? 'peopleCancelForm'
                     : 'peopleCancelForm';
 
                   const isFormView =
@@ -1113,10 +1118,77 @@ const AppContent: React.FC = () => {
                   return items;
                 })()}
               />
+            ) : activeAgentId === 'cattle-profit' && viewMode !== 'desktop' ? (
+              <Breadcrumb
+                items={[
+                  { label: 'Assistentes', onClick: () => setViewMode('desktop') },
+                  {
+                    label:
+                      viewMode === 'simulator' ? 'Simulador'
+                      : viewMode === 'comparator' ? 'Comparador'
+                      : viewMode === 'agile-planning' ? 'Planejamento Ágil'
+                      : 'Avaliação Protocolo 5-3-9',
+                  },
+                ]}
+              />
+            ) : isProjetoSubView ? (
+              <Breadcrumb
+                items={[
+                  { label: 'Projeto', onClick: () => setActiveAgentId('projeto') },
+                  {
+                    label:
+                      isIniciativasOverview ? 'Visão Geral'
+                      : isIniciativasAtividades ? 'Atividades'
+                      : isIniciativasKanban ? 'Kanban'
+                      : 'Estrutura do Projeto',
+                  },
+                ]}
+              />
+            ) : isGestaoSemanal ? (
+              <Breadcrumb
+                items={[
+                  { label: 'Rotinas Fazenda', onClick: () => setActiveAgentId('rotinas-fazenda') },
+                  { label: 'Rotina Semanal' },
+                ]}
+              />
             ) : (
               <h1 className="text-sm font-semibold text-ai-text flex items-center gap-2 truncate max-w-[120px] md:max-w-none">
                 {isSettingsPage ? 'Configurações' : isSubscriptionPage ? 'Assinatura e Planos' : headerTitle}
               </h1>
+            )}
+          </div>
+
+          {/* ── CENTRO: navegação Gestão Semanal ───────────────────────────── */}
+          <div className="flex-1 flex justify-end">
+            {isGestaoSemanal && (
+              <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: 8, padding: 2, gap: 2 }}>
+                {([
+                  { view: 'rotina' as const,     label: 'Rotina semanal', icon: <CalendarDays size={15} /> },
+                  { view: 'historico' as const,  label: 'Histórico',      icon: <History size={15} /> },
+                  { view: 'desempenho' as const, label: 'Desempenho',     icon: <BarChart3 size={15} /> },
+                  { view: 'relatorios' as const, label: 'Atas',           icon: <FileText size={15} /> },
+                ]).map(item => (
+                  <button
+                    key={item.view}
+                    onClick={() => setGestaoView(item.view)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '5px 12px', borderRadius: 6,
+                      border: gestaoView === item.view ? '1px solid #E2E8F0' : '1px solid transparent',
+                      background: gestaoView === item.view ? '#FFF' : 'transparent',
+                      color: gestaoView === item.view ? '#3B82F6' : '#64748B',
+                      fontSize: 13, fontWeight: gestaoView === item.view ? 600 : 400,
+                      cursor: 'pointer',
+                      boxShadow: gestaoView === item.view ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                      transition: 'all 0.15s ease',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -1134,33 +1206,6 @@ const AppContent: React.FC = () => {
                   Nova Organização
                 </button>
               )}
-            {activeAgentId === 'cattle-profit' && viewMode !== 'desktop' && (
-              <button
-                onClick={() => setViewMode('desktop')}
-                className="flex items-center gap-1.5 text-ai-subtext hover:text-ai-text transition-colors cursor-pointer text-sm px-2 py-1"
-              >
-                <ArrowLeft size={16} />
-                Voltar
-              </button>
-            )}
-            {isProjetoSubView && (
-              <button
-                onClick={() => setActiveAgentId('projeto')}
-                className="flex items-center gap-1.5 text-ai-subtext hover:text-ai-text transition-colors cursor-pointer text-sm px-2 py-1"
-              >
-                <ArrowLeft size={16} />
-                Voltar
-              </button>
-            )}
-            {isGestaoSemanal && (
-              <button
-                onClick={() => setActiveAgentId('rotinas-fazenda')}
-                className="flex items-center gap-1.5 text-ai-subtext hover:text-ai-text transition-colors cursor-pointer text-sm px-2 py-1"
-              >
-                <ArrowLeft size={16} />
-                Voltar
-              </button>
-            )}
           </div>
         </header>
 

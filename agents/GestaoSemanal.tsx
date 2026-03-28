@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DateInputBR from '../components/DateInputBR';
 import * as semanasApi from '../lib/api/semanasClient';
+import { listSemanaParticipantes, saveParticipantes, type SemanaParticipanteRow, type ParticipantePayload } from '../lib/api/semanasClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
 import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
@@ -61,6 +62,12 @@ interface SortConfig {
 }
 
 type TaskStatus = 'a fazer' | 'em andamento' | 'pausada' | 'concluída';
+
+interface TodasPessoa {
+  id: string;
+  nome: string;
+  assumeTarefasFazenda: boolean;
+}
 
 interface UnifiedTask {
   id: string;
@@ -146,6 +153,14 @@ function formatDatePtBr(dateStr: string | null): string {
   return `${dd}/${mm}`;
 }
 
+function getPrazoStatus(dateStr: string | null, status: string): 'no_prazo' | 'atrasada' | null {
+  if (!dateStr || status === 'concluída') return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr + 'T00:00:00');
+  return due >= today ? 'no_prazo' : 'atrasada';
+}
+
 function formatWeekRange(start: string, end: string): string {
   if (!start || !end) return '';
   const s = new Date(start + 'T00:00:00');
@@ -187,6 +202,30 @@ function getSafraLabel(): string {
 }
 
 /** Drizzle retorna camelCase; normaliza para snake_case usado no frontend. */
+function normalizeHistorico(row: Record<string, unknown>): HistoricoSemana {
+  return {
+    id: String(row.id ?? ''),
+    semana_numero: Number(row.semana_numero ?? row.semanaNumero ?? 0),
+    semana_id: (row.semana_id ?? row.semanaId ?? null) as string | null,
+    total: Number(row.total ?? 0),
+    concluidas: Number(row.concluidas ?? 0),
+    pendentes: Number(row.pendentes ?? 0),
+    closed_at: String(row.closed_at ?? row.closedAt ?? ''),
+  };
+}
+
+function normalizeSemana(row: Record<string, unknown>): Semana {
+  return {
+    id: String(row.id ?? ''),
+    numero: Number(row.numero ?? 0),
+    modo: (row.modo ?? 'ano') as 'ano' | 'safra',
+    aberta: Boolean(row.aberta ?? false),
+    data_inicio: String(row.data_inicio ?? row.dataInicio ?? ''),
+    data_fim: String(row.data_fim ?? row.dataFim ?? ''),
+    farm_id: (row.farm_id ?? row.farmId ?? null) as string | null,
+  };
+}
+
 function normalizeAtividade(row: Record<string, unknown>): Atividade {
   return {
     id: String(row.id ?? ''),
@@ -206,11 +245,13 @@ const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTe
 
 interface GestaoSemanalProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  activeView?: 'rotina' | 'historico' | 'desempenho' | 'relatorios';
+  onViewChange?: (view: 'rotina' | 'historico' | 'desempenho' | 'relatorios') => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
+const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: activeViewProp, onViewChange }) => {
   const { user } = useAuth();
   const { selectedFarm } = useFarm();
   const [modo, setModo] = useState<'ano' | 'safra'>('ano');
@@ -218,7 +259,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
-  const [showHistorico, setShowHistorico] = useState(false);
+  const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'relatorios'>('rotina');
+  const activeView = activeViewProp ?? activeViewLocal;
+  const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'relatorios') => {
+    setActiveViewLocal(v);
+    onViewChange?.(v);
+  };
   const [showPeriodoTooltip, setShowPeriodoTooltip] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
@@ -255,6 +301,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const [loadingProjectTasks, setLoadingProjectTasks] = useState(false);
   const [editingProjectTask, setEditingProjectTask] = useState<UnifiedTask | null>(null);
   const [projectEditForm, setProjectEditForm] = useState({ titulo: '', descricao: '', pessoaId: '', activityDate: '' });
+
+  // ── Participantes ───────────────────────────────────────────────────────────
+  const [showParticipantes, setShowParticipantes] = useState(false);
+  const [todasPessoas, setTodasPessoas] = useState<TodasPessoa[]>([]);
+  const [participantesMap, setParticipantesMap] = useState<Map<string, { presenca: boolean; modalidade: 'online' | 'presencial' }>>(new Map());
+  const [savingParticipantes, setSavingParticipantes] = useState(false);
 
   // canEditClosedWeek, canDeleteWeek e canFecharSemana: admin/analista ou pessoa com flag + email igual
   useEffect(() => {
@@ -315,10 +367,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       const farmId = selectedFarm?.id ?? null;
       const isAdmin = user?.role === 'admin' || user?.role === 'administrador';
 
-      const [pessoasRows, semanaRes, historicoRes] = await Promise.all([
+      const [pessoasRows, semanaRes, historicoRes, todasPessoasRows] = await Promise.all([
         farmId ? listPessoasByFarm(farmId, { assumeTarefas: true }) : Promise.resolve([]),
-        (farmId || isAdmin) ? semanasApi.getCurrentSemana(modo, farmId) : Promise.resolve({ ok: false, data: null }),
+        (farmId || isAdmin) ? semanasApi.getCurrentSemana(farmId) : Promise.resolve({ ok: false, data: null }),
         (farmId || isAdmin) ? semanasApi.listHistorico(farmId) : Promise.resolve({ ok: false, data: [] }),
+        farmId ? listPessoasByFarm(farmId, {}) : Promise.resolve([]),
       ]);
 
       const pessoasData: Pessoa[] = pessoasRows.map(p => ({
@@ -326,34 +379,68 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         nome: p.preferred_name || p.full_name,
       }));
       setPessoas(pessoasData);
-      setHistorico(historicoRes.ok ? (historicoRes.data as HistoricoSemana[]) : []);
 
-      let semanaData: Semana | null = semanaRes.ok ? (semanaRes.data as Semana | null) : null;
+      // Build sorted list of all people for participantes modal
+      const assumeSet = new Set(pessoasData.map(p => p.id));
+      const allPeople: TodasPessoa[] = (todasPessoasRows as any[])
+        .map((p: any) => ({
+          id: p.id,
+          nome: p.preferred_name || p.full_name,
+          assumeTarefasFazenda: assumeSet.has(p.id),
+        }))
+        .sort((a: TodasPessoa, b: TodasPessoa) => {
+          if (a.assumeTarefasFazenda !== b.assumeTarefasFazenda) return a.assumeTarefasFazenda ? -1 : 1;
+          return a.nome.localeCompare(b.nome, 'pt-BR');
+        });
+      setTodasPessoas(allPeople);
+      setHistorico(historicoRes.ok ? (historicoRes.data as Record<string, unknown>[]).map(normalizeHistorico) : []);
 
-      // Auto-create first week for this mode if none exists
+      let semanaData: Semana | null = semanaRes.ok && semanaRes.data
+        ? normalizeSemana(semanaRes.data as Record<string, unknown>)
+        : null;
+
+      // Auto-create first week if none exists
       if (!semanaData) {
         const today = new Date();
-        const weekNum = calcWeekNumber(today, modo);
         const monday = getMondayOfWeek(today);
         const saturday = new Date(monday);
         saturday.setDate(monday.getDate() + 5);
-        const createRes = await semanasApi.createSemana({
-          farm_id: farmId,
-          numero: weekNum,
-          modo,
-          aberta: true,
-          data_inicio: toDateStr(monday),
-          data_fim: toDateStr(saturday),
-        });
-        semanaData = createRes.ok ? (createRes.data as Semana) : null;
+        const mondayStr = toDateStr(monday);
+        // Verificar se já existe semana para essas datas em qualquer modo
+        const existenteRes = await semanasApi.getSemanaByDataInicio(mondayStr, farmId);
+        if (existenteRes.ok && existenteRes.data) {
+          semanaData = normalizeSemana(existenteRes.data as Record<string, unknown>);
+        } else {
+          const createRes = await semanasApi.createSemana({
+            farm_id: farmId,
+            numero: calcWeekNumber(today, modo),
+            modo,
+            aberta: true,
+            data_inicio: mondayStr,
+            data_fim: toDateStr(saturday),
+          });
+          semanaData = createRes.ok && createRes.data
+            ? normalizeSemana(createRes.data as Record<string, unknown>)
+            : null;
+        }
       }
 
       setSemana(semanaData);
       setUltimaSemanaId(semanaData?.id ?? null);
 
       if (semanaData) {
-        const atRes = await semanasApi.listAtividades(semanaData.id);
+        const [atRes, pRes] = await Promise.all([
+          semanasApi.listAtividades(semanaData.id),
+          listSemanaParticipantes(semanaData.id),
+        ]);
         setAtividades(atRes.ok ? (atRes.data as Record<string, unknown>[]).map(normalizeAtividade) : []);
+        if (pRes.ok) {
+          const map = new Map<string, { presenca: boolean; modalidade: 'online' | 'presencial' }>();
+          for (const row of pRes.data as SemanaParticipanteRow[]) {
+            map.set(row.pessoaId, { presenca: row.presenca, modalidade: row.modalidade });
+          }
+          setParticipantesMap(map);
+        }
       } else {
         setAtividades([]);
       }
@@ -675,7 +762,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       const res2 = await semanasApi.createHistorico({
         farm_id: semana.farm_id,
         semana_id: semana.id,
-        semana_numero: semana.numero,
+        semana_numero: calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo),
         total,
         concluidas,
         pendentes: total - concluidas,
@@ -697,17 +784,17 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
   const handleAbrirSemanaDoHistorico = useCallback(async (semanaId: string | null, semanaNumero: number) => {
     setLoading(true);
-    setShowHistorico(false);
+    setActiveView('rotina');
     try {
       let semanaData: Semana | null = null;
       if (semanaId) {
         const res = await semanasApi.getSemanaById(semanaId);
-        semanaData = res.ok ? (res.data as Semana | null) : null;
+        semanaData = res.ok && res.data ? normalizeSemana(res.data as Record<string, unknown>) : null;
       }
       if (!semanaData) {
         const farmId = selectedFarm?.id ?? null;
         const res = await semanasApi.getSemanaByNumero(semanaNumero, modo, farmId);
-        semanaData = res.ok ? (res.data as Semana | null) : null;
+        semanaData = res.ok && res.data ? normalizeSemana(res.data as Record<string, unknown>) : null;
       }
       if (!semanaData) {
         setLoading(false);
@@ -742,6 +829,30 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const handleVoltarSemanaAtual = useCallback(async () => {
     await fetchData();
   }, [fetchData]);
+
+  const handleSaveParticipantes = useCallback(async () => {
+    if (!semana || savingParticipantes) return;
+    setSavingParticipantes(true);
+    try {
+      const payload: ParticipantePayload[] = todasPessoas.map(p => {
+        const entry = participantesMap.get(p.id);
+        return {
+          pessoaId: p.id,
+          presenca: entry?.presenca ?? false,
+          modalidade: entry?.modalidade ?? 'presencial',
+        };
+      });
+      const res = await saveParticipantes(semana.id, payload);
+      if (res.ok) {
+        onToast?.('Presenças confirmadas!', 'success');
+        setShowParticipantes(false);
+      } else {
+        onToast?.('Erro ao salvar presenças.', 'error');
+      }
+    } finally {
+      setSavingParticipantes(false);
+    }
+  }, [semana, todasPessoas, participantesMap, savingParticipantes, onToast]);
 
   const handleConfirmCarryOver = useCallback(async (selectedIds: Set<string>) => {
     if (!carryOverModal) return;
@@ -810,15 +921,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       });
     } else {
       // Semana existente fechada: abre a próxima
-      const nextNumero = semana.numero + 1;
       const nextStart = new Date(semana.data_inicio + 'T00:00:00');
       nextStart.setDate(nextStart.getDate() + 7);
       const nextEnd = new Date(semana.data_fim + 'T00:00:00');
       nextEnd.setDate(nextEnd.getDate() + 7);
+      const nextStartStr = toDateStr(nextStart);
 
       // Verificar se a próxima semana já existe para esta fazenda (evita duplicatas)
-      const existenteRes = await semanasApi.getSemanaByNumero(nextNumero, semana.modo, farmId);
-      let targetSemana: Semana | null = existenteRes.ok ? (existenteRes.data as Semana | null) : null;
+      const existenteRes = await semanasApi.getSemanaByDataInicio(nextStartStr, farmId);
+      let targetSemana: Semana | null = existenteRes.ok && existenteRes.data ? normalizeSemana(existenteRes.data as Record<string, unknown>) : null;
 
       if (targetSemana) {
         // Já existe: reabrir se estiver fechada
@@ -830,13 +941,13 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         // Não existe: criar normalmente
         const newRes = await semanasApi.createSemana({
           farm_id: farmId,
-          numero: nextNumero,
-          modo: semana.modo,
+          numero: calcWeekNumber(nextStart, modo),
+          modo,
           aberta: true,
-          data_inicio: toDateStr(nextStart),
+          data_inicio: nextStartStr,
           data_fim: toDateStr(nextEnd),
         });
-        targetSemana = newRes.ok ? (newRes.data as Semana) : null;
+        targetSemana = newRes.ok && newRes.data ? normalizeSemana(newRes.data as Record<string, unknown>) : null;
       }
 
       if (targetSemana) {
@@ -845,7 +956,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           setCarryOverModal({
             pendingSemanaId: targetSemana.id,
             candidates: pending,
-            semanaNumero: semana.numero,
+            semanaNumero: calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo),
             dataInicio: semana.data_inicio,
             dataFim: semana.data_fim,
           });
@@ -860,6 +971,22 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
       setOperating(false);
     }
   }, [semana, modo, atividades, fetchData, selectedFarm?.id, operating]);
+
+  const handleReopenSemana = useCallback(async () => {
+    if (operating || !semana || !canEditClosedWeek) return;
+    setOperating(true);
+    try {
+      const res = await semanasApi.updateSemana(semana.id, { aberta: true });
+      if (res.ok) {
+        setSemana({ ...semana, aberta: true });
+        onToast?.('Semana reaberta com sucesso', 'success');
+      } else {
+        onToast?.('Erro ao reabrir semana', 'error');
+      }
+    } finally {
+      setOperating(false);
+    }
+  }, [operating, semana, canEditClosedWeek, onToast]);
 
   // ─── Project handlers ─────────────────────────────────────────────────────────
 
@@ -963,6 +1090,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     fontSize: 13, fontWeight: 500,
     transition: 'all 0.15s ease', fontFamily: FONT,
   }), [canAbrirForStyles]);
+  const actionBtnStReabrir = useMemo(() => ({
+    padding: '8px 18px', borderRadius: 8, border: 'none',
+    background: canEditClosedWeek ? '#059669' : '#E2E8F0',
+    color: canEditClosedWeek ? '#FFF' : '#94A3B8',
+    opacity: canEditClosedWeek ? 1 : 0.5,
+    cursor: canEditClosedWeek ? 'pointer' : 'default',
+    fontSize: 13, fontWeight: 500,
+    transition: 'all 0.15s ease', fontFamily: FONT,
+  }), [canEditClosedWeek]);
 
   // ─── Loading / empty ──────────────────────────────────────────────────────────
 
@@ -985,10 +1121,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
   const isAberta = semana?.aberta === true;
   const isFechada = semana?.aberta === false;
-  // Abrir Semana disponível quando: semana fechada OU sem semana alguma (primeiro lançamento)
-  const canAbrirSemana = semana === null || semana.aberta === false;
-  // Pode incluir/editar/excluir: semana aberta OU (semana fechada E usuário com permissão)
-  const canEditInWeek = isAberta || (isFechada && canEditClosedWeek);
+  // Abrir Semana disponível apenas para primeiro lançamento (sem semana) ou semana mais recente fechada
+  const isHistoricalClosedWeek = isFechada && semana !== null && ultimaSemanaId !== null && semana.id !== ultimaSemanaId;
+  const canAbrirSemana = semana === null || (isFechada && !isHistoricalClosedWeek);
+  // Pode incluir/editar/excluir somente quando a semana está aberta
+  const canEditInWeek = isAberta;
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -1030,7 +1167,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, marginTop: 4 }}>
               <h1 style={{ margin: 0, lineHeight: 1 }}>
                 <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.5px', color: '#0F172A', fontFamily: FONT }}>
-                  Semana {String(semana?.numero ?? calcWeekNumber(new Date(), modo)).padStart(2, '0')}
+                  Semana {String(semana ? calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo) : calcWeekNumber(new Date(), modo)).padStart(2, '0')}
                 </span>
                 <span style={{ fontSize: 16, fontWeight: 400, color: '#94A3B8', fontFamily: FONT }}> de 53</span>
               </h1>
@@ -1082,6 +1219,21 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               <span>{sourceTab === 'semana' ? '📅 Semana' : '📁 Projetos'}</span>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>▼</span>
             </button>
+            <button
+              onClick={() => setShowParticipantes(v => !v)}
+              style={{
+                padding: '8px 14px', borderRadius: 8,
+                border: `1px solid ${showParticipantes ? '#BFDBFE' : '#E2E8F0'}`,
+                background: showParticipantes ? '#EFF6FF' : '#FFF',
+                color: showParticipantes ? '#2563EB' : '#475569',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6, fontFamily: FONT,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span>👥</span>
+              <span>Participantes</span>
+            </button>
             {semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
               <button
                 onClick={handleVoltarSemanaAtual}
@@ -1094,28 +1246,23 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                 Voltar para semana atual
               </button>
             )}
-            <button
-              onClick={() => setShowHistorico(v => !v)}
-              style={{
-                padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
-                background: showHistorico ? '#F1F5F9' : '#FFF',
-                color: '#475569', fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease', fontFamily: FONT,
-              }}
-            >
-              Histórico
-            </button>
             <button onClick={handleFecharSemana} disabled={operating || !isAberta || !canFecharSemana} style={actionBtnStFechar}>
               Fechar Semana
             </button>
-            <button onClick={handleAbrirSemana} disabled={operating || !canAbrirSemana} style={actionBtnStAbrir}>
-              Abrir Semana
-            </button>
+            {isHistoricalClosedWeek ? (
+              <button onClick={handleReopenSemana} disabled={operating || !canEditClosedWeek} style={actionBtnStReabrir}>
+                Reabrir Semana
+              </button>
+            ) : (
+              <button onClick={handleAbrirSemana} disabled={operating || !canAbrirSemana} style={actionBtnStAbrir}>
+                Abrir Semana
+              </button>
+            )}
           </div>
         </div>
 
         {/* ── 2. HISTÓRICO ──────────────────────────────────────────────────── */}
-        {showHistorico && (
+        {activeView === 'historico' && (
           <div style={{
             background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
             padding: 16, marginBottom: 16,
@@ -1150,8 +1297,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                           textAlign: 'left', fontFamily: FONT, fontSize: 13,
                         }}
                       >
-                        <span style={{ fontFamily: mono, fontWeight: 500 }}>
-                          Semana {String(h.semana_numero).padStart(2, '0')}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontFamily: mono, fontWeight: 500 }}>
+                            Semana {String(h.semana_numero > 0 ? h.semana_numero : calcWeekNumber(new Date(h.closed_at), modo)).padStart(2, '0')}
+                          </span>
+                          {h.closed_at && (
+                            <span style={{ color: '#94A3B8', fontFamily: FONT, fontWeight: 400 }}>
+                              {formatCanonicalWeekPeriod(new Date(h.closed_at))}
+                            </span>
+                          )}
                         </span>
                         <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                           <span style={{ color: '#64748B' }}>{h.total} tarefas</span>
@@ -1184,6 +1338,20 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
           </div>
         )}
 
+        {/* ── RELATÓRIOS (placeholder) ───────────────────────────────────── */}
+        {activeView === 'relatorios' && (
+          <div style={{
+            background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
+            padding: 48, textAlign: 'center',
+            animation: 'gsFadeIn 0.3s ease',
+          }}>
+            <div style={{ fontSize: 36, marginBottom: 14 }}>📊</div>
+            <p style={{ fontSize: 16, fontWeight: 600, color: '#0F172A', margin: '0 0 8px' }}>Relatórios</p>
+            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Em breve — relatórios detalhados por semana estarão disponíveis aqui.</p>
+          </div>
+        )}
+
+        {activeView === 'rotina' && (<>
         {/* ── 3. STATS CARDS ────────────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
           {[
@@ -1272,7 +1440,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                 {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
               <div style={{ flex: '0 0 90px' }}>
-                <DateInputBR value={filters.dataTermino} onChange={v => setFilters(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" />
+                <DateInputBR value={filters.dataTermino} onChange={v => setFilters(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" weekStart={semana?.data_inicio ?? undefined} weekEnd={semana?.data_fim ?? undefined} />
               </div>
               <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 110px' }}>
                 <option value="">Todos</option>
@@ -1354,6 +1522,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
             const isDeleting = deletingId === at.id;
             const isEditing  = editingId === at.id;
             const stSt       = getStatusSt(at.status);
+            const prazoStatus = getPrazoStatus(at.data_termino, at.status);
             const subsDone   = subs.filter(s => s.status === 'concluída').length;
 
             return (
@@ -1426,6 +1595,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                     {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
 
+                  {/* Prazo badge */}
+                  {prazoStatus && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, flexShrink: 0, padding: '2px 7px',
+                      borderRadius: 4,
+                      color: prazoStatus === 'no_prazo' ? '#15803D' : '#DC2626',
+                      background: prazoStatus === 'no_prazo' ? '#DCFCE7' : '#FEE2E2',
+                    }}>
+                      {prazoStatus === 'no_prazo' ? 'No prazo' : 'Atrasada'}
+                    </span>
+                  )}
+
                   {/* Add subtask button */}
                   <button
                     onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); }}
@@ -1460,6 +1641,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                       const subConcluida = sub.status === 'concluída';
                       const subHovered = hoveredRow === sub.id;
                       const subDeleting = deletingId === sub.id;
+                      const subPrazo = getPrazoStatus(sub.data_termino, sub.status);
                       return (
                         <div
                           key={sub.id}
@@ -1495,6 +1677,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                             <span style={{ fontSize: 10 }}>👤</span> {getPessoaNome(sub.pessoa_id)}
                           </span>
 
+                          {/* Prazo badge (subtask) */}
+                          {subPrazo && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, flexShrink: 0, padding: '1px 5px',
+                              borderRadius: 3,
+                              color: subPrazo === 'no_prazo' ? '#15803D' : '#DC2626',
+                              background: subPrazo === 'no_prazo' ? '#DCFCE7' : '#FEE2E2',
+                            }}>
+                              {subPrazo === 'no_prazo' ? 'No prazo' : 'Atrasada'}
+                            </span>
+                          )}
+
                           {/* Delete */}
                           <button
                             onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); handleRemoveAtividade(sub.id); }}
@@ -1529,7 +1723,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                       {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                     </select>
                     <div style={{ flex: '0 0 110px' }}>
-                      <DateInputBR value={subtaskForm.dataTermino} onChange={v => setSubtaskForm(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" />
+                      <DateInputBR value={subtaskForm.dataTermino} onChange={v => setSubtaskForm(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" weekStart={semana?.data_inicio ?? undefined} weekEnd={semana?.data_fim ?? undefined} />
                     </div>
                     <button
                       onClick={() => handleSaveSubtask(at.id)}
@@ -1570,9 +1764,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
 
         {/* ── 8. FOOTER ─────────────────────────────────────────────────────── */}
         <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid #F1F5F9', textAlign: 'center', fontSize: 11, color: '#CBD5E1' }}>
-          Gestão Semanal • Semana {String(semana?.numero ?? 0).padStart(2, '0')} de 53 •{' '}
+          Gestão Semanal • Semana {String(semana ? calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo) : 0).padStart(2, '0')} de 53 •{' '}
           {modo === 'ano' ? `Ano ${currentYear}` : `Safra ${safraLabel}`}
         </div>
+        </>)}
 
       </div>
 
@@ -1636,6 +1831,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   value={newForm.dataTermino}
                   onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
                   className="w-full"
+                  weekStart={semana?.data_inicio ?? undefined}
+                  weekEnd={semana?.data_fim ?? undefined}
                 />
               </div>
               <div style={{ flex: '0 1 140px' }}>
@@ -1832,6 +2029,163 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         </div>
       )}
 
+      {/* ── MODAL PARTICIPANTES ─────────────────────────────────────────────── */}
+      {showParticipantes && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 24, animation: 'gsFadeIn 0.2s ease',
+          }}
+          onClick={() => setShowParticipantes(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
+              maxWidth: 520, width: '100%', maxHeight: '85vh', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0F172A', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>👥</span> Participantes da Reunião
+                </h2>
+                {semana && (
+                  <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94A3B8', fontFamily: FONT }}>
+                    SEMANA {String(semana.numero).padStart(2, '0')} · {semana.modo === 'ano' ? new Date(semana.data_inicio + 'T00:00:00').getFullYear() : safraLabel}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowParticipantes(false)}
+                style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable list */}
+            <div style={{ overflow: 'auto', flex: 1, padding: '8px 16px' }}>
+              {todasPessoas.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#94A3B8', margin: '16px 0', textAlign: 'center' }}>Nenhuma pessoa vinculada a esta fazenda.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, paddingBottom: 8 }}>
+                  {todasPessoas.map(p => {
+                    const entry = participantesMap.get(p.id);
+                    const checked = entry?.presenca ?? false;
+                    const modalidade = entry?.modalidade ?? 'presencial';
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+                          borderRadius: 8,
+                          background: checked ? '#F0FDF4' : '#F8FAFC',
+                          border: `1px solid ${checked ? '#BBF7D0' : '#F1F5F9'}`,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          setParticipantesMap(prev => {
+                            const next = new Map(prev);
+                            const cur = next.get(p.id) ?? { presenca: false, modalidade: 'presencial' as const };
+                            next.set(p.id, { ...cur, presenca: !cur.presenca });
+                            return next;
+                          });
+                        }}
+                      >
+                        {/* Checkbox */}
+                        <div style={{
+                          width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                          background: checked ? '#22C55E' : 'transparent',
+                          border: `2px solid ${checked ? '#22C55E' : '#CBD5E1'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {checked && <span style={{ color: '#FFF', fontSize: 12, lineHeight: 1 }}>✓</span>}
+                        </div>
+
+                        {/* Name */}
+                        <span style={{
+                          flex: 1, fontSize: 13, fontFamily: FONT,
+                          color: checked ? '#1E293B' : '#94A3B8',
+                          textDecoration: 'none',
+                          fontWeight: checked ? 500 : 400,
+                        }}>
+                          {p.nome}
+                        </span>
+
+                        {/* Modality toggles */}
+                        <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            title="Online"
+                            onClick={() => {
+                              setParticipantesMap(prev => {
+                                const next = new Map(prev);
+                                const cur = next.get(p.id) ?? { presenca: false, modalidade: 'presencial' as const };
+                                next.set(p.id, { ...cur, modalidade: 'online' });
+                                return next;
+                              });
+                            }}
+                            style={{
+                              width: 30, height: 30, borderRadius: 6, border: 'none', cursor: 'pointer',
+                              background: modalidade === 'online' ? '#EFF6FF' : '#F1F5F9',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: modalidade === 'online' ? '#3B82F6' : '#94A3B8' }}><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          </button>
+                          <button
+                            type="button"
+                            title="Presencial"
+                            onClick={() => {
+                              setParticipantesMap(prev => {
+                                const next = new Map(prev);
+                                const cur = next.get(p.id) ?? { presenca: false, modalidade: 'presencial' as const };
+                                next.set(p.id, { ...cur, modalidade: 'presencial' });
+                                return next;
+                              });
+                            }}
+                            style={{
+                              width: 30, height: 30, borderRadius: 6, border: 'none', cursor: 'pointer',
+                              background: modalidade === 'presencial' ? '#F0FDF4' : '#F1F5F9',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: modalidade === 'presencial' ? '#22C55E' : '#94A3B8' }}><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: 16, borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={handleSaveParticipantes}
+                disabled={savingParticipantes}
+                style={{
+                  width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
+                  background: savingParticipantes ? '#93C5FD' : '#3B82F6', color: '#FFF',
+                  fontSize: 13, fontWeight: 600, cursor: savingParticipantes ? 'default' : 'pointer',
+                  fontFamily: FONT,
+                }}
+              >
+                {savingParticipantes ? 'Salvando...' : 'Confirmar Presença'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── DRAWER LATERAL ──────────────────────────────────────────────────── */}
       {isDrawerOpen && (
         <div
@@ -1910,7 +2264,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               </div>
               <div>
                 <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500, display: 'block', marginBottom: 3 }}>Data da atividade</label>
-                <DateInputBR value={projectEditForm.activityDate} onChange={v => setProjectEditForm(p => ({ ...p, activityDate: v }))} className="w-full" />
+                <DateInputBR value={projectEditForm.activityDate} onChange={v => setProjectEditForm(p => ({ ...p, activityDate: v }))} className="w-full" weekStart={semana?.data_inicio ?? undefined} weekEnd={semana?.data_fim ?? undefined} />
               </div>
             </div>
             <div style={{ padding: '12px 20px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
