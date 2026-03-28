@@ -268,7 +268,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                   >
                     <LayoutDashboard size={14} className="flex-shrink-0 mr-2" />
-                    <span className="truncate">Projeto</span>
+                    <span className="truncate">Projetos</span>
                   </button>
                   <button
                     type="button"

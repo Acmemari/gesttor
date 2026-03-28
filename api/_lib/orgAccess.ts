@@ -41,6 +41,20 @@ export async function getUserRole(userId: string): Promise<string> {
 export async function assertOrgAccess(orgId: string, userId: string, role: string): Promise<void> {
   if (role === 'admin' || role === 'administrador') return;
 
+  // Clientes têm acesso apenas à sua própria organização
+  if (role === 'cliente') {
+    const [clientProfile] = await db
+      .select({ organizationId: userProfiles.organizationId })
+      .from(userProfiles)
+      .where(eq(userProfiles.id, userId))
+      .limit(1);
+    if (clientProfile?.organizationId === orgId) return;
+    throw Object.assign(new Error('Sem permissão para esta organização'), {
+      status: 403,
+      code: 'FORBIDDEN',
+    });
+  }
+
   const [org] = await db
     .select({ analystId: organizations.analystId })
     .from(organizations)

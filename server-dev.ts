@@ -278,6 +278,9 @@ app.all('/api/diag', (req, res) => handleApiRoute('./api/diag.ts', req, res));
 // Hierarquia (analistas / clientes / fazendas)
 app.all('/api/hierarchy', (req, res) => handleApiRoute('./api/hierarchy.ts', req, res));
 
+// Convites
+app.all('/api/invite', (req, res) => handleApiRoute('./api/invite.ts', req, res));
+
 // ── Index ──────────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
   res.type('html');

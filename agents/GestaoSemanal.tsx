@@ -160,6 +160,26 @@ function formatWeekRangeShort(start: string, end: string): string {
   return `${PT_DAYS[s.getDay()]} ${s.getDate()}/${s.getMonth() + 1} a ${PT_DAYS[e.getDay()]} ${e.getDate()}/${e.getMonth() + 1}`;
 }
 
+/** Retorna "D/M a D/M" com domingo–sábado canônico da semana que contém a data */
+function formatCanonicalWeekPeriod(ref: string | Date): string {
+  let d: Date;
+  if (ref instanceof Date) {
+    d = new Date(ref);
+  } else if (typeof ref === 'string' && /^\d{4}-\d{2}-\d{2}/.test(ref)) {
+    const [y, m, day] = ref.split('-').map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(ref);
+  }
+  if (isNaN(d.getTime())) return '';
+  const sun = new Date(d);
+  sun.setDate(d.getDate() - d.getDay());
+  const sat = new Date(sun);
+  sat.setDate(sun.getDate() + 6);
+  const fmt = (dt: Date) => `${dt.getDate()}/${dt.getMonth() + 1}`;
+  return `${fmt(sun)} a ${fmt(sat)}`;
+}
+
 function getSafraLabel(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -199,6 +219,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
   const [showHistorico, setShowHistorico] = useState(false);
+  const [showPeriodoTooltip, setShowPeriodoTooltip] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -292,11 +313,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
     setLoading(true);
     try {
       const farmId = selectedFarm?.id ?? null;
+      const isAdmin = user?.role === 'admin' || user?.role === 'administrador';
 
       const [pessoasRows, semanaRes, historicoRes] = await Promise.all([
         farmId ? listPessoasByFarm(farmId, { assumeTarefas: true }) : Promise.resolve([]),
-        semanasApi.getCurrentSemana(modo, farmId),
-        semanasApi.listHistorico(farmId),
+        (farmId || isAdmin) ? semanasApi.getCurrentSemana(modo, farmId) : Promise.resolve({ ok: false, data: null }),
+        (farmId || isAdmin) ? semanasApi.listHistorico(farmId) : Promise.resolve({ ok: false, data: [] }),
       ]);
 
       const pessoasData: Pessoa[] = pessoasRows.map(p => ({
@@ -1022,9 +1044,24 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
               </span>
             </div>
 
-            {/* Date range */}
-            <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0 2px' }}>
-              {semana ? formatWeekRangeShort(semana.data_inicio, semana.data_fim) : ''}
+            {/* Date range — período canônico domingo–sábado */}
+            <p
+              onMouseEnter={() => setShowPeriodoTooltip(true)}
+              onMouseLeave={() => setShowPeriodoTooltip(false)}
+              style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0 2px', cursor: 'default', position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              {formatCanonicalWeekPeriod(semana?.data_inicio ?? new Date())}
+              {showPeriodoTooltip && (
+                <span style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 4,
+                  background: '#1E293B', color: '#F8FAFC',
+                  fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap',
+                  padding: '4px 8px', borderRadius: 6,
+                  pointerEvents: 'none', zIndex: 99,
+                }}>
+                  Semana Referência
+                </span>
+              )}
             </p>
           </div>
 
@@ -1180,18 +1217,23 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
         </div>
 
         {/* ── 5. NOVA TAREFA BUTTON ───────────────────────────────────────── */}
-        {canEditInWeek && sourceTab === 'semana' && (
+        {sourceTab === 'semana' && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button
               onClick={() => {
+                if (!canEditInWeek) return;
                 setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
                 setEditingId(null);
                 setShowTaskModal(true);
               }}
+              disabled={!canEditInWeek}
               style={{
                 padding: '8px 16px', borderRadius: 8, border: 'none',
-                background: '#3B82F6', color: '#FFF',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
+                background: canEditInWeek ? '#3B82F6' : '#E2E8F0',
+                color: canEditInWeek ? '#FFF' : '#94A3B8',
+                fontSize: 13, fontWeight: 600,
+                cursor: canEditInWeek ? 'pointer' : 'not-allowed',
+                fontFamily: FONT,
               }}
             >
               + Nova Tarefa
@@ -1385,13 +1427,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   </select>
 
                   {/* Add subtask button */}
-                  {canEditInWeek && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); }}
-                      title="Adicionar subtarefa"
-                      style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isHovered || addingSubtaskFor === at.id ? 1 : 0, transition: 'opacity 0.15s' }}
-                    >+</button>
-                  )}
+                  <button
+                    onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); }}
+                    title={canEditInWeek ? 'Adicionar subtarefa' : undefined}
+                    disabled={!canEditInWeek}
+                    style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: canEditInWeek ? 'pointer' : 'default', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canEditInWeek && (isHovered || addingSubtaskFor === at.id) ? 1 : 0, transition: 'opacity 0.15s' }}
+                  >+</button>
 
                   {/* Chevron */}
                   {subs.length > 0 && (
@@ -1402,15 +1443,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                   )}
 
                   {/* Delete */}
-                  {canEditInWeek && (
-                    <button
-                      onClick={e => { e.stopPropagation(); handleRemoveAtividade(at.id); }}
-                      title={isDeleting ? 'Clique novamente para confirmar' : subs.length > 0 ? 'Excluir tarefa e subtarefas' : 'Excluir'}
-                      style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: isDeleting ? '#FEE2E2' : 'transparent', color: isDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 12, opacity: isHovered || isDeleting ? 1 : 0, transition: 'opacity 0.15s, background 0.15s, color 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: isDeleting ? 700 : 400 }}
-                    >
-                      {isDeleting ? '?' : '✕'}
-                    </button>
-                  )}
+                  <button
+                    onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); handleRemoveAtividade(at.id); }}
+                    title={canEditInWeek ? (isDeleting ? 'Clique novamente para confirmar' : subs.length > 0 ? 'Excluir tarefa e subtarefas' : 'Excluir') : undefined}
+                    disabled={!canEditInWeek}
+                    style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: isDeleting ? '#FEE2E2' : 'transparent', color: isDeleting ? '#DC2626' : '#CBD5E1', cursor: canEditInWeek ? 'pointer' : 'default', fontSize: 12, opacity: canEditInWeek && (isHovered || isDeleting) ? 1 : 0, transition: 'opacity 0.15s, background 0.15s, color 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: isDeleting ? 700 : 400 }}
+                  >
+                    {isDeleting ? '?' : '✕'}
+                  </button>
                 </div>
 
                 {/* ── Subtasks ────────────────────────────────────── */}
@@ -1456,15 +1496,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast }) => {
                           </span>
 
                           {/* Delete */}
-                          {canEditInWeek && (
-                            <button
-                              onClick={e => { e.stopPropagation(); handleRemoveAtividade(sub.id); }}
-                              title={subDeleting ? 'Clique novamente para confirmar' : 'Excluir subtarefa'}
-                              style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, border: 'none', background: subDeleting ? '#FEE2E2' : 'transparent', color: subDeleting ? '#DC2626' : '#CBD5E1', cursor: 'pointer', fontSize: 10, opacity: subHovered || subDeleting ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: subDeleting ? 700 : 400 }}
-                            >
-                              {subDeleting ? '?' : '✕'}
-                            </button>
-                          )}
+                          <button
+                            onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); handleRemoveAtividade(sub.id); }}
+                            title={canEditInWeek ? (subDeleting ? 'Clique novamente para confirmar' : 'Excluir subtarefa') : undefined}
+                            disabled={!canEditInWeek}
+                            style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, border: 'none', background: subDeleting ? '#FEE2E2' : 'transparent', color: subDeleting ? '#DC2626' : '#CBD5E1', cursor: canEditInWeek ? 'pointer' : 'default', fontSize: 10, opacity: canEditInWeek && (subHovered || subDeleting) ? 1 : 0, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: subDeleting ? 700 : 400 }}
+                          >
+                            {subDeleting ? '?' : '✕'}
+                          </button>
                         </div>
                       );
                     })}
