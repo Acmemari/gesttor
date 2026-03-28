@@ -118,11 +118,11 @@ function handleUnauthorized(): void {
   if (typeof window !== 'undefined') window.location.replace('/sign-in');
 }
 
-async function apiGet<T>(action: string, params?: Record<string, string>): Promise<T> {
+async function apiGet<T>(action: string, params?: Record<string, string>, options?: { skipAuthRedirect?: boolean }): Promise<T> {
   const headers = await getAuthHeaders();
   const qs = new URLSearchParams({ action, ...params }).toString();
   const res = await fetch(`/api/support-tickets?${qs}`, { headers });
-  if (res.status === 401) { handleUnauthorized(); throw new Error('Sessão expirada'); }
+  if (res.status === 401) { if (!options?.skipAuthRedirect) handleUnauthorized(); throw new Error('Sessão expirada'); }
   const json = await res.json() as { ok: boolean; data: T; error?: string };
   if (!json.ok) throw new Error(json.error || 'Erro na API');
   return json.data;
@@ -271,7 +271,7 @@ export async function markTicketRead(ticketId: string): Promise<void> {
 }
 
 export async function getAdminUnreadCount(): Promise<number> {
-  return apiGet<number>('admin-unread');
+  return apiGet<number>('admin-unread', undefined, { skipAuthRedirect: true });
 }
 
 export async function sendAIMessage(ticketId: string, message: string): Promise<SendTicketMessageResult> {
