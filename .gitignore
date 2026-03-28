@@ -57,3 +57,9 @@ scripts/diff-schema.cjs
 # Cobertura de testes e resultados
 coverage/
 test-results/
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
