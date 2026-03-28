@@ -19,14 +19,11 @@ export async function extractText(buffer: Buffer, sourceType: string): Promise<s
 }
 
 async function extractPdf(buffer: Buffer): Promise<string> {
-  // pdf-parse v2: API baseada em classe com { data }
   const mod = await import('pdf-parse').catch(() => null);
   if (!mod) throw new Error('Módulo pdf-parse não está instalado. Execute: npm install pdf-parse');
-  const PDFParse = mod.PDFParse ?? mod.default?.PDFParse;
-  if (!PDFParse) throw new Error('pdf-parse: exportação PDFParse não encontrada');
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  const result = await parser.getText();
-  return result.text;
+  const pdfParse = mod.default ?? mod;
+  const data = await pdfParse(buffer);
+  return data.text;
 }
 
 async function extractDocx(buffer: Buffer): Promise<string> {

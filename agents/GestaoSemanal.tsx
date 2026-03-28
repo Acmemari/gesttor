@@ -611,6 +611,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   }, []);
 
   const handleEditStart = useCallback((at: Atividade) => {
+    if (!semana?.aberta) { onToast?.('Reabra a semana para fazer a edição', 'warning'); return; }
     setNewForm({
       titulo: at.titulo,
       descricao: at.descricao,
@@ -620,7 +621,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     });
     setEditingId(at.id);
     setShowTaskModal(true);
-  }, []);
+  }, [semana?.aberta, onToast]);
 
   const handleEditCancel = useCallback(() => {
     resetForm();
@@ -696,6 +697,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   }, [deletingId, editingId, resetForm, onToast]);
 
   const handleStatusChange = useCallback(async (id: string, status: string) => {
+    if (!semana?.aberta) { onToast?.('Reabra a semana para fazer a edição', 'warning'); return; }
     if (status === 'concluída') {
       const openSubs = atividades.filter(a => a.parent_id === id && a.status !== 'concluída');
       if (openSubs.length > 0) {
@@ -706,9 +708,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     const res = await semanasApi.updateAtividade(id, { status });
     if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, [atividades, onToast]);
+  }, [atividades, semana?.aberta, onToast]);
 
   const handleCheckboxChange = useCallback(async (id: string, checked: boolean) => {
+    if (!semana?.aberta) { onToast?.('Reabra a semana para fazer a edição', 'warning'); return; }
     if (checked) {
       const openSubs = atividades.filter(a => a.parent_id === id && a.status !== 'concluída');
       if (openSubs.length > 0) {
@@ -720,7 +723,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     const res = await semanasApi.updateAtividade(id, { status });
     if (!res.ok) { onToast?.('Erro ao atualizar status.', 'error'); return; }
     setAtividades(prev => prev.map(a => a.id === id ? { ...a, status: status as Atividade['status'] } : a));
-  }, [atividades, onToast]);
+  }, [atividades, semana?.aberta, onToast]);
 
   const handleSaveSubtask = useCallback(async (parentId: string) => {
     if (operating || !subtaskForm.titulo.trim() || !semana) return;
@@ -1138,7 +1141,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const isAberta = semana?.aberta === true;
   const isFechada = semana?.aberta === false;
   // Abrir Semana disponível apenas para primeiro lançamento (sem semana) ou semana mais recente fechada
-  const isHistoricalClosedWeek = isFechada && semana !== null && ultimaSemanaId !== null && semana.id !== ultimaSemanaId;
+  const isHistoricalClosedWeek = isFechada && semana !== null && (histWeekOpened || (ultimaSemanaId !== null && semana.id !== ultimaSemanaId));
   const canAbrirSemana = semana === null || (isFechada && !isHistoricalClosedWeek);
   // Pode incluir/editar/excluir somente quando a semana está aberta
   const canEditInWeek = isAberta;
@@ -1219,7 +1222,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           </div>
 
           {/* Right side: action buttons */}
-          <div style={{ display: (activeView === 'desempenho' || activeView === 'historico') ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ display: (activeView === 'desempenho' || (activeView === 'historico' && !histWeekOpened)) ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* Drawer source button */}
             <button
               onClick={() => setIsDrawerOpen(true)}
@@ -1266,11 +1269,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               Fechar Semana
             </button>
             {isHistoricalClosedWeek ? (
-              canEditClosedWeek && (
-                <button onClick={handleReopenSemana} disabled={operating} style={actionBtnStReabrir}>
-                  Reabrir Semana
-                </button>
-              )
+              <button onClick={handleReopenSemana} disabled={operating || !canEditClosedWeek} style={actionBtnStReabrir}>
+                Reabrir Semana
+              </button>
             ) : (
               <button onClick={handleAbrirSemana} disabled={operating || !canAbrirSemana} style={actionBtnStAbrir}>
                 Abrir Semana
@@ -1582,7 +1583,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                       width: 18, height: 18, borderRadius: 9,
                       border: isConcluida ? 'none' : '2px solid #CBD5E1',
                       background: isConcluida ? '#059669' : 'transparent',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: canEditInWeek ? 'pointer' : 'default',
+                      opacity: canEditInWeek || isConcluida ? 1 : 0.4,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
                     {isConcluida && <span style={{ color: '#FFF', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
@@ -1591,7 +1594,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                   {/* Title + secondary info */}
                   <div
                     onClick={() => handleEditStart(at)}
-                    style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                    style={{ flex: 1, minWidth: 0, cursor: canEditInWeek ? 'pointer' : 'default' }}
                   >
                     {/* Row 1: title + badge */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1626,7 +1629,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                     value={at.status}
                     onChange={e => { e.stopPropagation(); handleStatusChange(at.id, e.target.value); }}
                     onClick={e => e.stopPropagation()}
-                    style={{ fontSize: 11, fontWeight: 500, padding: '2px 4px', borderRadius: 4, color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, cursor: 'pointer', fontFamily: FONT, flexShrink: 0 }}
+                    disabled={!canEditInWeek}
+                    style={{ fontSize: 11, fontWeight: 500, padding: '2px 4px', borderRadius: 4, color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, cursor: canEditInWeek ? 'pointer' : 'default', fontFamily: FONT, flexShrink: 0 }}
                   >
                     {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -1688,7 +1692,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                           {/* Circular checkbox (smaller) */}
                           <div
                             onClick={e => { e.stopPropagation(); handleCheckboxChange(sub.id, !subConcluida); }}
-                            style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 7, border: subConcluida ? 'none' : '1.5px solid #CBD5E1', background: subConcluida ? '#059669' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 7, border: subConcluida ? 'none' : '1.5px solid #CBD5E1', background: subConcluida ? '#059669' : 'transparent', cursor: canEditInWeek ? 'pointer' : 'default', opacity: canEditInWeek || subConcluida ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             {subConcluida && <span style={{ color: '#FFF', fontSize: 7, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                           </div>

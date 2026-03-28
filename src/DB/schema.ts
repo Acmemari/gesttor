@@ -329,6 +329,18 @@ export const atividades = pgTable('activities', {
   index('idx_activities_parent_id').on(t.parentId),
 ]);
 
+export const semanaParticipantes = pgTable('week_meeting_participants', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  semanaId: uuid('semana_id').notNull().references(() => semanas.id, { onDelete: 'cascade' }),
+  pessoaId: uuid('pessoa_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  presenca: boolean('presenca').notNull().default(false),
+  modalidade: text('modalidade').notNull().default('presencial'), // 'online' | 'presencial'
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('week_participants_semana_pessoa_uidx').on(t.semanaId, t.pessoaId),
+  index('idx_week_participants_semana_id').on(t.semanaId),
+]);
+
 export const historicoSemanas = pgTable('week_history', {
   id: uuid('id').primaryKey().defaultRandom(),
   semanaNumero: integer('semana_numero').notNull(),

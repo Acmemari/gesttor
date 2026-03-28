@@ -1,9 +1,10 @@
 /**
  * API de semanas de trabalho.
  *
- * GET  /api/semanas?modo=&farmId=&current=true  → semana mais recente
+ * GET  /api/semanas?farmId=&current=true        → semana aberta mais recente (modo-independente)
+ * GET  /api/semanas?dataInicio=&farmId=          → semana pela data de início (modo-independente)
  * GET  /api/semanas?id=...                       → por ID
- * GET  /api/semanas?numero=&modo=&farmId=        → verifica existência
+ * GET  /api/semanas?numero=&modo=&farmId=        → verifica existência (legado)
  * POST /api/semanas                              → cria semana
  * PATCH /api/semanas?id=...                      → atualiza semana
  */
@@ -15,6 +16,7 @@ import {
   getCurrentSemana,
   getSemanaById,
   getSemanaByNumero,
+  getSemanaByDataInicio,
   createSemana,
   updateSemana,
   deleteSemana,
@@ -36,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'GET') {
-    const { id, modo, farmId, current, numero } = req.query as Record<string, string | undefined>;
+    const { id, modo, farmId, current, numero, dataInicio } = req.query as Record<string, string | undefined>;
 
     if (id) {
       const row = await getSemanaById(id);
@@ -60,6 +62,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       jsonError(res, 'farmId é obrigatório', { status: 400 }); return;
     }
 
+    if (dataInicio) {
+      const fid = farmId ?? null;
+      const row = await getSemanaByDataInicio(dataInicio, fid);
+      jsonSuccess(res, row ?? null);
+      return;
+    }
+
     if (numero && modo) {
       const fid = farmId ?? null;
       const row = await getSemanaByNumero(Number(numero), modo, fid);
@@ -67,10 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    if (current && modo) {
+    if (current) {
       const fid = farmId ?? null;
-      const row = await getCurrentSemana(modo, fid);
-      jsonSuccess(res, row);
+      const row = await getCurrentSemana(fid);
+      jsonSuccess(res, row ?? null);
       return;
     }
 

@@ -61,8 +61,14 @@ export interface HistoricoSemanaRow {
 
 // ─── Semanas ──────────────────────────────────────────────────────────────────
 
-export async function getCurrentSemana(modo: string, farmId: string | null) {
-  const params = new URLSearchParams({ current: 'true', modo });
+export async function getCurrentSemana(farmId: string | null) {
+  const params = new URLSearchParams({ current: 'true' });
+  if (farmId) params.set('farmId', farmId);
+  return apiFetch<SemanaRow | null>(`/api/semanas?${params}`);
+}
+
+export async function getSemanaByDataInicio(dataInicio: string, farmId: string | null) {
+  const params = new URLSearchParams({ dataInicio });
   if (farmId) params.set('farmId', farmId);
   return apiFetch<SemanaRow | null>(`/api/semanas?${params}`);
 }
@@ -169,4 +175,37 @@ export async function createHistorico(payload: HistoricoPayload) {
 
 export async function deleteHistorico(id: string) {
   return apiFetch<{ deleted: boolean }>(`/api/historico-semanas?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ── Participantes ─────────────────────────────────────────────────────────────
+
+export interface SemanaParticipanteRow {
+  id: string;
+  semanaId: string;
+  pessoaId: string;
+  presenca: boolean;
+  modalidade: 'online' | 'presencial';
+  createdAt: string;
+  fullName: string;
+  preferredName: string | null;
+  photoUrl: string | null;
+}
+
+export interface ParticipantePayload {
+  pessoaId: string;
+  presenca: boolean;
+  modalidade: 'online' | 'presencial';
+}
+
+export async function listSemanaParticipantes(semanaId: string) {
+  return apiFetch<SemanaParticipanteRow[]>(
+    `/api/semana-participantes?semanaId=${encodeURIComponent(semanaId)}`,
+  );
+}
+
+export async function saveParticipantes(semanaId: string, participantes: ParticipantePayload[]) {
+  return apiFetch<SemanaParticipanteRow[]>('/api/semana-participantes', {
+    method: 'POST',
+    body: JSON.stringify({ semanaId, participantes }),
+  });
 }

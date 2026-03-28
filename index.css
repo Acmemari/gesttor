@@ -82,6 +82,22 @@ body {
   min-height: 100vh;
 }
 
+/* Week range highlight in date picker */
+.react-datepicker__day.week-range-day:not(.react-datepicker__day--selected):not(.react-datepicker__day--disabled) {
+  background-color: rgba(26, 115, 232, 0.12);
+  border-radius: 0;
+  color: #1f1f1f;
+}
+.react-datepicker__day.week-range-day:not(.react-datepicker__day--selected):not(.react-datepicker__day--disabled):hover {
+  background-color: rgba(26, 115, 232, 0.25);
+}
+.react-datepicker__day.week-range-start:not(.react-datepicker__day--selected) {
+  border-radius: 50% 0 0 50%;
+}
+.react-datepicker__day.week-range-end:not(.react-datepicker__day--selected) {
+  border-radius: 0 50% 50% 0;
+}
+
 /* Animações */
 @keyframes fadeIn {
   from {

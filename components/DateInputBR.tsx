@@ -52,6 +52,8 @@ interface DateInputBRProps {
   min?: string;
   max?: string;
   id?: string;
+  weekStart?: string; // YYYY-MM-DD — Monday of the active planning week
+  weekEnd?: string;   // YYYY-MM-DD — Saturday of the active planning week
 }
 
 const DateInputBR: React.FC<DateInputBRProps> = ({
@@ -64,10 +66,28 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
   min,
   max,
   id,
+  weekStart,
+  weekEnd,
 }) => {
   const selected = useMemo(() => parseIso(value), [value]);
   const minD = useMemo(() => parseIso(min), [min]);
   const maxD = useMemo(() => parseIso(max), [max]);
+
+  const dayClassName = useCallback(
+    (date: Date): string | null => {
+      if (!weekStart || !weekEnd) return null;
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const [sy, sm, sd] = weekStart.split('-').map(Number);
+      const [ey, em, ed] = weekEnd.split('-').map(Number);
+      const s = new Date(sy, sm - 1, sd).getTime();
+      const e = new Date(ey, em - 1, ed).getTime();
+      if (d < s || d > e) return null;
+      if (d === s) return 'week-range-day week-range-start';
+      if (d === e) return 'week-range-day week-range-end';
+      return 'week-range-day';
+    },
+    [weekStart, weekEnd],
+  );
 
   const [text, setText] = useState(fmtBR(selected));
   const [showCal, setShowCal] = useState(false);
@@ -228,6 +248,7 @@ const DateInputBR: React.FC<DateInputBRProps> = ({
               locale="pt-BR"
               minDate={minD || undefined}
               maxDate={maxD || undefined}
+              dayClassName={dayClassName}
             />
           </div>,
           document.body,
