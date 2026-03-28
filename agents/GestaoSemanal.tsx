@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DesempenhoView from './DesempenhoView';
+import TranscricoesView from './TranscricoesView';
 import DateInputBR from '../components/DateInputBR';
 import * as semanasApi from '../lib/api/semanasClient';
 import { listSemanaParticipantes, saveParticipantes, type SemanaParticipanteRow, type ParticipantePayload } from '../lib/api/semanasClient';
@@ -7,6 +8,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
 import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
 import { listTasksByWeek, updateTask as updateProjectTask, type WeekTaskRow } from '../lib/api/tasksClient';
+import { createTranscricao } from '../lib/api/semanaTranscricoesClient';
+import { storageUpload } from '../lib/storage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -246,8 +249,8 @@ const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTe
 
 interface GestaoSemanalProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-  activeView?: 'rotina' | 'historico' | 'desempenho' | 'relatorios';
-  onViewChange?: (view: 'rotina' | 'historico' | 'desempenho' | 'relatorios') => void;
+  activeView?: 'rotina' | 'historico' | 'desempenho' | 'transcricoes';
+  onViewChange?: (view: 'rotina' | 'historico' | 'desempenho' | 'transcricoes') => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -260,10 +263,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
-  const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'relatorios'>('rotina');
+  const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes'>('rotina');
   const [histWeekOpened, setHistWeekOpened] = useState(false);
   const activeView = activeViewProp ?? activeViewLocal;
-  const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'relatorios') => {
+  const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'transcricoes') => {
     setActiveViewLocal(v);
     onViewChange?.(v);
   };
@@ -306,6 +309,14 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
 
   // ── Participantes ───────────────────────────────────────────────────────────
   const [showParticipantes, setShowParticipantes] = useState(false);
+
+  // ── Transcrições ─────────────────────────────────────────────────────────────
+  const [showTranscricaoModal, setShowTranscricaoModal] = useState(false);
+  const [transcricaoFile, setTranscricaoFile] = useState<File | null>(null);
+  const [transcricaoDesc, setTranscricaoDesc] = useState('');
+  const [transcricaoUploading, setTranscricaoUploading] = useState(false);
+  const [transcricaoError, setTranscricaoError] = useState<string | null>(null);
+  const [transcricoesRefreshKey, setTranscricoesRefreshKey] = useState(0);
   const [todasPessoas, setTodasPessoas] = useState<TodasPessoa[]>([]);
   const [participantesMap, setParticipantesMap] = useState<Map<string, { presenca: boolean; modalidade: 'online' | 'presencial' }>>(new Map());
   const [savingParticipantes, setSavingParticipantes] = useState(false);
@@ -835,6 +846,41 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     await fetchData();
   }, [fetchData]);
 
+  // ── Upload de transcrição ─────────────────────────────────────────────────────
+  const handleTranscricaoUpload = useCallback(async () => {
+    if (!transcricaoFile || !semana || !selectedFarm) return;
+    setTranscricaoUploading(true);
+    setTranscricaoError(null);
+    try {
+      const ext = transcricaoFile.name.split('.').pop()?.toLowerCase() ?? 'bin';
+      const uid = crypto.randomUUID();
+      const storagePath = `${selectedFarm.id}/${semana.id}/${uid}.${ext}`;
+      await storageUpload('meeting-transcriptions', storagePath, transcricaoFile, {
+        contentType: transcricaoFile.type || `application/${ext}`,
+      });
+      await createTranscricao({
+        semanaId: semana.id,
+        farmId: selectedFarm.id,
+        organizationId: selectedFarm.organizationId,
+        fileName: `${uid}.${ext}`,
+        originalName: transcricaoFile.name,
+        fileType: transcricaoFile.type || `application/${ext}`,
+        fileSize: transcricaoFile.size,
+        storagePath,
+        descricao: transcricaoDesc.trim() || null,
+      });
+      setShowTranscricaoModal(false);
+      setTranscricaoFile(null);
+      setTranscricaoDesc('');
+      setTranscricoesRefreshKey(k => k + 1);
+      onToast?.('Transcrição enviada com sucesso!', 'success');
+    } catch (err) {
+      setTranscricaoError(err instanceof Error ? err.message : 'Erro ao enviar arquivo.');
+    } finally {
+      setTranscricaoUploading(false);
+    }
+  }, [transcricaoFile, transcricaoDesc, semana, selectedFarm, onToast]);
+
   // Ao voltar para 'rotina' a partir do histórico com uma semana histórica aberta, recarrega a semana atual
   const prevActiveViewRef = useRef(activeView);
   useEffect(() => {
@@ -1224,6 +1270,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           {/* Right side: action buttons */}
           <div style={{ display: (activeView === 'desempenho' || (activeView === 'historico' && !histWeekOpened)) ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* Drawer source button */}
+            {activeView !== 'transcricoes' && (
             <button
               onClick={() => setIsDrawerOpen(true)}
               style={{
@@ -1238,6 +1285,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               <span>{sourceTab === 'semana' ? '📅 Semana' : '📁 Projetos'}</span>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>▼</span>
             </button>
+            )}
+            {activeView !== 'transcricoes' && (
             <button
               onClick={() => setShowParticipantes(v => !v)}
               style={{
@@ -1253,7 +1302,24 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               <span>👥</span>
               <span>Participantes</span>
             </button>
-            {semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
+            )}
+            {semana && (
+              <button
+                onClick={() => setShowTranscricaoModal(true)}
+                style={{
+                  padding: '8px 14px', borderRadius: 8,
+                  border: '1px solid #E2E8F0',
+                  background: '#FFF', color: '#475569',
+                  fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, fontFamily: FONT,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span>📄</span>
+                <span>Transcrição</span>
+              </button>
+            )}
+            {activeView !== 'transcricoes' && semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
               <button
                 onClick={handleVoltarSemanaAtual}
                 style={{
@@ -1265,6 +1331,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 Voltar para semana atual
               </button>
             )}
+            {activeView !== 'transcricoes' && (<>
             <button onClick={handleFecharSemana} disabled={operating || !isAberta || !canFecharSemana} style={actionBtnStFechar}>
               Fechar Semana
             </button>
@@ -1277,6 +1344,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 Abrir Semana
               </button>
             )}
+            </>)}
           </div>
         </div>
 
@@ -1366,17 +1434,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           />
         )}
 
-        {/* ── RELATÓRIOS (placeholder) ───────────────────────────────────── */}
-        {activeView === 'relatorios' && (
-          <div style={{
-            background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
-            padding: 48, textAlign: 'center',
-            animation: 'gsFadeIn 0.3s ease',
-          }}>
-            <div style={{ fontSize: 36, marginBottom: 14 }}>📊</div>
-            <p style={{ fontSize: 16, fontWeight: 600, color: '#0F172A', margin: '0 0 8px' }}>Relatórios</p>
-            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Em breve — relatórios detalhados por semana estarão disponíveis aqui.</p>
-          </div>
+        {/* ── TRANSCRIÇÕES ──────────────────────────────────────────────────── */}
+        {activeView === 'transcricoes' && (
+          <TranscricoesView
+            farmId={selectedFarm?.id ?? null}
+            semana={semana}
+            organizationId={selectedFarm?.organizationId ?? null}
+            refreshKey={transcricoesRefreshKey}
+            onToast={onToast}
+          />
         )}
 
         {(activeView === 'rotina' || (activeView === 'historico' && histWeekOpened)) && (<>
@@ -2315,6 +2381,141 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: projectEditForm.titulo.trim() ? '#6366F1' : '#C7D2FE', color: '#FFF', cursor: projectEditForm.titulo.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, fontFamily: FONT }}
               >
                 {operating ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL UPLOAD TRANSCRIÇÃO ────────────────────────────────────────── */}
+      {showTranscricaoModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget && !transcricaoUploading) {
+              setShowTranscricaoModal(false);
+              setTranscricaoFile(null);
+              setTranscricaoDesc('');
+              setTranscricaoError(null);
+            }
+          }}
+        >
+          <div style={{
+            background: '#FFF', borderRadius: 16, padding: 28, width: 480, maxWidth: '95vw',
+            border: '1px solid #E2E8F0', boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
+            fontFamily: FONT,
+          }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <p style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', margin: 0 }}>Enviar Transcrição</p>
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: '3px 0 0' }}>
+                  {semana ? `Semana ${calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo).toString().padStart(2, '0')}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (!transcricaoUploading) {
+                    setShowTranscricaoModal(false);
+                    setTranscricaoFile(null);
+                    setTranscricaoDesc('');
+                    setTranscricaoError(null);
+                  }
+                }}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94A3B8', padding: 4, lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {/* File picker */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                Arquivo{' '}
+                <span style={{ color: '#94A3B8', fontWeight: 400 }}>
+                  (PDF, DOCX, MD, TXT, RTF — máx 50 MB)
+                </span>
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.docx,.doc,.md,.txt,.rtf,.odt"
+                disabled={transcricaoUploading}
+                onChange={e => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && f.size > 50 * 1024 * 1024) {
+                    setTranscricaoError('Arquivo muito grande (máx 50 MB).');
+                    setTranscricaoFile(null);
+                    return;
+                  }
+                  setTranscricaoFile(f);
+                  setTranscricaoError(null);
+                }}
+                style={{ ...INPUT_ST, cursor: 'pointer', padding: '7px 10px' }}
+              />
+              {transcricaoFile && (
+                <p style={{ fontSize: 11, color: '#059669', margin: '4px 0 0' }}>
+                  {transcricaoFile.name} ({(transcricaoFile.size / 1024).toFixed(0)} KB)
+                </p>
+              )}
+            </div>
+
+            {/* Description */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                Observações{' '}
+                <span style={{ color: '#94A3B8', fontWeight: 400 }}>(opcional)</span>
+              </label>
+              <textarea
+                value={transcricaoDesc}
+                onChange={e => setTranscricaoDesc(e.target.value)}
+                disabled={transcricaoUploading}
+                placeholder="Ex: Ata da reunião de segunda-feira..."
+                rows={3}
+                style={{ ...INPUT_ST, resize: 'vertical', minHeight: 68 }}
+              />
+            </div>
+
+            {transcricaoError && (
+              <p style={{
+                fontSize: 12, color: '#DC2626', margin: '0 0 14px',
+                background: '#FEF2F2', padding: '8px 12px', borderRadius: 8,
+              }}>
+                {transcricaoError}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowTranscricaoModal(false);
+                  setTranscricaoFile(null);
+                  setTranscricaoDesc('');
+                  setTranscricaoError(null);
+                }}
+                disabled={transcricaoUploading}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, border: '1px solid #E2E8F0',
+                  background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
+                  cursor: 'pointer', fontFamily: FONT,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleTranscricaoUpload}
+                disabled={!transcricaoFile || transcricaoUploading}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: 'none',
+                  background: transcricaoFile && !transcricaoUploading ? '#3B82F6' : '#E2E8F0',
+                  color: transcricaoFile && !transcricaoUploading ? '#FFF' : '#94A3B8',
+                  fontSize: 13, fontWeight: 600,
+                  cursor: transcricaoFile && !transcricaoUploading ? 'pointer' : 'default',
+                  fontFamily: FONT,
+                }}
+              >
+                {transcricaoUploading ? 'Enviando...' : 'Enviar'}
               </button>
             </div>
           </div>

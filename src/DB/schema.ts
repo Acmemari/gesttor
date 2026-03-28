@@ -352,6 +352,24 @@ export const historicoSemanas = pgTable('week_history', {
   farmId: text('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
 });
 
+export const semanaTranscricoes = pgTable('semana_transcricoes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  semanaId: uuid('semana_id').notNull().references(() => semanas.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  uploadedBy: text('uploaded_by').references(() => baUser.id, { onDelete: 'set null' }),
+  fileName: text('file_name').notNull(),
+  originalName: text('original_name').notNull(),
+  fileType: text('file_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  storagePath: text('storage_path').notNull(),
+  descricao: text('descricao'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_semana_transcricoes_semana_id').on(t.semanaId),
+  index('idx_semana_transcricoes_farm_id').on(t.farmId),
+]);
+
 // ── Projects / Deliveries hierarchy ───────────────────────────────────────────
 
 export const projects = pgTable('projects', {

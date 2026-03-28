@@ -14,12 +14,15 @@ export default defineConfig({
   fullyParallel: true,
   /* Falha o build no CI se você deixar test.only no código */
   forbidOnly: !!process.env.CI,
-  /* Retry no CI */
-  retries: process.env.CI ? 2 : 0,
+  /* Retry no CI e 1 retry local para absorver cold-start do Neon */
+  retries: process.env.CI ? 2 : 1,
   /* Workers no CI */
   workers: process.env.CI ? 1 : undefined,
   /* Configuração do reporter */
   reporter: 'html',
+  /* Timeout por teste (Neon tem cold-start de até ~30s) */
+  timeout: 90 * 1000,
+
   /* Configurações compartilhadas para todos os projetos */
   use: {
     /* Base URL para usar em navegação como await page.goto('/') */
@@ -36,11 +39,19 @@ export default defineConfig({
     },
   ],
 
-  /* Rodar servidor de desenvolvimento antes dos testes */
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  /* Rodar servidores de desenvolvimento antes dos testes */
+  webServer: [
+    {
+      command: 'npm run dev',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+    {
+      command: 'npm run dev:api',
+      url: 'http://localhost:3001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+  ],
 });

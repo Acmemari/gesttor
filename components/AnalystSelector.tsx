@@ -28,6 +28,7 @@ const AnalystSelector: React.FC = () => {
       hasMore={hasMore.analysts}
       isLoading={loading.analysts}
       error={errors.analysts}
+      dropdownTitle="Analistas"
       emptyLabel="Nenhum analista cadastrado"
     />
   );

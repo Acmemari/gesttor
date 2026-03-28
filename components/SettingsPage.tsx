@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { User } from '../types';
+import { TokenQuotaCard } from './shared/TokenQuotaCard';
 
 interface Company {
   id: string;
@@ -616,6 +617,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Token Quota */}
+      <div className="border-t border-ai-border pt-6">
+        <h3 className="text-lg font-semibold text-ai-text mb-4">Uso de Inteligência Artificial</h3>
+        <TokenQuotaCard />
       </div>
 
       {/* Delete Account */}

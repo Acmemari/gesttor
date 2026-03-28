@@ -18,13 +18,20 @@ export interface SearchResult {
  * Busca os top-k chunks mais relevantes para um embedding de consulta.
  * Filtra apenas documentos com status 'published'.
  * @param minScore Threshold mínimo de similaridade cosine (0-1). Chunks abaixo são descartados.
+ * @param collectionId Quando informado, restringe a busca a documentos dessa coleção.
  */
 export async function semanticSearch(
   queryEmbedding: number[],
   topK = 6,
   minScore = 0.65,
+  collectionId?: string | null,
 ): Promise<SearchResult[]> {
   const vectorStr = `[${queryEmbedding.join(',')}]`;
+
+  const collectionFilter = collectionId ? 'AND kd.collection_id = $4' : '';
+  const params: unknown[] = collectionId
+    ? [vectorStr, topK, minScore, collectionId]
+    : [vectorStr, topK, minScore];
 
   // CTE evita calcular o score duas vezes (WHERE + SELECT)
   const { rows } = await pool.query(
@@ -41,10 +48,11 @@ export async function semanticSearch(
       JOIN knowledge_documents kd ON kd.id = kc.document_id
       WHERE kd.status = 'published'
         AND kc.embedding IS NOT NULL
+        ${collectionFilter}
     )
     SELECT * FROM ranked WHERE score >= $3 ORDER BY score DESC LIMIT $2
     `,
-    [vectorStr, topK, minScore],
+    params,
   );
 
   return rows.map((r: Record<string, unknown>) => ({

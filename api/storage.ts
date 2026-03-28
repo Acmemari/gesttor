@@ -65,6 +65,7 @@ const ALLOWED_KEY_PREFIXES = [
   'farm-maps/',
   'public/',
   'knowledge-docs/',
+  'meeting-transcriptions/',
 ];
 
 /**

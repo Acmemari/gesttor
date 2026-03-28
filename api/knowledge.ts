@@ -23,6 +23,7 @@ import { runIngestionPipeline } from './_lib/knowledge/pipeline.js';
 import { embedSingleWithUsage } from './_lib/knowledge/embed.js';
 import { semanticSearch } from './_lib/knowledge/search.js';
 import { completeWithFallback } from './_lib/ai/providers/index.js';
+import { routeToCollection } from './_lib/knowledge/router.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -282,17 +283,27 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
   const k = Math.min(parseInt(String(topK ?? '6'), 10), 12);
   const startMs = Date.now();
 
-  // 1. Embed da pergunta (inputType='query' — otimizado para busca semântica)
+  // 1. Buscar coleções ativas e rotear a pergunta para a mais relevante
+  const { rows: collectionRows } = await pool.query(`
+    SELECT id, name, description FROM knowledge_collections WHERE is_active = true ORDER BY name ASC
+  `);
+  const collectionId = await routeToCollection(question.trim(), collectionRows);
+  const collectionName = collectionId
+    ? (collectionRows.find((c: { id: string }) => c.id === collectionId) as { name: string } | undefined)?.name ?? null
+    : null;
+
+  // 2. Embed da pergunta (inputType='query' — otimizado para busca semântica)
   const { embedding: queryEmbedding, tokens: queryEmbeddingTokens } = await embedSingleWithUsage(question.trim(), 'query');
 
-  // 2. Busca semântica
-  const chunks = await semanticSearch(queryEmbedding, k);
+  // 3. Busca semântica filtrada pela coleção roteada (null = busca em todas)
+  const chunks = await semanticSearch(queryEmbedding, k, 0.65, collectionId);
 
   if (chunks.length === 0) {
     return ok(res, {
       answer: 'Não encontrei informações relevantes na base de conhecimento para responder sua pergunta.',
       sources: [],
       logId: null,
+      collectionName,
     });
   }
 
@@ -315,7 +326,7 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
 
   const latencyMs = Date.now() - startMs;
 
-  // 5. Registrar no log
+  // 5. Registrar no log (collectionId salvo em chunks_retrieved para rastreabilidade)
   const { rows: logRows } = await pool.query(
     `INSERT INTO knowledge_retrieval_logs
        (question, chunks_retrieved, answer, model, tokens_used, latency_ms, user_id)
@@ -323,7 +334,11 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
      RETURNING id`,
     [
       question,
-      JSON.stringify(chunks.map(c => ({ chunkId: c.chunkId, score: c.score, documentTitle: c.documentTitle }))),
+      JSON.stringify({
+        collectionId,
+        collectionName,
+        chunks: chunks.map(c => ({ chunkId: c.chunkId, score: c.score, documentTitle: c.documentTitle })),
+      }),
       aiResponse.content,
       aiResponse.model,
       aiResponse.usage.totalTokens,
@@ -339,6 +354,7 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
     latencyMs,
     tokensUsed: aiResponse.usage?.totalTokens ?? null,
     queryEmbeddingTokens: queryEmbeddingTokens ?? null,
+    collectionName,
   });
 }
 

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import type { AIProvider } from './_lib/ai/types.js';
 import { eq } from 'drizzle-orm';
-import { db, userProfiles } from '../src/DB/index.js';
+import { db, userProfiles, organizations } from '../src/DB/index.js';
 import { getAgentManifest } from './_lib/agents/registry.js';
 import { runHelloAgent } from './_lib/agents/hello/handler.js';
 import { runFeedbackAgent } from './_lib/agents/feedback/handler.js';
@@ -54,14 +54,25 @@ type UserContext = {
   hasOrg: boolean;
 };
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 async function authenticateAndLoadContext(req: VercelRequest): Promise<UserContext> {
   const userId = await getAuthUserIdFromRequest(req);
   if (!userId) {
     throw new Error('AUTH_MISSING_OR_INVALID_TOKEN');
   }
+
   const [profile] = await db
-    .select({ plan: userProfiles.plan })
+    .select({
+      userPlan: userProfiles.plan,
+      orgId:    userProfiles.organizationId,
+      orgPlan:  organizations.plan,
+      orgAtivo: organizations.ativo,
+    })
     .from(userProfiles)
+    .leftJoin(organizations, eq(userProfiles.organizationId, organizations.id))
     .where(eq(userProfiles.id, userId))
     .limit(1);
 
@@ -69,13 +80,15 @@ async function authenticateAndLoadContext(req: VercelRequest): Promise<UserConte
     throw new Error('AUTH_PROFILE_NOT_FOUND');
   }
 
-  // organization_id foi removido de user_profiles na migração para Neon.
-  // orgId = userId até a Fase 2 resolver o vínculo via tabela organizations.
+  const resolvedOrgId = profile.orgId ?? userId;
+  const hasOrg        = !!profile.orgId && (profile.orgAtivo ?? true);
+  const resolvedPlan  = normalizePlan(profile.orgPlan ?? profile.userPlan);
+
   return {
     userId,
-    orgId: userId,
-    plan: normalizePlan(profile?.plan),
-    hasOrg: false,
+    orgId:  resolvedOrgId,
+    plan:   resolvedPlan,
+    hasOrg,
   };
 }
 
@@ -145,16 +158,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    reservationId = null;
-    if (ctx.hasOrg) {
-      const reservation = await reserveTokens({
-        orgId: ctx.orgId,
-        userId: ctx.userId,
-        plan: ctx.plan,
-        estimatedTokens: manifest.estimatedTokensPerCall,
-      });
-      reservationId = reservation.id;
-    }
+    const reservation = await reserveTokens({
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      plan: ctx.plan,
+      estimatedTokens: manifest.estimatedTokensPerCall,
+    });
+    reservationId = reservation.id;
 
     const routes = [routeAgent(manifest, ctx.plan), ...getFallbackRoutes(manifest)];
     let lastExecutionError: unknown = null;
@@ -212,7 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     let costUsd = 0;
-    if (ctx.hasOrg && reservationId) {
+    if (reservationId) {
       try {
         const commit = await commitUsage({
           reservationId,
@@ -229,7 +239,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       await logAgentRun({
-        org_id: ctx.orgId,
+        org_id: isUuid(ctx.orgId) ? ctx.orgId : null,
         user_id: ctx.userId,
         agent_id: manifest.id,
         agent_version: manifest.version,
@@ -294,7 +304,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (ctx && runMeta) {
       await logAgentRun({
-        org_id: ctx.orgId,
+        org_id: isUuid(ctx.orgId) ? ctx.orgId : null,
         user_id: ctx.userId,
         agent_id: runMeta.agentId,
         agent_version: runMeta.agentVersion,

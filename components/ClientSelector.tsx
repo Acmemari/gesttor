@@ -41,6 +41,7 @@ const ClientSelector: React.FC = () => {
       isLoading={loading.organizations}
       error={errors.organizations}
       disabled={disabled}
+      dropdownTitle="Organizações"
       emptyLabel={disabled ? 'Selecione um analista primeiro' : 'Nenhuma organização cadastrada'}
       className="min-w-[180px]"
     />

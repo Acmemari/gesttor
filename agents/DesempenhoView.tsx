@@ -385,7 +385,7 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['COLABORADOR', 'CONCLUÍDAS', 'PENDENTES', 'EFICIÊNCIA', 'STATUS'].map(col => (
+                  {['COLABORADOR', 'TOTAL', 'CONCLUÍDAS', 'PENDENTES', 'EFICIÊNCIA', 'STATUS'].map(col => (
                     <th key={col} style={{
                       textAlign: col === 'COLABORADOR' ? 'left' : 'center',
                       fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: 0.5,
@@ -411,6 +411,10 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
                           {c.iniciais}
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{c.nome}</span>
+                      </td>
+                      {/* Total */}
+                      <td style={{ textAlign: 'center', fontSize: 15, fontWeight: 700, color: '#334155' }}>
+                        {c.total}
                       </td>
                       {/* Concluídas */}
                       <td style={{ textAlign: 'center', fontSize: 15, fontWeight: 700, color: '#16a34a' }}>

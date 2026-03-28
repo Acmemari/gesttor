@@ -35,6 +35,7 @@ const FarmSelector: React.FC = () => {
       hasMore={hasMore.farms}
       isLoading={loading.farms}
       error={errors.farms}
+      dropdownTitle="Fazendas"
       emptyLabel="Nenhuma fazenda vinculada"
       className="min-w-[180px]"
     />

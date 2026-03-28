@@ -77,7 +77,7 @@ const AppContent: React.FC = () => {
     'desktop',
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'relatorios'>('rotina');
+  const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes'>('rotina');
   const [calculatorInputs, setCalculatorInputs] = useState<any>(null);
   const [comparatorScenarios, setComparatorScenarios] = useState<any>(null);
   const [editingQuestionnaire, setEditingQuestionnaire] = useState<any>(null);
@@ -1166,7 +1166,7 @@ const AppContent: React.FC = () => {
                   { view: 'rotina' as const,     label: 'Rotina semanal', icon: <CalendarDays size={15} /> },
                   { view: 'historico' as const,  label: 'Histórico',      icon: <History size={15} /> },
                   { view: 'desempenho' as const, label: 'Desempenho',     icon: <BarChart3 size={15} /> },
-                  { view: 'relatorios' as const, label: 'Atas',           icon: <FileText size={15} /> },
+                  { view: 'transcricoes' as const, label: 'Transcrições',  icon: <FileText size={15} /> },
                 ]).map(item => (
                   <button
                     key={item.view}

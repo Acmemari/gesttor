@@ -11,6 +11,7 @@ interface Message {
   logId?: string | null;
   tokensUsed?: number | null;
   queryEmbeddingTokens?: number | null;
+  collectionName?: string | null;
   timestamp: Date;
 }
 
@@ -82,6 +83,7 @@ const AntonioChat: React.FC = () => {
         logId: json.data.logId,
         tokensUsed: json.data.tokensUsed ?? null,
         queryEmbeddingTokens: json.data.queryEmbeddingTokens ?? null,
+        collectionName: json.data.collectionName ?? null,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMsg]);
@@ -249,6 +251,13 @@ function MessageBubble({
               </span>
             ))}
           </div>
+        )}
+
+        {/* Coleção consultada */}
+        {message.collectionName && (
+          <p className="text-xs text-ai-subtext/60 italic">
+            Coleção: {message.collectionName}
+          </p>
         )}
 
         {/* Tokens */}

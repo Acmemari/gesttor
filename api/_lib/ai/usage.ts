@@ -228,3 +228,31 @@ export async function releaseReservation(reservationId: string): Promise<void> {
 
   reservations.delete(reservationId);
 }
+
+// ~$0.006/min para Whisper, estimativa: 1 MB ≈ 1 min de áudio
+export async function trackWhisperCost(args: {
+  orgId: string;
+  userId: string;
+  fileSizeBytes: number;
+}): Promise<{ costUsd: number }> {
+  const COST_PER_MB = 0.006;
+  const costUsd = toUsd((args.fileSizeBytes / (1024 * 1024)) * COST_PER_MB);
+  const period = getCurrentPeriod();
+  const budget = await getOrCreateBudget(args.orgId, period);
+
+  await db
+    .update(tokenBudgets)
+    .set({ costUsedUsd: String(toUsd(Number(budget.cost_used_usd) + costUsd)) })
+    .where(eq(tokenBudgets.id, budget.id));
+
+  await db.insert(tokenLedger).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    action: 'commit',
+    tokens: '0',
+    costUsd: String(costUsd),
+    metadata: { source: 'whisper', file_size_bytes: args.fileSizeBytes },
+  });
+
+  return { costUsd };
+}

@@ -71,7 +71,7 @@ app.all('/api/auth/{*path}', async (req, res) => {
         body: bodyBuffer.length > 0 ? bodyBuffer : null,
       })),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('auth.handler() timeout após 8s')), 8000)
+        setTimeout(() => reject(new Error('auth.handler() timeout após 20s')), 20000)
       ),
     ]);
     console.log('[auth] resposta recebida, status:', fetchRes.status);
@@ -250,6 +250,7 @@ app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
 app.all('/api/ai-usage', (req, res) => handleApiRoute('./api/ai-usage.ts', req, res));
+app.all('/api/token-usage', (req, res) => handleApiRoute('./api/token-usage.ts', req, res));
 app.all('/api/knowledge', (req, res) => handleApiRoute('./api/knowledge.ts', req, res));
 app.all('/api/support-tickets', (req, res) => handleApiRoute('./api/support-tickets.ts', req, res));
 app.all('/api/questions', (req, res) => handleApiRoute('./api/questions.ts', req, res));

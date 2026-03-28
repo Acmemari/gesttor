@@ -13,9 +13,12 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import multer from 'multer';
+import { eq } from 'drizzle-orm';
+import { db, userProfiles, organizations } from '../src/DB/index.js';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonSuccess, jsonError, setCorsHeaders } from './_lib/apiResponse.js';
 import { transcribeAudioWithChunking, validateAudioFile, MAX_UPLOAD_SIZE, TRANSCRIPTION_MODEL } from './_lib/transcription.js';
+import { trackWhisperCost } from './_lib/ai/usage.js';
 
 // Desabilita o body parser padrão do Vercel para receber multipart/form-data
 export const config = {
@@ -67,6 +70,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
+  const [profile] = await db
+    .select({ orgId: userProfiles.organizationId })
+    .from(userProfiles)
+    .leftJoin(organizations, eq(userProfiles.organizationId, organizations.id))
+    .where(eq(userProfiles.id, userId))
+    .limit(1);
+  const orgId = profile?.orgId ?? userId;
+
   // Processar o upload multipart
   try {
     await runMulter(req, res);
@@ -110,6 +121,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       tarefas: null,      // tarefas com responsável e prazo
       ata: null,          // ata automática formatada
     });
+
+    trackWhisperCost({ orgId, userId, fileSizeBytes: file.size })
+      .catch(err => console.error('[transcrever-reuniao] trackWhisperCost failed:', err));
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao transcrever áudio.';
     console.error('[transcrever-reuniao] Erro OpenAI:', msg);
