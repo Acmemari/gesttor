@@ -1,0 +1,230 @@
+INSTRUÇÃO PARA ANTIGRAVITY
+Feature: Transcrição → ATA + Tarefas (com estilo do usuário)
+🎯 OBJETIVO
+
+Implementar uma funcionalidade onde o usuário cola uma transcrição de reunião (texto bruto) e o sistema automaticamente:
+
+Interpreta o conteúdo
+Gera um resumo executivo
+Gera uma ATA estruturada
+Extrai tarefas acionáveis
+(Opcional) Salva tarefas no banco
+🧠 CONTEXTO
+
+A aplicação já possui:
+
+Upload/manual input de transcrição
+Integração com LLM (Claude ou equivalente)
+Estrutura de banco para tarefas (ou similar)
+
+Essa nova funcionalidade será chamada após o usuário clicar em "Confirmar" na tela de transcrição.
+
+🏗️ ARQUITETURA DA SOLUÇÃO
+
+Criar pipeline:
+
+Transcription Input
+→ normalizeText()
+→ extractEntities()
+→ extractDecisions()
+→ extractTasks()
+→ buildExecutiveSummary()
+→ buildMeetingMinutes()
+→ return structured output
+📁 ESTRUTURA DE ARQUIVOS
+
+Criar:
+
+/src/services/transcriptionProcessor.ts
+/src/prompts/transcriptionPrompt.ts
+/src/types/transcription.ts
+🧩 TIPAGENS (OBRIGATÓRIO)
+
+Criar em /types/transcription.ts:
+
+export type ExtractedTask = {
+  title: string
+  description: string
+  assignee?: string
+  priority?: "alta" | "media" | "baixa"
+  dueDate?: string
+}
+
+export type Decision = {
+  decision: string
+  assignee?: string
+  impact?: string
+}
+
+export type TranscriptionResult = {
+  summary: string
+  decisions: Decision[]
+  tasks: ExtractedTask[]
+  minutes: string
+  participants: string[]
+}
+🧠 PROMPT (CORE DA LÓGICA)
+
+Criar /prompts/transcriptionPrompt.ts
+
+export const buildTranscriptionPrompt = (text: string) => `
+Você é um assistente especializado em transformar transcrições de reuniões em ações práticas.
+
+Seu papel é:
+- entender o conteúdo
+- organizar ideias
+- transformar conversa em execução
+
+IMPORTANTE:
+- Não invente informações
+- Seja direto, claro e objetivo
+- Use linguagem leve, profissional e mais informal (evite formalidade excessiva)
+- Escreva como alguém experiente explicando de forma simples
+
+TAREFAS:
+
+1. Identifique participantes
+2. Extraia decisões
+3. Extraia tarefas com responsáveis (se houver)
+4. Gere um resumo executivo
+5. Gere uma ATA estruturada
+
+FORMATO DE RESPOSTA (JSON válido):
+
+{
+  "participants": [],
+  "summary": "",
+  "decisions": [
+    {
+      "decision": "",
+      "assignee": "",
+      "impact": ""
+    }
+  ],
+  "tasks": [
+    {
+      "title": "",
+      "description": "",
+      "assignee": "",
+      "priority": "alta | media | baixa",
+      "dueDate": ""
+    }
+  ],
+  "minutes": ""
+}
+
+TRANSCRIÇÃO:
+${text}
+`
+⚙️ SERVICE PRINCIPAL
+
+Criar /services/transcriptionProcessor.ts
+
+import { buildTranscriptionPrompt } from "@/prompts/transcriptionPrompt"
+
+export async function processTranscription(text: string) {
+  const prompt = buildTranscriptionPrompt(text)
+
+  const response = await callLLM({
+    prompt,
+    temperature: 0.2,
+    maxTokens: 2000
+  })
+
+  try {
+    const parsed = JSON.parse(response)
+    return parsed
+  } catch (error) {
+    console.error("Erro ao parsear resposta:", error)
+    throw new Error("Falha ao processar transcrição")
+  }
+}
+🔌 INTEGRAÇÃO COM A TELA
+
+Na tela que você mostrou ("Adicionar Transcrição"):
+
+Ao clicar em "Confirmar":
+const handleSubmit = async () => {
+  setLoading(true)
+
+  try {
+    const result = await processTranscription(transcriptionText)
+
+    setResult(result)
+
+    // opcional: salvar tarefas
+    await saveTasks(result.tasks)
+
+  } catch (error) {
+    console.error(error)
+  }
+
+  setLoading(false)
+}
+🖥️ OUTPUT NA UI
+
+Exibir:
+
+🔹 Resumo
+bloco de texto
+🔹 Decisões
+lista
+🔹 Tarefas
+lista com responsável
+🔹 ATA
+texto estruturado
+🎯 REGRAS DE NEGÓCIO
+Não gerar tarefas genéricas
+Priorizar ações concretas
+Se não houver responsável → deixar vazio
+Não inventar datas
+🧪 TESTES (OBRIGATÓRIO)
+
+Testar com:
+
+1. Transcrição longa (como a sua)
+
+✔ Deve gerar tarefas reais
+✔ Deve identificar responsáveis
+
+2. Transcrição ruim
+
+✔ Não quebrar
+✔ Retornar estrutura mínima
+
+3. Sem tarefas claras
+
+✔ tasks = []
+
+🚨 ERROS E FALLBACK
+
+Se LLM falhar:
+
+retornar estrutura vazia
+não quebrar a UI
+🔥 DIFERENCIAL (IMPORTANTE)
+
+Essa feature transforma sua aplicação em:
+
+👉 sistema que:
+
+escuta reunião
+entende
+organiza
+gera execução
+
+👉 isso é MUITO forte no agro
+
+📌 CHECKLIST FINAL
+
+Antes de considerar pronto:
+
+ Prompt criado
+ Service funcionando
+ JSON parseando corretamente
+ UI exibindo resultado
+ Tarefas sendo geradas corretamente
+ Estilo de texto leve e direto
+ Sem invenção de dados
+
+use o que for necessário ja estruturado para as avividades do pergunte para antonio. (voyage/sonnet/etc) 

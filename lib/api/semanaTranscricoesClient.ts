@@ -18,6 +18,8 @@ export interface SemanaTranscricaoRow {
   fileSize: number;
   storagePath: string;
   descricao: string | null;
+  texto: string | null;
+  tipo: 'audio' | 'manual';
   createdAt: string;
 }
 
@@ -54,12 +56,14 @@ export interface CreateTranscricaoPayload {
   semanaId: string;
   farmId: string;
   organizationId: string;
-  fileName: string;
-  originalName: string;
-  fileType: string;
-  fileSize: number;
-  storagePath: string;
+  fileName?: string;
+  originalName?: string;
+  fileType?: string;
+  fileSize?: number;
+  storagePath?: string;
   descricao?: string | null;
+  texto?: string | null;
+  tipo?: 'audio' | 'manual';
 }
 
 export async function createTranscricao(payload: CreateTranscricaoPayload): Promise<SemanaTranscricaoRow> {

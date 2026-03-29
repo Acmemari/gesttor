@@ -77,6 +77,18 @@ export async function getSemanaById(id: string) {
   return apiFetch<SemanaRow | null>(`/api/semanas?id=${encodeURIComponent(id)}`);
 }
 
+export async function listSemanasByFarm(farmId: string): Promise<SemanaRow[]> {
+  const res = await apiFetch<SemanaRow[]>(`/api/semanas?farmId=${encodeURIComponent(farmId)}&list=true`);
+  if (!res.ok) throw new Error(res.error);
+  return res.data.map((r: any) => ({
+    ...r,
+    data_inicio: String(r.data_inicio ?? r.dataInicio ?? ''),
+    data_fim: String(r.data_fim ?? r.dataFim ?? ''),
+    farm_id: r.farm_id ?? r.farmId ?? null,
+    created_at: r.created_at ?? r.createdAt ?? '',
+  }));
+}
+
 export async function getSemanaByNumero(numero: number, modo: string, farmId: string | null) {
   const params = new URLSearchParams({ numero: String(numero), modo });
   if (farmId) params.set('farmId', farmId);

@@ -204,9 +204,9 @@ async function handleApiRoute(routePath: string, req: Request, res: Response) {
     await handler(vercelReq, vercelRes);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erro interno no servidor de desenvolvimento';
-    const cause = error instanceof Error && (error as NodeJS.ErrnoException).cause;
+    const stack = error instanceof Error ? error.stack : '';
     console.error(`[server-dev] Erro ${req.path}:`, message);
-    if (cause) console.error(`[server-dev] Causa:`, cause);
+    if (stack) console.error(`[server-dev] Stack:`, stack);
     if (!res.headersSent) {
       res.status(500).json({ error: message });
     }
@@ -241,6 +241,8 @@ app.all('/api/semanas', (req, res) => handleApiRoute('./api/semanas.ts', req, re
 app.all('/api/atividades', (req, res) => handleApiRoute('./api/atividades.ts', req, res));
 app.all('/api/historico-semanas', (req, res) => handleApiRoute('./api/historico-semanas.ts', req, res));
 app.all('/api/semana-participantes', (req, res) => handleApiRoute('./api/semana-participantes.ts', req, res));
+app.all('/api/semana-transcricoes', (req, res) => handleApiRoute('./api/semana-transcricoes.ts', req, res));
+app.all('/api/atas', (req, res) => handleApiRoute('./api/atas.ts', req, res));
 app.all('/api/desempenho', (req, res) => handleApiRoute('./api/desempenho.ts', req, res));
 
 // Evidências / Mapas de fazenda
@@ -250,7 +252,7 @@ app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
 app.all('/api/ai-usage', (req, res) => handleApiRoute('./api/ai-usage.ts', req, res));
-app.all('/api/token-usage', (req, res) => handleApiRoute('./api/token-usage.ts', req, res));
+
 app.all('/api/knowledge', (req, res) => handleApiRoute('./api/knowledge.ts', req, res));
 app.all('/api/support-tickets', (req, res) => handleApiRoute('./api/support-tickets.ts', req, res));
 app.all('/api/questions', (req, res) => handleApiRoute('./api/questions.ts', req, res));

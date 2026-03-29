@@ -4,11 +4,15 @@ import type { AgentManifest } from '../ai/types.js';
 import { helloManifest } from './hello/manifest.js';
 import { feedbackManifest } from './feedback/manifest.js';
 import { damagesGenManifest } from './damages-gen/manifest.js';
+import { ataGenManifest } from './ata-gen/manifest.js';
+import { transcricaoProcManifest } from './transcricao-proc/manifest.js';
 
 const manifestMap = new Map<string, AgentManifest>([
   [`${helloManifest.id}@${helloManifest.version}`, helloManifest],
   [`${feedbackManifest.id}@${feedbackManifest.version}`, feedbackManifest],
   [`${damagesGenManifest.id}@${damagesGenManifest.version}`, damagesGenManifest],
+  [`${ataGenManifest.id}@${ataGenManifest.version}`, ataGenManifest],
+  [`${transcricaoProcManifest.id}@${transcricaoProcManifest.version}`, transcricaoProcManifest],
 ]);
 
 // A short-lived cache (TTL) for dynamic config to reduce DB load on concurrent executions.

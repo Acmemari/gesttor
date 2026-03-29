@@ -10,45 +10,38 @@ import { test, expect } from '@playwright/test';
  * Rodar: npx playwright test cadastro-organizacoes.spec.ts
  * Ou:   npx playwright test -g "Cadastro de Organizações"
  */
-const E2E_EMAIL = process.env.TEST_EMAIL || process.env.E2E_USER_EMAIL;
-const E2E_PASSWORD = process.env.TEST_PASSWORD || process.env.E2E_USER_PASSWORD;
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test.describe('Cadastro de Organizações', () => {
   test.describe.configure({ mode: 'serial' });
 
-  // Aquece a conexão com o banco antes dos testes (Neon tem cold-start de até 15s)
-  test.beforeAll(async ({ request }) => {
-    if (!E2E_EMAIL || !E2E_PASSWORD) return;
-    // Aquece o pool do Neon (cold-start pode levar até 60s)
-    await request.post('http://localhost:3000/api/auth/sign-in/email', {
-      data: { email: E2E_EMAIL, password: E2E_PASSWORD },
-      timeout: 70000,
-    }).catch(() => null); // ignora falha — apenas acorda o pool
+  // Rastreia IDs de organizações criadas para cleanup no afterAll
+  const createdOrgIds: string[] = [];
+
+  test.afterAll(async ({ request }) => {
+    for (const id of createdOrgIds) {
+      await request.patch('/api/organizations', {
+        data: { id, action: 'deactivate' },
+      });
+    }
   });
 
+  // Sessão autenticada vem do auth.setup.ts via storageState
   test.beforeEach(async ({ page }) => {
-    if (!E2E_EMAIL || !E2E_PASSWORD) {
-      await page.goto('/');
-      return;
-    }
+    // Debug: intercepta o get-session para ver a resposta do servidor
+    page.on('response', async (res) => {
+      if (res.url().includes('/api/auth/get-session')) {
+        console.log(`[get-session] status=${res.status()} url=${res.url()}`);
+        try { console.log(`[get-session] body=`, await res.text()); } catch {}
+      }
+    });
 
-    // Vai direto para /sign-in evitando o redirect assíncrono de /
-    await page.goto('/sign-in');
-    await page.waitForLoadState('load');
-
-    // Preenche as credenciais e faz login
-    await page.fill('input[type="email"]', E2E_EMAIL);
-    await page.fill('input[type="password"]', E2E_PASSWORD);
-    await page.click('button[type="submit"]');
-
-    // Aguarda redirecionamento para a raiz (Neon pode demorar até ~30s no cold-start)
-    await page.waitForURL('/', { timeout: 60000 });
-    await page.waitForSelector('button[title="Cadastros"]', { timeout: 10000 });
+    await page.goto('/');
+    // A sessão é validada via get-session (pode levar alguns segundos com Neon)
+    await page.waitForSelector('button[title="Cadastros"]', { timeout: 60000 });
   });
 
   test('Inclusão: deve criar uma nova organização com sucesso', async ({ page }) => {
-    test.skip(!E2E_EMAIL || !E2E_PASSWORD, 'Configure TEST_EMAIL e TEST_PASSWORD para rodar este teste');
 
     await page.locator('button[title="Cadastros"]').click();
 
@@ -77,14 +70,18 @@ test.describe('Cadastro de Organizações', () => {
     const phoneInput = page.locator('input[type="tel"]').first();
     await phoneInput.fill('44999641122');
 
-    await page.getByRole('button', { name: /^Cadastrar$/i }).click();
+    const [createResp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/organizations') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: /^Cadastrar$/i }).click(),
+    ]);
+    const createBody = await createResp.json();
+    if (createBody.ok && createBody.data?.id) createdOrgIds.push(createBody.data.id);
 
     await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(nomeOrg)).toBeVisible({ timeout: 15000 });
   });
 
   test('Alteração: deve editar uma organização existente com sucesso', async ({ page }) => {
-    test.skip(!E2E_EMAIL || !E2E_PASSWORD, 'Configure TEST_EMAIL e TEST_PASSWORD para rodar este teste');
 
     await page.locator('button[title="Cadastros"]').click();
 
@@ -112,7 +109,6 @@ test.describe('Cadastro de Organizações', () => {
   });
 
   test('Exclusão: deve excluir uma organização com confirmação', async ({ page }) => {
-    test.skip(!E2E_EMAIL || !E2E_PASSWORD, 'Configure TEST_EMAIL e TEST_PASSWORD para rodar este teste');
 
     page.on('dialog', d => d.accept());
 
@@ -122,7 +118,7 @@ test.describe('Cadastro de Organizações', () => {
     await orgCard.click({ timeout: 8000 });
     await page.getByPlaceholder(/Buscar por nome, email, CNPJ ou telefone/i).waitFor({ state: 'visible', timeout: 15000 });
 
-    const deleteBtn = page.getByTitle(/excluir organização/i).first();
+    const deleteBtn = page.getByTitle(/desativar organização/i).first();
     if (!(await deleteBtn.isVisible({ timeout: 3000 }))) {
       test.skip(true, 'Nenhuma organização para excluir');
       return;
@@ -132,11 +128,10 @@ test.describe('Cadastro de Organizações', () => {
     const nameToDelete = (await rowToDelete.locator('td').first().innerText()).trim();
     await deleteBtn.click();
 
-    await expect(page.getByText(new RegExp(escapeRegex(nameToDelete), 'i'))).not.toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/desativada com sucesso/i)).toBeVisible({ timeout: 8000 });
   });
 
   test('Inclusão + Alteração + Exclusão: fluxo completo', async ({ page }) => {
-    test.skip(!E2E_EMAIL || !E2E_PASSWORD, 'Configure TEST_EMAIL e TEST_PASSWORD para rodar este teste');
 
     page.on('dialog', d => d.accept());
 
@@ -158,7 +153,13 @@ test.describe('Cadastro de Organizações', () => {
     await page.getByPlaceholder(/Digite o nome da organização/i).fill(nomeCriado);
     await page.getByPlaceholder(/organizacao@exemplo\.com/i).fill(`fluxo-${sufixo}@teste.com`);
     await page.locator('input[type="tel"]').first().fill('44999641122');
-    await page.getByRole('button', { name: /^Cadastrar$/i }).click();
+
+    const [fluxoResp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/organizations') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: /^Cadastrar$/i }).click(),
+    ]);
+    const fluxoBody = await fluxoResp.json();
+    if (fluxoBody.ok && fluxoBody.data?.id) createdOrgIds.push(fluxoBody.data.id);
 
     await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(nomeCriado)).toBeVisible({ timeout: 5000 });
@@ -178,14 +179,12 @@ test.describe('Cadastro de Organizações', () => {
     await expect(page.getByText(nomeEditado)).toBeVisible({ timeout: 5000 });
 
     // 3. Exclusão
-    await page.getByTitle(/excluir organização/i).first().click();
+    await page.getByTitle(/desativar organização/i).first().click();
 
-    await expect(page.getByText(/exclu[ií]d[oa]s? com sucesso|removid/i)).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(nomeEditado)).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByText(/desativada com sucesso/i)).toBeVisible({ timeout: 8000 });
   });
 
   test('Gestores: deve cadastrar, editar e excluir no formulário de organização', async ({ page }) => {
-    test.skip(!E2E_EMAIL || !E2E_PASSWORD, 'Configure TEST_EMAIL e TEST_PASSWORD para rodar este teste');
 
     page.on('dialog', d => d.accept());
 
@@ -208,7 +207,14 @@ test.describe('Cadastro de Organizações', () => {
       await page.getByPlaceholder(/Digite o nome da organização/i).fill(`Organização Base Gestor ${sufixoOrg}`);
       await page.getByPlaceholder(/organizacao@exemplo\.com/i).fill(`org-base-${sufixoOrg}@teste.com`);
       await page.locator('input[type="tel"]').first().fill('44999641122');
-      await page.getByRole('button', { name: /^Cadastrar$/i }).click();
+
+      const [gestorResp] = await Promise.all([
+        page.waitForResponse(r => r.url().includes('/api/organizations') && r.request().method() === 'POST'),
+        page.getByRole('button', { name: /^Cadastrar$/i }).click(),
+      ]);
+      const gestorBody = await gestorResp.json();
+      if (gestorBody.ok && gestorBody.data?.id) createdOrgIds.push(gestorBody.data.id);
+
       await expect(page.getByText(/organização cadastrada com sucesso/i)).toBeVisible({ timeout: 8000 });
     }
 
@@ -232,7 +238,7 @@ test.describe('Cadastro de Organizações', () => {
       await page.getByRole('button', { name: /^Adicionar$/i }).click();
     }
 
-    const ownerNameInput = page.getByPlaceholder('Nome', { exact: true }).first();
+    const ownerNameInput = page.getByPlaceholder('Nome completo').first();
     await expect(ownerNameInput).toBeVisible({ timeout: 5000 });
     await ownerNameInput.fill(gestorNomeInicial);
 

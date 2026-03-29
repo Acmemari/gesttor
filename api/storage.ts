@@ -66,6 +66,7 @@ const ALLOWED_KEY_PREFIXES = [
   'public/',
   'knowledge-docs/',
   'meeting-transcriptions/',
+  'ata-fotos/',
 ];
 
 /**

@@ -33,9 +33,19 @@ export default defineConfig({
 
   /* Configurar projetos para múltiplos navegadores */
   projects: [
+    // Projeto de setup: faz login uma vez e salva a sessão
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Reutiliza a sessão autenticada do setup
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
   ],
 

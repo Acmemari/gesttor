@@ -622,7 +622,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onBack, onToast, onLo
       {/* Token Quota */}
       <div className="border-t border-ai-border pt-6">
         <h3 className="text-lg font-semibold text-ai-text mb-4">Uso de Inteligência Artificial</h3>
-        <TokenQuotaCard />
+        <TokenQuotaCard plan={user.plan} />
       </div>
 
       {/* Delete Account */}

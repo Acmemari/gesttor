@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, ArrowLeft, ArrowRight, Search, Trash2, Edit2, Loader2, User, Camera, X,
-  Move, ZoomIn, Building2, Star, Shield, Check, Mail,
+  Move, ZoomIn, Building2, Star, HelpCircle, Check, Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useHierarchy } from '../contexts/HierarchyContext';
@@ -42,7 +42,7 @@ type TabId = 'nome' | 'detalhes';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; editingOnly?: boolean }[] = [
   { id: 'nome', label: 'Nome, Cargo e Fazenda', icon: <User size={14} /> },
-  { id: 'detalhes', label: 'Permissões e Informações', icon: <Shield size={14} /> },
+  { id: 'detalhes', label: 'Permissões e Informações', icon: <HelpCircle size={14} /> },
 ];
 
 const STORAGE_PREFIX = 'people-photos';

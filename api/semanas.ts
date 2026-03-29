@@ -20,6 +20,7 @@ import {
   createSemana,
   updateSemana,
   deleteSemana,
+  listSemanasByFarm,
 } from '../src/DB/repositories/semanas.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -38,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'GET') {
-    const { id, modo, farmId, current, numero, dataInicio } = req.query as Record<string, string | undefined>;
+    const { id, modo, farmId, current, numero, dataInicio, list } = req.query as Record<string, string | undefined>;
 
     if (id) {
       const row = await getSemanaById(id);
@@ -60,6 +61,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } else if (role !== 'admin' && role !== 'administrador') {
       jsonError(res, 'farmId é obrigatório', { status: 400 }); return;
+    }
+
+    if (list && farmId) {
+      const rows = await listSemanasByFarm(farmId);
+      jsonSuccess(res, rows);
+      return;
     }
 
     if (dataInicio) {

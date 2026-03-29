@@ -1,7 +1,8 @@
 /**
  * API route for semana transcription documents.
  * GET    ?farmId=xxx  — list all transcriptions for a farm
- * POST   { semanaId, farmId, organizationId, fileName, originalName, fileType, fileSize, storagePath, descricao? }
+ * POST   { action: 'extract-text', id } — extract text from a stored document
+ * POST   { semanaId, farmId, organizationId, ... } — create a new transcription record
  * DELETE ?id=xxx      — delete a transcription record (returns storagePath for client-side B2 cleanup)
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -39,6 +40,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (req.method === 'POST' && req.body?.action === 'extract-text') {
+      const id = typeof req.body?.id === 'string' ? req.body.id : '';
+      if (!id) {
+        jsonError(res, 'id obrigatório', { status: 400 });
+        return;
+      }
+      const { extractTranscricaoText } = await import('./_lib/extract-transcricao.js');
+      const result = await extractTranscricaoText(id);
+      if ('error' in result) {
+        jsonError(res, result.error, { status: result.status });
+        return;
+      }
+      jsonSuccess(res, { texto: result.texto });
+      return;
+    }
+
     if (req.method === 'POST') {
       const {
         semanaId,
@@ -50,12 +67,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileSize,
         storagePath,
         descricao,
+        texto,
+        tipo,
       } = req.body ?? {};
 
-      if (!semanaId || !farmId || !organizationId || !fileName || !originalName || !fileType || !storagePath) {
-        jsonError(res, 'Campos obrigatórios: semanaId, farmId, organizationId, fileName, originalName, fileType, storagePath', {
-          status: 400,
-        });
+      const isAudio = tipo === 'audio';
+
+      if (!semanaId || !farmId || !organizationId) {
+        jsonError(res, 'Campos obrigatórios: semanaId, farmId, organizationId', { status: 400 });
+        return;
+      }
+
+      if (!isAudio && (!fileName || !originalName || !fileType || !storagePath)) {
+        jsonError(res, 'Campos obrigatórios para upload manual: fileName, originalName, fileType, storagePath', { status: 400 });
         return;
       }
 
@@ -64,12 +88,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         farmId,
         organizationId,
         uploadedBy: userId,
-        fileName,
-        originalName,
-        fileType,
+        fileName: fileName || 'transcricao-audio.txt',
+        originalName: originalName || 'Transcrição de áudio',
+        fileType: fileType || 'audio/transcription',
         fileSize: fileSize ?? 0,
-        storagePath,
+        storagePath: storagePath || '',
         descricao: descricao ?? null,
+        texto: texto ?? null,
+        tipo: tipo ?? 'manual',
       });
       jsonSuccess(res, row);
       return;

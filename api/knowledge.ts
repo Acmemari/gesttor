@@ -24,6 +24,10 @@ import { embedSingleWithUsage } from './_lib/knowledge/embed.js';
 import { semanticSearch } from './_lib/knowledge/search.js';
 import { completeWithFallback } from './_lib/ai/providers/index.js';
 import { routeToCollection } from './_lib/knowledge/router.js';
+import { RAG_CONFIG } from './_lib/knowledge/config.js';
+import { rerankChunks } from './_lib/knowledge/rerank.js';
+import { expandNeighborChunks, dedupeChunks, sortChunksForContext, buildContext } from './_lib/knowledge/context.js';
+import type { RetrievedChunk } from './_lib/knowledge/types.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,7 +51,8 @@ async function isAdmin(userId: string): Promise<boolean> {
 const ANTONIO_SYSTEM_PROMPT = `Você é o Antonio, consultor especialista em gestão agropecuária do Gesttor.
 Responda com base EXCLUSIVAMENTE no contexto fornecido abaixo.
 Seja direto, pragmático e focado em resultados (R$/ha).
-Use frases curtas. Cite as fontes usando [1], [2], etc. referentes ao contexto.
+Use frases curtas.
+Cite as fontes referenciando o livro, capítulo e página quando disponíveis no cabeçalho de cada trecho.
 Se não tiver informação suficiente no contexto, diga: "Não encontrei essa informação na base de conhecimento."
 Vocabulário: nunca use "chão" — use "Solo" ou "Terra".`;
 
@@ -272,7 +277,7 @@ function buildUserPrompt(
 }
 
 async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string) {
-  const { question, topK, history } = req.body ?? {};
+  const { question, history } = req.body ?? {};
   const conversationHistory: HistoryEntry[] = Array.isArray(history)
     ? (history as HistoryEntry[]).slice(-6)
     : [];
@@ -280,7 +285,6 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
     return fail(res, 'Campo obrigatório: question');
   }
 
-  const k = Math.min(parseInt(String(topK ?? '6'), 10), 12);
   const startMs = Date.now();
 
   // 1. Buscar coleções ativas e rotear a pergunta para a mais relevante
@@ -295,10 +299,37 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
   // 2. Embed da pergunta (inputType='query' — otimizado para busca semântica)
   const { embedding: queryEmbedding, tokens: queryEmbeddingTokens } = await embedSingleWithUsage(question.trim(), 'query');
 
-  // 3. Busca semântica filtrada pela coleção roteada (null = busca em todas)
-  const chunks = await semanticSearch(queryEmbedding, k, 0.65, collectionId);
+  // 3. Busca vetorial ampliada — mais candidatos para o reranker
+  const t0 = Date.now();
+  let searchResults = await semanticSearch(
+    queryEmbedding,
+    RAG_CONFIG.INITIAL_RETRIEVAL_LIMIT,
+    RAG_CONFIG.MIN_VECTOR_SCORE,
+    collectionId,
+  );
 
-  if (chunks.length === 0) {
+  // Fallback: se 0 resultados, tenta sem filtro de coleção e com score mais baixo
+  if (searchResults.length === 0 && collectionId) {
+    console.log('[RAG fallback] 0 resultados na coleção roteada — buscando em todas as coleções');
+    searchResults = await semanticSearch(
+      queryEmbedding,
+      RAG_CONFIG.INITIAL_RETRIEVAL_LIMIT,
+      RAG_CONFIG.MIN_VECTOR_SCORE,
+      null,
+    );
+  }
+  if (searchResults.length === 0) {
+    console.log('[RAG fallback] 0 resultados com score 0.55 — tentando com score mínimo 0.35');
+    searchResults = await semanticSearch(
+      queryEmbedding,
+      RAG_CONFIG.INITIAL_RETRIEVAL_LIMIT,
+      0.35,
+      null,
+    );
+  }
+  const vectorMs = Date.now() - t0;
+
+  if (searchResults.length === 0) {
     return ok(res, {
       answer: 'Não encontrei informações relevantes na base de conhecimento para responder sua pergunta.',
       sources: [],
@@ -307,12 +338,45 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
     });
   }
 
-  // 3. Montar contexto com numeração de fontes
-  const context = chunks
-    .map((c, i) => `[${i + 1}] Fonte: ${c.documentTitle}\n${c.content}`)
-    .join('\n\n---\n\n');
+  // 4. Converter SearchResult[] → RetrievedChunk[]
+  const retrieved: RetrievedChunk[] = searchResults.map(c => ({
+    id: c.chunkId,
+    content: c.content,
+    documentId: c.documentId,
+    documentTitle: c.documentTitle,
+    chunkIndex: c.chunkIndex,
+    vectorScore: c.score,
+    metadata: c.metadata,
+  }));
 
-  // 4. Gerar resposta com Claude (fallback automático para outros providers)
+  // 5. Reranking com Voyage (fallback automático para busca vetorial)
+  const t1 = Date.now();
+  const reranked = await rerankChunks(question.trim(), retrieved, RAG_CONFIG.RERANK_TOP_K);
+  const rerankMs = Date.now() - t1;
+
+  // 6. Expansão de vizinhos (chunk_index ± 1)
+  const t2 = Date.now();
+  const expanded = RAG_CONFIG.EXPAND_NEIGHBORS
+    ? await expandNeighborChunks(reranked, collectionId)
+    : reranked;
+  const expansionMs = Date.now() - t2;
+
+  // 7. Dedupe → ordenação → contexto final
+  const deduped = dedupeChunks(expanded);
+  const sorted = sortChunksForContext(deduped);
+  const context = buildContext(sorted);
+
+  console.log('[RAG pipeline]', {
+    query: question.trim().slice(0, 80),
+    initialChunks: searchResults.length,
+    rerankedChunks: reranked.length,
+    expandedChunks: expanded.length,
+    finalChunks: sorted.length,
+    timings: { vectorMs, rerankMs, expansionMs, totalPipelineMs: Date.now() - t0 },
+    topChunkIds: sorted.slice(0, 5).map(c => c.id),
+  });
+
+  // 8. Gerar resposta com Claude (fallback automático para outros providers)
   const aiResponse = await completeWithFallback({
     preferredProvider: 'anthropic',
     model: 'claude-sonnet-4-6',
@@ -326,7 +390,7 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
 
   const latencyMs = Date.now() - startMs;
 
-  // 5. Registrar no log (collectionId salvo em chunks_retrieved para rastreabilidade)
+  // 9. Registrar no log com métricas do pipeline
   const { rows: logRows } = await pool.query(
     `INSERT INTO knowledge_retrieval_logs
        (question, chunks_retrieved, answer, model, tokens_used, latency_ms, user_id)
@@ -337,7 +401,19 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
       JSON.stringify({
         collectionId,
         collectionName,
-        chunks: chunks.map(c => ({ chunkId: c.chunkId, score: c.score, documentTitle: c.documentTitle })),
+        pipeline: {
+          initialCount: searchResults.length,
+          rerankedCount: reranked.length,
+          finalCount: sorted.length,
+          timings: { vectorMs, rerankMs, expansionMs, totalMs: latencyMs },
+        },
+        chunks: sorted.map(c => ({
+          chunkId: c.id,
+          vectorScore: c.vectorScore,
+          rerankScore: c.rerankScore,
+          documentTitle: c.documentTitle,
+          chunkIndex: c.chunkIndex,
+        })),
       }),
       aiResponse.content,
       aiResponse.model,
@@ -349,7 +425,7 @@ async function handleAsk(req: VercelRequest, res: VercelResponse, userId: string
 
   return ok(res, {
     answer: aiResponse.content,
-    sources: [...new Set(chunks.map(c => c.documentTitle))],
+    sources: [...new Set(sorted.map(c => c.documentTitle))],
     logId: logRows[0]?.id ?? null,
     latencyMs,
     tokensUsed: aiResponse.usage?.totalTokens ?? null,

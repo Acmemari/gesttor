@@ -4,6 +4,14 @@ import { semanas, atividades, historicoSemanas, semanaParticipantes, people } fr
 
 // ── Semanas ────────────────────────────────────────────────────────────────────
 
+export async function listSemanasByFarm(farmId: string) {
+  return db
+    .select()
+    .from(semanas)
+    .where(eq(semanas.farmId, farmId))
+    .orderBy(desc(semanas.dataInicio));
+}
+
 /**
  * Busca semana por data de início (ignora modo), mesclando duplicatas civil/safra.
  * Quando existem dois registros para a mesma data (um 'ano' e um 'safra'),

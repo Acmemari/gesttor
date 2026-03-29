@@ -17,6 +17,8 @@ export async function listTranscricoesByFarm(farmId: string) {
       fileSize: semanaTranscricoes.fileSize,
       storagePath: semanaTranscricoes.storagePath,
       descricao: semanaTranscricoes.descricao,
+      texto: semanaTranscricoes.texto,
+      tipo: semanaTranscricoes.tipo,
       createdAt: semanaTranscricoes.createdAt,
     })
     .from(semanaTranscricoes)
@@ -45,6 +47,8 @@ export async function createTranscricao(data: {
   fileSize: number;
   storagePath: string;
   descricao?: string | null;
+  texto?: string | null;
+  tipo?: string;
 }) {
   const [row] = await db
     .insert(semanaTranscricoes)
@@ -59,6 +63,8 @@ export async function createTranscricao(data: {
       fileSize: data.fileSize,
       storagePath: data.storagePath,
       descricao: data.descricao ?? null,
+      texto: data.texto ?? null,
+      tipo: data.tipo ?? 'manual',
     })
     .returning();
   return row;

@@ -18,7 +18,7 @@ import AnalystHeader from './components/AnalystHeader';
 import VisitorContentGuard from './components/VisitorContentGuard';
 import Breadcrumb, { BreadcrumbItem } from './components/shared/Breadcrumb';
 import { Agent } from './types';
-import { Menu, Construction, Loader2, ArrowLeft, Plus, CalendarDays, History, BarChart3, FileText } from 'lucide-react';
+import { Menu, Construction, Loader2, ArrowLeft, Plus, CalendarDays, History, BarChart3, FileText, PenLine } from 'lucide-react';
 import { ToastContainer, Toast } from './components/Toast';
 // Lazy load agents for code splitting
 const CattleProfitCalculator = lazy(() => import('./agents/CattleProfitCalculator'));
@@ -55,6 +55,7 @@ const AreaCertificadosDesktop = lazy(() => import('./agents/AreaCertificadosDesk
 const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'));
 const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
 const TranscreverReuniao = lazy(() => import('./agents/TranscreverReuniao'));
+const AgentUsageDashboard = lazy(() => import('./agents/AgentUsageDashboard'));
 
 const LoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full">
@@ -77,7 +78,7 @@ const AppContent: React.FC = () => {
     'desktop',
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes'>('rotina');
+  const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas'>('rotina');
   const [calculatorInputs, setCalculatorInputs] = useState<any>(null);
   const [comparatorScenarios, setComparatorScenarios] = useState<any>(null);
   const [editingQuestionnaire, setEditingQuestionnaire] = useState<any>(null);
@@ -342,6 +343,14 @@ const AppContent: React.FC = () => {
           status: 'active',
         });
         orderedList.push(aiAgentConfig);
+        orderedList.push({
+          id: 'agent-usage',
+          name: 'Uso da IA',
+          description: 'Monitoramento de consumo de tokens e custos',
+          icon: 'activity',
+          category: 'admin' as const,
+          status: 'active' as const,
+        });
         orderedList.push(adminDashboard);
         orderedList.push(supportTickets);
       }
@@ -840,6 +849,14 @@ const AppContent: React.FC = () => {
         ) : (
           <div>Acesso negado.</div>
         );
+      case 'agent-usage':
+        return user.role === 'admin' ? (
+          <Suspense fallback={<LoadingFallback />}>
+            <AgentUsageDashboard />
+          </Suspense>
+        ) : (
+          <div className="p-8 text-ai-subtext">Acesso restrito a administradores.</div>
+        );
       case 'analyst-management':
         if (user.qualification === 'visitante') {
           return <VisitorContentGuard isVisitor isAllowed={false} featureName="Gerenciamento de Analistas"><div className="p-8 bg-ai-surface min-h-[200px]" /></VisitorContentGuard>;
@@ -1167,6 +1184,7 @@ const AppContent: React.FC = () => {
                   { view: 'historico' as const,  label: 'Histórico',      icon: <History size={15} /> },
                   { view: 'desempenho' as const, label: 'Desempenho',     icon: <BarChart3 size={15} /> },
                   { view: 'transcricoes' as const, label: 'Transcrições',  icon: <FileText size={15} /> },
+                  { view: 'atas' as const,          label: 'Atas',           icon: <PenLine size={15} /> },
                 ]).map(item => (
                   <button
                     key={item.view}

@@ -364,10 +364,31 @@ export const semanaTranscricoes = pgTable('semana_transcricoes', {
   fileSize: integer('file_size').notNull(),
   storagePath: text('storage_path').notNull(),
   descricao: text('descricao'),
+  texto: text('texto'),
+  tipo: text('tipo').notNull().default('manual'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_semana_transcricoes_semana_id').on(t.semanaId),
   index('idx_semana_transcricoes_farm_id').on(t.farmId),
+]);
+
+// ── Meeting Minutes (Atas) ───────────────────────────────────────────────────
+
+export const atas = pgTable('atas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  semanaFechadaId: uuid('semana_fechada_id').references(() => semanas.id, { onDelete: 'set null' }),
+  semanaAbertaId: uuid('semana_aberta_id').references(() => semanas.id, { onDelete: 'set null' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').references(() => baUser.id, { onDelete: 'set null' }),
+  dataReuniao: date('data_reuniao').notNull(),
+  conteudo: jsonb('conteudo').notNull(),
+  versao: integer('versao').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_atas_farm_id').on(t.farmId),
+  index('idx_atas_semana_fechada').on(t.semanaFechadaId),
 ]);
 
 // ── Projects / Deliveries hierarchy ───────────────────────────────────────────

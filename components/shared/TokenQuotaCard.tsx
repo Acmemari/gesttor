@@ -20,8 +20,8 @@ function ProgressBar({ pct, warn }: { pct: number; warn: boolean }) {
   );
 }
 
-export function TokenQuotaCard() {
-  const { data, loading, error } = useTokenUsage();
+export function TokenQuotaCard({ plan }: { plan?: 'essencial' | 'gestor' | 'pro' }) {
+  const { data, loading, error } = useTokenUsage(plan ?? 'essencial');
 
   if (loading) {
     return <div className="rounded-2xl border border-ai-border p-4 animate-pulse h-36" />;

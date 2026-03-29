@@ -10,6 +10,7 @@ export interface SearchResult {
   documentId: string;
   documentTitle: string;
   content: string;
+  chunkIndex: number;
   score: number;
   metadata: Record<string, unknown>;
 }
@@ -42,6 +43,7 @@ export async function semanticSearch(
         kc.document_id,
         kd.title         AS document_title,
         kc.content,
+        kc.chunk_index,
         kc.metadata,
         1 - (kc.embedding <=> $1::vector) AS score
       FROM knowledge_chunks kc
@@ -60,6 +62,7 @@ export async function semanticSearch(
     documentId: r.document_id as string,
     documentTitle: r.document_title as string,
     content: r.content as string,
+    chunkIndex: parseInt(String(r.chunk_index ?? '0'), 10),
     score: parseFloat(String(r.score)),
     metadata: (r.metadata as Record<string, unknown>) ?? {},
   }));
