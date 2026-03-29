@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DesempenhoView from './DesempenhoView';
 import TranscricoesView from './TranscricoesView';
+import TranscreverReuniao from './TranscreverReuniao';
+import AtasView from './AtasView';
 import DateInputBR from '../components/DateInputBR';
+import { Clock, User, Search, MoreVertical } from 'lucide-react';
 import * as semanasApi from '../lib/api/semanasClient';
-import { listSemanaParticipantes, saveParticipantes, type SemanaParticipanteRow, type ParticipantePayload } from '../lib/api/semanasClient';
+import { listSemanaParticipantes, saveParticipantes, listSemanasByFarm, type SemanaParticipanteRow, type ParticipantePayload, type SemanaRow } from '../lib/api/semanasClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useFarm } from '../contexts/FarmContext';
 import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
@@ -123,6 +126,12 @@ const FILTER_ST: React.CSSProperties = {
   width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid #E2E8F0',
   fontSize: 11, color: '#475569', outline: 'none', fontFamily: FONT, background: '#FFF',
 };
+const FILTER_BAR_ST: React.CSSProperties = {
+  padding: '8px 12px', borderRadius: 8, border: '1px solid #E2E8F0',
+  fontSize: 13, color: '#475569', outline: 'none', fontFamily: FONT, background: '#FFF',
+  height: 38,
+};
+const GRID_COLS = '1fr 180px 130px 110px 40px';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -249,8 +258,8 @@ const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTe
 
 interface GestaoSemanalProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-  activeView?: 'rotina' | 'historico' | 'desempenho' | 'transcricoes';
-  onViewChange?: (view: 'rotina' | 'historico' | 'desempenho' | 'transcricoes') => void;
+  activeView?: 'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas';
+  onViewChange?: (view: 'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas') => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -263,10 +272,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [historico, setHistorico] = useState<HistoricoSemana[]>([]);
-  const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes'>('rotina');
+  const [activeViewLocal, setActiveViewLocal] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas'>('rotina');
   const [histWeekOpened, setHistWeekOpened] = useState(false);
   const activeView = activeViewProp ?? activeViewLocal;
-  const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'transcricoes') => {
+  const setActiveView = (v: 'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas') => {
     setActiveViewLocal(v);
     onViewChange?.(v);
   };
@@ -298,6 +307,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
   const [subtaskForm, setSubtaskForm] = useState({ titulo: '', pessoaId: '', dataTermino: '' });
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // ── Source tab ─────────────────────────────────────────────────────────────
   const [sourceTab, setSourceTab] = useState<'semana' | 'projetos'>('semana');
@@ -317,9 +327,19 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [transcricaoUploading, setTranscricaoUploading] = useState(false);
   const [transcricaoError, setTranscricaoError] = useState<string | null>(null);
   const [transcricoesRefreshKey, setTranscricoesRefreshKey] = useState(0);
+  const [transcricaoSemanaId, setTranscricaoSemanaId] = useState<string>('');
+  const [allSemanas, setAllSemanas] = useState<SemanaRow[]>([]);
   const [todasPessoas, setTodasPessoas] = useState<TodasPessoa[]>([]);
   const [participantesMap, setParticipantesMap] = useState<Map<string, { presenca: boolean; modalidade: 'online' | 'presencial' }>>(new Map());
   const [savingParticipantes, setSavingParticipantes] = useState(false);
+
+  // Close three-dot menu on outside click
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handler = () => setOpenMenuId(null);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openMenuId]);
 
   // canEditClosedWeek, canDeleteWeek e canFecharSemana: admin/analista ou pessoa com flag + email igual
   useEffect(() => {
@@ -465,6 +485,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   }, [modo, selectedFarm?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch all semanas for transcription week selector
+  useEffect(() => {
+    if (!selectedFarm?.id) { setAllSemanas([]); return; }
+    listSemanasByFarm(selectedFarm.id)
+      .then(rows => {
+        setAllSemanas(rows);
+        const open = rows.find(s => s.aberta);
+        setTranscricaoSemanaId(open?.id ?? rows[0]?.id ?? '');
+      })
+      .catch(() => setAllSemanas([]));
+  }, [selectedFarm?.id]);
 
   const fetchProjectTasks = useCallback(async (weekStart: string, weekEnd: string) => {
     setLoadingProjectTasks(true);
@@ -848,18 +880,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
 
   // ── Upload de transcrição ─────────────────────────────────────────────────────
   const handleTranscricaoUpload = useCallback(async () => {
-    if (!transcricaoFile || !semana || !selectedFarm) return;
+    if (!transcricaoFile || !transcricaoSemanaId || !selectedFarm) return;
     setTranscricaoUploading(true);
     setTranscricaoError(null);
     try {
       const ext = transcricaoFile.name.split('.').pop()?.toLowerCase() ?? 'bin';
       const uid = crypto.randomUUID();
-      const storagePath = `${selectedFarm.id}/${semana.id}/${uid}.${ext}`;
+      const storagePath = `${selectedFarm.id}/${transcricaoSemanaId}/${uid}.${ext}`;
       await storageUpload('meeting-transcriptions', storagePath, transcricaoFile, {
         contentType: transcricaoFile.type || `application/${ext}`,
       });
       await createTranscricao({
-        semanaId: semana.id,
+        semanaId: transcricaoSemanaId,
         farmId: selectedFarm.id,
         organizationId: selectedFarm.organizationId,
         fileName: `${uid}.${ext}`,
@@ -868,6 +900,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         fileSize: transcricaoFile.size,
         storagePath,
         descricao: transcricaoDesc.trim() || null,
+        tipo: 'manual',
       });
       setShowTranscricaoModal(false);
       setTranscricaoFile(null);
@@ -879,7 +912,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     } finally {
       setTranscricaoUploading(false);
     }
-  }, [transcricaoFile, transcricaoDesc, semana, selectedFarm, onToast]);
+  }, [transcricaoFile, transcricaoDesc, transcricaoSemanaId, selectedFarm, onToast]);
 
   // Ao voltar para 'rotina' a partir do histórico com uma semana histórica aberta, recarrega a semana atual
   const prevActiveViewRef = useRef(activeView);
@@ -1201,7 +1234,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
 
-          {/* Left side */}
+          {/* Left side — hidden on transcricoes/atas view */}
+          {activeView !== 'transcricoes' && activeView !== 'atas' && (
           <div>
             {/* Ano / Safra toggle */}
             <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: 8, padding: 2, gap: 2, marginBottom: 6 }}>
@@ -1266,11 +1300,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               )}
             </p>
           </div>
+          )}
 
           {/* Right side: action buttons */}
-          <div style={{ display: (activeView === 'desempenho' || (activeView === 'historico' && !histWeekOpened)) ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ display: (activeView === 'transcricoes' || activeView === 'atas' || activeView === 'desempenho' || (activeView === 'historico' && !histWeekOpened)) ? 'none' : 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* Drawer source button */}
-            {activeView !== 'transcricoes' && (
+            {activeView !== 'transcricoes' && activeView !== 'atas' && (
             <button
               onClick={() => setIsDrawerOpen(true)}
               style={{
@@ -1286,7 +1321,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               <span style={{ fontSize: 10, color: '#94A3B8' }}>▼</span>
             </button>
             )}
-            {activeView !== 'transcricoes' && (
+            {activeView !== 'transcricoes' && activeView !== 'atas' && (
             <button
               onClick={() => setShowParticipantes(v => !v)}
               style={{
@@ -1303,9 +1338,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               <span>Participantes</span>
             </button>
             )}
-            {semana && (
+            {activeView !== 'transcricoes' && activeView !== 'atas' && semana && (
               <button
-                onClick={() => setShowTranscricaoModal(true)}
+                onClick={() => { setTranscricaoSemanaId(semana.id); setShowTranscricaoModal(true); }}
                 style={{
                   padding: '8px 14px', borderRadius: 8,
                   border: '1px solid #E2E8F0',
@@ -1319,7 +1354,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 <span>Transcrição</span>
               </button>
             )}
-            {activeView !== 'transcricoes' && semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
+            {activeView !== 'transcricoes' && activeView !== 'atas' && semana && ultimaSemanaId && semana.id !== ultimaSemanaId && (
               <button
                 onClick={handleVoltarSemanaAtual}
                 style={{
@@ -1331,7 +1366,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 Voltar para semana atual
               </button>
             )}
-            {activeView !== 'transcricoes' && (<>
+            {activeView !== 'transcricoes' && activeView !== 'atas' && (<>
             <button onClick={handleFecharSemana} disabled={operating || !isAberta || !canFecharSemana} style={actionBtnStFechar}>
               Fechar Semana
             </button>
@@ -1436,11 +1471,69 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
 
         {/* ── TRANSCRIÇÕES ──────────────────────────────────────────────────── */}
         {activeView === 'transcricoes' && (
-          <TranscricoesView
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Header */}
+            <div>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 4px', fontFamily: FONT }}>
+                Transcrições
+              </h2>
+              <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>
+                Transcreva áudios de reunião ou envie documentos
+              </p>
+            </div>
+
+            {/* Bloco superior: Transcrição de áudio */}
+            {selectedFarm && (
+              <TranscreverReuniao
+                farmId={selectedFarm.id}
+                organizationId={selectedFarm.organizationId}
+                semanas={allSemanas.map(s => ({
+                  id: s.id,
+                  numero: s.numero,
+                  data_inicio: s.data_inicio,
+                  data_fim: s.data_fim,
+                  modo: s.modo,
+                  aberta: s.aberta,
+                }))}
+                onSaved={() => setTranscricoesRefreshKey(k => k + 1)}
+                onToast={onToast}
+              />
+            )}
+
+            {/* Botão de upload manual */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setTranscricaoSemanaId(semana?.id ?? allSemanas.find(s => s.aberta)?.id ?? allSemanas[0]?.id ?? '');
+                  setShowTranscricaoModal(true);
+                }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
+                  background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
+                  cursor: 'pointer', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span>📄</span>
+                Enviar Documento
+              </button>
+            </div>
+
+            {/* Bloco inferior: Lista de transcrições */}
+            <TranscricoesView
+              farmId={selectedFarm?.id ?? null}
+              semana={semana}
+              organizationId={selectedFarm?.organizationId ?? null}
+              refreshKey={transcricoesRefreshKey}
+              onToast={onToast}
+            />
+          </div>
+        )}
+
+        {/* ── ATAS ──────────────────────────────────────────────────────────── */}
+        {activeView === 'atas' && (
+          <AtasView
             farmId={selectedFarm?.id ?? null}
-            semana={semana}
             organizationId={selectedFarm?.organizationId ?? null}
-            refreshKey={transcricoesRefreshKey}
             onToast={onToast}
           />
         )}
@@ -1487,9 +1580,38 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           </div>
         </div>
 
-        {/* ── 5. NOVA TAREFA BUTTON ───────────────────────────────────────── */}
-        {sourceTab === 'semana' && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {/* ── 5. FILTER BAR + NOVA TAREFA ───────────────────────────────── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
+          background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
+          padding: '10px 16px', flexWrap: 'wrap',
+        }}>
+          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
+            <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input
+              type="text" placeholder="Filtrar título..." value={filters.titulo} list="titulo-tags-list"
+              onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))}
+              style={{ ...FILTER_BAR_ST, width: '100%', paddingLeft: 32 }}
+            />
+            <datalist id="titulo-tags-list">
+              {uniqueTags.map(tag => <option key={tag} value={tag} />)}
+            </datalist>
+          </div>
+          <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={{ ...FILTER_BAR_ST, flex: '0 0 180px' }}>
+            <option value="">Responsável: Todos</option>
+            {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+          <div style={{ flex: '0 0 150px' }}>
+            <DateInputBR value={filters.dataTermino} onChange={v => setFilters(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" weekStart={semana?.data_inicio ?? undefined} weekEnd={semana?.data_fim ?? undefined} />
+          </div>
+          <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={{ ...FILTER_BAR_ST, flex: '0 0 150px' }}>
+            <option value="">Status: Todos</option>
+            {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {hasActiveFilters && (
+            <button onClick={clearFilters} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+          )}
+          {sourceTab === 'semana' && (
             <button
               onClick={() => {
                 if (!canEditInWeek) return;
@@ -1499,60 +1621,41 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               }}
               disabled={!canEditInWeek}
               style={{
-                padding: '8px 16px', borderRadius: 8, border: 'none',
+                padding: '9px 20px', borderRadius: 20, border: 'none',
                 background: canEditInWeek ? '#3B82F6' : '#E2E8F0',
                 color: canEditInWeek ? '#FFF' : '#94A3B8',
-                fontSize: 13, fontWeight: 600,
+                fontSize: 14, fontWeight: 600,
                 cursor: canEditInWeek ? 'pointer' : 'not-allowed',
-                fontFamily: FONT,
+                fontFamily: FONT, whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
               + Nova Tarefa
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* ── 6. LISTA ─────────────────────────────────────────────── */}
-        <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', marginBottom: 8 }}>
+        <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0', marginBottom: 8 }}>
 
-          {/* Sort + Filter header */}
-          <div style={{ padding: '8px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={() => handleSort('titulo')} style={{ ...sortBtnStyle('titulo'), flex: '1 1 160px' }}>
-                TÍTULO {getSortIcon('titulo')}
-              </button>
-              <button onClick={() => handleSort('pessoa')} style={{ ...sortBtnStyle('pessoa'), flex: '0 0 130px' }}>
-                RESPONSÁVEL {getSortIcon('pessoa')}
-              </button>
-              <button onClick={() => handleSort('dataTermino')} style={{ ...sortBtnStyle('dataTermino'), flex: '0 0 90px' }}>
-                TÉRMINO {getSortIcon('dataTermino')}
-              </button>
-              <button onClick={() => handleSort('status')} style={{ ...sortBtnStyle('status'), flex: '0 0 110px' }}>
-                STATUS {getSortIcon('status')}
-              </button>
-              <div style={{ flex: '0 0 28px' }} />
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-              <input type="text" placeholder="Filtrar título..." value={filters.titulo} list="titulo-tags-list"
-                onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))} style={{ ...FILTER_ST, flex: '1 1 160px' }} />
-              <datalist id="titulo-tags-list">
-                {uniqueTags.map(tag => <option key={tag} value={tag} />)}
-              </datalist>
-              <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 130px' }}>
-                <option value="">Todos</option>
-                {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select>
-              <div style={{ flex: '0 0 90px' }}>
-                <DateInputBR value={filters.dataTermino} onChange={v => setFilters(p => ({ ...p, dataTermino: v }))} placeholder="dd/mm/aaaa" className="w-full" weekStart={semana?.data_inicio ?? undefined} weekEnd={semana?.data_fim ?? undefined} />
-              </div>
-              <select value={filters.status} onChange={e => setFilters(p => ({ ...p, status: e.target.value }))} style={{ ...FILTER_ST, flex: '0 0 110px' }}>
-                <option value="">Todos</option>
-                {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              {hasActiveFilters ? (
-                <button onClick={clearFilters} style={{ flex: '0 0 28px', width: 22, height: 22, borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-              ) : <div style={{ flex: '0 0 28px' }} />}
-            </div>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: GRID_COLS,
+            padding: '10px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+            alignItems: 'center', borderRadius: '12px 12px 0 0',
+          }}>
+            <button onClick={() => handleSort('titulo')} style={sortBtnStyle('titulo')}>
+              TÍTULO {getSortIcon('titulo')}
+            </button>
+            <button onClick={() => handleSort('pessoa')} style={sortBtnStyle('pessoa')}>
+              RESPONSÁVEL {getSortIcon('pessoa')}
+            </button>
+            <button onClick={() => handleSort('status')} style={sortBtnStyle('status')}>
+              STATUS {getSortIcon('status')}
+            </button>
+            <button onClick={() => handleSort('dataTermino')} style={sortBtnStyle('dataTermino')}>
+              PRAZO {getSortIcon('dataTermino')}
+            </button>
+            <div />
           </div>
 
           {/* Data rows */}
@@ -1633,111 +1736,148 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 {/* ── Parent row ─────────────────────────────────── */}
                 <div
                   onMouseEnter={() => setHoveredRow(at.id)}
-                  onMouseLeave={() => setHoveredRow(null)}
+                  onMouseLeave={() => { setHoveredRow(null); }}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                    display: 'grid', gridTemplateColumns: GRID_COLS,
+                    padding: '10px 14px', alignItems: 'center',
                     background: isEditing ? '#F5F3FF' : isHovered ? '#F8FAFC' : '#FFF',
                     transition: 'background 0.15s',
                     borderLeft: isEditing ? '3px solid #6366F1' : '3px solid transparent',
                   }}
                 >
-                  {/* Circular checkbox */}
-                  <div
-                    onClick={e => { e.stopPropagation(); handleCheckboxChange(at.id, !isConcluida); }}
-                    style={{
-                      flexShrink: 0, alignSelf: 'flex-start', marginTop: 2,
-                      width: 18, height: 18, borderRadius: 9,
-                      border: isConcluida ? 'none' : '2px solid #CBD5E1',
-                      background: isConcluida ? '#059669' : 'transparent',
-                      cursor: canEditInWeek ? 'pointer' : 'default',
-                      opacity: canEditInWeek || isConcluida ? 1 : 0.4,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    {isConcluida && <span style={{ color: '#FFF', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
-                  </div>
-
-                  {/* Title + secondary info */}
-                  <div
-                    onClick={() => handleEditStart(at)}
-                    style={{ flex: 1, minWidth: 0, cursor: canEditInWeek ? 'pointer' : 'default' }}
-                  >
-                    {/* Row 1: title + badge */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        fontSize: 14, fontWeight: 600, color: isConcluida ? '#94A3B8' : '#1E293B',
-                        textDecoration: isConcluida ? 'line-through' : 'none',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {at.titulo}
-                      </span>
-                      {subs.length > 0 && (
-                        <span style={{ fontSize: 11, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', flexShrink: 0, fontFamily: mono }}>
-                          {subsDone}/{subs.length}
-                        </span>
-                      )}
+                  {/* TÍTULO column: checkbox + title + date */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
+                    <div
+                      onClick={e => { e.stopPropagation(); handleCheckboxChange(at.id, !isConcluida); }}
+                      style={{
+                        flexShrink: 0, marginTop: 2,
+                        width: 18, height: 18, borderRadius: 9,
+                        border: isConcluida ? 'none' : '2px solid #CBD5E1',
+                        background: isConcluida ? '#059669' : 'transparent',
+                        cursor: canEditInWeek ? 'pointer' : 'default',
+                        opacity: canEditInWeek || isConcluida ? 1 : 0.4,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      {isConcluida && <span style={{ color: '#FFF', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                     </div>
-                    {/* Row 2: date + person */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 3 }}>
+                    <div
+                      onClick={() => handleEditStart(at)}
+                      style={{ flex: 1, minWidth: 0, cursor: canEditInWeek ? 'pointer' : 'default' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          fontSize: 14, fontWeight: 600, color: isConcluida ? '#94A3B8' : '#1E293B',
+                          textDecoration: isConcluida ? 'line-through' : 'none',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {at.titulo}
+                        </span>
+                        {subs.length > 0 && (
+                          <span style={{ fontSize: 11, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px', flexShrink: 0, fontFamily: mono }}>
+                            {subsDone}/{subs.length}
+                          </span>
+                        )}
+                      </div>
                       {at.data_termino && (
-                        <span style={{ fontSize: 12, color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <span style={{ fontSize: 11 }}>⏰</span> {formatDatePtBr(at.data_termino)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                          <Clock size={12} color="#94A3B8" />
+                          <span style={{ fontSize: 12, color: '#94A3B8' }}>{formatDatePtBr(at.data_termino)}</span>
+                        </div>
                       )}
-                      <span style={{ fontSize: 12, color: '#64748B', display: 'flex', alignItems: 'center', gap: 3, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontSize: 11 }}>👤</span> {getPessoaNome(at.pessoa_id)}
-                      </span>
                     </div>
                   </div>
 
-                  {/* Status */}
+                  {/* RESPONSÁVEL column */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <User size={14} color="#94A3B8" style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPessoaNome(at.pessoa_id)}</span>
+                  </div>
+
+                  {/* STATUS column */}
                   <select
                     value={at.status}
                     onChange={e => { e.stopPropagation(); handleStatusChange(at.id, e.target.value); }}
                     onClick={e => e.stopPropagation()}
                     disabled={!canEditInWeek}
-                    style={{ fontSize: 11, fontWeight: 500, padding: '2px 4px', borderRadius: 4, color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, cursor: canEditInWeek ? 'pointer' : 'default', fontFamily: FONT, flexShrink: 0 }}
+                    style={{ fontSize: 11, fontWeight: 500, padding: '3px 6px', borderRadius: 6, color: stSt.text, background: stSt.bg, border: `1px solid ${stSt.border}`, cursor: canEditInWeek ? 'pointer' : 'default', fontFamily: FONT, width: '100%' }}
                   >
                     {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
 
-                  {/* Prazo badge */}
-                  {prazoStatus && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, flexShrink: 0, padding: '2px 7px',
-                      borderRadius: 4,
-                      color: prazoStatus === 'no_prazo' ? '#15803D' : '#DC2626',
-                      background: prazoStatus === 'no_prazo' ? '#DCFCE7' : '#FEE2E2',
-                    }}>
-                      {prazoStatus === 'no_prazo' ? 'No prazo' : 'Atrasada'}
-                    </span>
-                  )}
+                  {/* PRAZO column */}
+                  <div>
+                    {prazoStatus ? (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+                        textTransform: 'uppercase' as const,
+                        color: prazoStatus === 'no_prazo' ? '#15803D' : '#FFF',
+                        background: prazoStatus === 'no_prazo' ? '#DCFCE7' : '#EF4444',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {prazoStatus === 'no_prazo' ? 'NO PRAZO' : 'ATRASADA'}
+                      </span>
+                    ) : isConcluida && at.data_termino ? (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+                        textTransform: 'uppercase' as const,
+                        color: '#15803D', background: '#DCFCE7', whiteSpace: 'nowrap',
+                      }}>
+                        NO PRAZO
+                      </span>
+                    ) : null}
+                  </div>
 
-                  {/* Add subtask button */}
-                  <button
-                    onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); }}
-                    title={canEditInWeek ? 'Adicionar subtarefa' : undefined}
-                    disabled={!canEditInWeek}
-                    style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: canEditInWeek ? 'pointer' : 'default', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canEditInWeek && (isHovered || addingSubtaskFor === at.id) ? 1 : 0, transition: 'opacity 0.15s' }}
-                  >+</button>
-
-                  {/* Chevron */}
-                  {subs.length > 0 && (
+                  {/* Three-dot menu */}
+                  <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
                     <button
-                      onClick={e => { e.stopPropagation(); setExpandedTasks(prev => { const next = new Set(prev); if (next.has(at.id)) next.delete(at.id); else next.add(at.id); return next; }); }}
-                      style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                    >▼</button>
-                  )}
-
-                  {/* Delete */}
-                  <button
-                    onClick={e => { if (!canEditInWeek) return; e.stopPropagation(); handleRemoveAtividade(at.id); }}
-                    title={canEditInWeek ? (isDeleting ? 'Clique novamente para confirmar' : subs.length > 0 ? 'Excluir tarefa e subtarefas' : 'Excluir') : undefined}
-                    disabled={!canEditInWeek}
-                    style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: isDeleting ? '#FEE2E2' : 'transparent', color: isDeleting ? '#DC2626' : '#CBD5E1', cursor: canEditInWeek ? 'pointer' : 'default', fontSize: 12, opacity: canEditInWeek && (isHovered || isDeleting) ? 1 : 0, transition: 'opacity 0.15s, background 0.15s, color 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: isDeleting ? 700 : 400 }}
-                  >
-                    {isDeleting ? '?' : '✕'}
-                  </button>
+                      onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === at.id ? null : at.id); }}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6, border: 'none',
+                        background: openMenuId === at.id ? '#F1F5F9' : 'transparent',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        opacity: isHovered || openMenuId === at.id ? 1 : 0,
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      <MoreVertical size={16} color="#64748B" />
+                    </button>
+                    {openMenuId === at.id && (
+                      <div style={{
+                        position: 'absolute', right: 0, top: '100%', zIndex: 50,
+                        background: '#FFF', borderRadius: 8, border: '1px solid #E2E8F0',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 180, overflow: 'hidden',
+                      }}>
+                        {subs.length > 0 && (
+                          <button onClick={e => { e.stopPropagation(); setExpandedTasks(prev => { const next = new Set(prev); if (next.has(at.id)) next.delete(at.id); else next.add(at.id); return next; }); setOpenMenuId(null); }}
+                            style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: '#475569', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 6 }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            {isExpanded ? '▲ Recolher subtarefas' : '▼ Expandir subtarefas'}
+                          </button>
+                        )}
+                        {canEditInWeek && (
+                          <button onClick={e => { e.stopPropagation(); setAddingSubtaskFor(at.id); setExpandedTasks(prev => new Set(prev).add(at.id)); setSubtaskForm({ titulo: '', pessoaId: '', dataTermino: '' }); setOpenMenuId(null); }}
+                            style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: '#475569', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 6 }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            + Adicionar subtarefa
+                          </button>
+                        )}
+                        {canEditInWeek && (
+                          <button onClick={e => { e.stopPropagation(); handleRemoveAtividade(at.id); setOpenMenuId(null); }}
+                            style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: isDeleting ? '#DC2626' : '#EF4444', fontFamily: FONT, fontWeight: isDeleting ? 700 : 400, display: 'flex', alignItems: 'center', gap: 6 }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#FEF2F2')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            {isDeleting ? '⚠ Confirmar exclusão' : (subs.length > 0 ? '✕ Excluir tarefa e subtarefas' : '✕ Excluir')}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Subtasks ────────────────────────────────────── */}
@@ -1753,7 +1893,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                           key={sub.id}
                           onMouseEnter={() => setHoveredRow(sub.id)}
                           onMouseLeave={() => setHoveredRow(null)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderTop: idx === 0 ? 'none' : '1px solid #EEF2F7', background: subHovered ? '#EFF6FF' : 'transparent', transition: 'background 0.15s' }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderTop: idx === 0 ? 'none' : '1px solid #EEF2F7', background: subHovered ? '#EFF6FF' : 'transparent', transition: 'background 0.15s' }}
                         >
                           {/* Circular checkbox (smaller) */}
                           <div
@@ -1771,29 +1911,28 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                             {sub.titulo}
                           </div>
 
-                          {/* Date */}
-                          {sub.data_termino && (
-                            <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <span style={{ fontSize: 10 }}>⏰</span> {formatDatePtBr(sub.data_termino)}
+                          {/* Right-side group: date · person | prazo */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
+                            {sub.data_termino && (
+                              <span style={{ fontSize: 11, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <Clock size={11} color="#94A3B8" /> {formatDatePtBr(sub.data_termino)}
+                              </span>
+                            )}
+                            {sub.data_termino && <span style={{ color: '#CBD5E1', fontSize: 10 }}>•</span>}
+                            <span style={{ fontSize: 11, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 3, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <User size={11} color="#94A3B8" /> {getPessoaNome(sub.pessoa_id)}
                             </span>
-                          )}
-
-                          {/* Person */}
-                          <span style={{ fontSize: 11, color: '#94A3B8', flexShrink: 0, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <span style={{ fontSize: 10 }}>👤</span> {getPessoaNome(sub.pessoa_id)}
-                          </span>
-
-                          {/* Prazo badge (subtask) */}
-                          {subPrazo && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 600, flexShrink: 0, padding: '1px 5px',
-                              borderRadius: 3,
-                              color: subPrazo === 'no_prazo' ? '#15803D' : '#DC2626',
-                              background: subPrazo === 'no_prazo' ? '#DCFCE7' : '#FEE2E2',
-                            }}>
-                              {subPrazo === 'no_prazo' ? 'No prazo' : 'Atrasada'}
-                            </span>
-                          )}
+                            {(subPrazo || subConcluida) && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, flexShrink: 0, padding: '1px 6px',
+                                borderRadius: 4, textTransform: 'uppercase' as const,
+                                color: (!subPrazo && subConcluida) ? '#15803D' : subPrazo === 'no_prazo' ? '#15803D' : '#FFF',
+                                background: (!subPrazo && subConcluida) ? '#DCFCE7' : subPrazo === 'no_prazo' ? '#DCFCE7' : '#EF4444',
+                              }}>
+                                {(!subPrazo && subConcluida) ? 'NO PRAZO' : subPrazo === 'no_prazo' ? 'NO PRAZO' : 'ATRASADA'}
+                              </span>
+                            )}
+                          </div>
 
                           {/* Delete */}
                           <button
@@ -2411,9 +2550,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
             {/* Modal header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
               <div>
-                <p style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', margin: 0 }}>Enviar Transcrição</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', margin: 0 }}>Enviar Documento</p>
                 <p style={{ fontSize: 12, color: '#94A3B8', margin: '3px 0 0' }}>
-                  {semana ? `Semana ${calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo).toString().padStart(2, '0')}` : ''}
+                  Upload manual de transcrição ou ata de reunião
                 </p>
               </div>
               <button
@@ -2427,6 +2566,27 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 }}
                 style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94A3B8', padding: 4, lineHeight: 1 }}
               >✕</button>
+            </div>
+
+            {/* Week selector */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                Reunião Semanal
+              </label>
+              <select
+                value={transcricaoSemanaId}
+                onChange={e => setTranscricaoSemanaId(e.target.value)}
+                disabled={transcricaoUploading}
+                style={{ ...INPUT_ST, cursor: 'pointer' }}
+              >
+                {allSemanas.length === 0 && <option value="">Nenhuma semana disponível</option>}
+                {allSemanas.map(s => (
+                  <option key={s.id} value={s.id}>
+                    Semana {String(s.numero).padStart(2, '0')} — {s.data_inicio} a {s.data_fim}
+                    {s.aberta ? ' (aberta)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* File picker */}
@@ -2505,13 +2665,13 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
               </button>
               <button
                 onClick={handleTranscricaoUpload}
-                disabled={!transcricaoFile || transcricaoUploading}
+                disabled={!transcricaoFile || !transcricaoSemanaId || transcricaoUploading}
                 style={{
                   padding: '8px 20px', borderRadius: 8, border: 'none',
-                  background: transcricaoFile && !transcricaoUploading ? '#3B82F6' : '#E2E8F0',
-                  color: transcricaoFile && !transcricaoUploading ? '#FFF' : '#94A3B8',
+                  background: transcricaoFile && transcricaoSemanaId && !transcricaoUploading ? '#3B82F6' : '#E2E8F0',
+                  color: transcricaoFile && transcricaoSemanaId && !transcricaoUploading ? '#FFF' : '#94A3B8',
                   fontSize: 13, fontWeight: 600,
-                  cursor: transcricaoFile && !transcricaoUploading ? 'pointer' : 'default',
+                  cursor: transcricaoFile && transcricaoSemanaId && !transcricaoUploading ? 'pointer' : 'default',
                   fontFamily: FONT,
                 }}
               >
