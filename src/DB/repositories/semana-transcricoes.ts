@@ -18,6 +18,8 @@ export async function listTranscricoesByFarm(farmId: string) {
       storagePath: semanaTranscricoes.storagePath,
       descricao: semanaTranscricoes.descricao,
       texto: semanaTranscricoes.texto,
+      processedResult: semanaTranscricoes.processedResult,
+      processedAt: semanaTranscricoes.processedAt,
       tipo: semanaTranscricoes.tipo,
       createdAt: semanaTranscricoes.createdAt,
     })
@@ -66,6 +68,15 @@ export async function createTranscricao(data: {
       texto: data.texto ?? null,
       tipo: data.tipo ?? 'manual',
     })
+    .returning();
+  return row;
+}
+
+export async function updateTranscricaoProcessedResult(id: string, processedResult: unknown) {
+  const [row] = await db
+    .update(semanaTranscricoes)
+    .set({ processedResult, processedAt: new Date() })
+    .where(eq(semanaTranscricoes.id, id as any))
     .returning();
   return row;
 }

@@ -2,24 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   listTranscricoesByFarm,
   deleteTranscricaoApi,
+  updateTranscricaoProcessedResult,
   type SemanaTranscricaoRow,
+  type TranscricaoProcResult,
 } from '../lib/api/semanaTranscricoesClient';
 import { storageGetSignedUrl, storageRemove } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface TranscricaoProcResult {
-  presentesConfirmados: string[];
-  citados: string[];
-  summary: string;
-  decisions: Array<{ decision: string; rationale?: string; descartado?: string; assignee?: string; impact?: string }>;
-  tasks: Array<{ title: string; description: string; contexto?: string; assignee?: string; priority?: 'alta' | 'media' | 'baixa'; dueDate?: string }>;
-  minutes: string;
-  riscosBlockers: string[];
-  estacionamento: string[];
-  incertezas: string[];
-}
 
 type ResultTab = 'resumo' | 'decisoes' | 'tarefas' | 'ata' | 'riscos' | 'incertezas';
 
@@ -101,6 +91,8 @@ function normalizeRow(row: Record<string, unknown>): SemanaTranscricaoRow {
     storagePath: String(row.storagePath ?? row.storage_path ?? ''),
     descricao: (row.descricao ?? null) as string | null,
     texto: (row.texto ?? null) as string | null,
+    processedResult: (row.processedResult ?? row.processed_result ?? null) as TranscricaoProcResult | null,
+    processedAt: (row.processedAt ?? row.processed_at ?? null) as string | null,
     tipo: (row.tipo ?? 'manual') as 'audio' | 'manual',
     createdAt: String(row.createdAt ?? row.created_at ?? ''),
   };
@@ -204,6 +196,11 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
   const [resultSourceRow, setResultSourceRow] = useState<SemanaTranscricaoRow | null>(null);
   const [activeTab, setActiveTab] = useState<ResultTab>('resumo');
   const [resultCopied, setResultCopied] = useState(false);
+
+  // Edit / save state
+  const [editMode, setEditMode] = useState(false);
+  const [editResult, setEditResult] = useState<TranscricaoProcResult | null>(null);
+  const [savingResult, setSavingResult] = useState(false);
 
   const load = useCallback(async () => {
     if (!farmId) { setRows([]); return; }
@@ -348,6 +345,68 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
     setProcessResult(null);
     setResultSourceRow(null);
     setResultCopied(false);
+    setEditMode(false);
+    setEditResult(null);
+  }
+
+  function handleViewProcessedResult(row: SemanaTranscricaoRow) {
+    if (!row.processedResult) return;
+    setProcessResult(row.processedResult);
+    setResultSourceRow(row);
+    setShowResultModal(true);
+    setActiveTab('resumo');
+  }
+
+  async function handleSaveProcessedResult() {
+    if (!processResult || !resultSourceRow) return;
+    setSavingResult(true);
+    try {
+      await updateTranscricaoProcessedResult(resultSourceRow.id, processResult);
+      setRows(prev => prev.map(r =>
+        r.id === resultSourceRow.id
+          ? { ...r, processedResult: processResult, processedAt: new Date().toISOString() }
+          : r
+      ));
+      setResultSourceRow(prev => prev ? { ...prev, processedResult: processResult, processedAt: new Date().toISOString() } : prev);
+      onToast?.('Resultado salvo com sucesso.', 'success');
+    } catch {
+      onToast?.('Erro ao salvar resultado.', 'error');
+    } finally {
+      setSavingResult(false);
+    }
+  }
+
+  function handleStartEdit() {
+    if (!processResult) return;
+    setEditResult(JSON.parse(JSON.stringify(processResult)));
+    setEditMode(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!editResult || !resultSourceRow) return;
+    setSavingResult(true);
+    try {
+      await updateTranscricaoProcessedResult(resultSourceRow.id, editResult);
+      setRows(prev => prev.map(r =>
+        r.id === resultSourceRow.id
+          ? { ...r, processedResult: editResult, processedAt: new Date().toISOString() }
+          : r
+      ));
+      setProcessResult(editResult);
+      setResultSourceRow(prev => prev ? { ...prev, processedResult: editResult, processedAt: new Date().toISOString() } : prev);
+      setEditMode(false);
+      setEditResult(null);
+      onToast?.('Alterações salvas.', 'success');
+    } catch {
+      onToast?.('Erro ao salvar alterações.', 'error');
+    } finally {
+      setSavingResult(false);
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditMode(false);
+    setEditResult(null);
   }
 
   // ─── Empty / loading states ─────────────────────────────────────────────────
@@ -466,6 +525,21 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
                           {formatFileSize(row.fileSize)}
                         </span>
                       )}
+                      {row.processedAt && (
+                        <span
+                          style={{
+                            display: 'inline-block', marginLeft: 6, marginTop: 2,
+                            fontSize: 10, fontWeight: 600, padding: '1px 6px',
+                            borderRadius: 99, background: '#ECFDF5', color: '#059669',
+                            border: '1px solid #A7F3D0', verticalAlign: 'middle',
+                            cursor: 'pointer',
+                          }}
+                          title={`Processado em ${formatDate(row.processedAt)}`}
+                          onClick={() => handleViewProcessedResult(row)}
+                        >
+                          Processado
+                        </span>
+                      )}
                     </td>
 
                     {/* File type badge */}
@@ -546,12 +620,29 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
                         </div>
                       ) : (
                         <div style={{ display: 'flex', gap: 6 }}>
-                          {/* Processar Transcrição button */}
+                          {/* Ver Resultado button (for saved results) */}
+                          {row.processedResult && (
+                            <button
+                              onClick={() => handleViewProcessedResult(row)}
+                              title="Ver resultado processado"
+                              style={{
+                                padding: '5px 10px', borderRadius: 6,
+                                border: '1px solid #BFDBFE',
+                                background: '#EFF6FF', color: '#2563EB',
+                                fontSize: 12, fontWeight: 500,
+                                cursor: 'pointer', fontFamily: FONT,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}
+                            >
+                              <span style={{ fontSize: 11 }}>Ver Resultado</span>
+                            </button>
+                          )}
+                          {/* Processar / Reprocessar button */}
                           {canProcess && (
                             <button
                               onClick={() => handleProcessTranscricao(row)}
                               disabled={isProcessing || !!processingId}
-                              title="Processar Transcrição"
+                              title={row.processedResult ? 'Reprocessar Transcrição' : 'Processar Transcrição'}
                               style={{
                                 padding: '5px 10px', borderRadius: 6,
                                 border: '1px solid #A7F3D0',
@@ -576,7 +667,7 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
                               ) : (
                                 <>
                                   <span style={{ fontSize: 14, lineHeight: 1 }}>&#9889;</span>
-                                  <span style={{ fontSize: 11 }}>Processar</span>
+                                  <span style={{ fontSize: 11 }}>{row.processedResult ? 'Reprocessar' : 'Processar'}</span>
                                 </>
                               )}
                             </button>
@@ -745,250 +836,392 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
 
             {/* Tab Content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-              {/* Resumo tab */}
-              {activeTab === 'resumo' && (
-                <div>
-                  {processResult.presentesConfirmados.length > 0 && (
-                    <div style={{ marginBottom: 20 }}>
-                      <h4 style={{ fontSize: 12, fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
-                        Presentes Confirmados
-                      </h4>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {processResult.presentesConfirmados.map((p, i) => (
-                          <span key={i} style={{
-                            fontSize: 12, padding: '4px 10px', borderRadius: 99,
-                            background: '#ECFDF5', color: '#065F46', fontWeight: 500,
-                            border: '1px solid #A7F3D0',
-                          }}>{p}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {processResult.citados.length > 0 && (
-                    <div style={{ marginBottom: 20 }}>
-                      <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
-                        Citados (n&atilde;o presentes)
-                      </h4>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {processResult.citados.map((p, i) => (
-                          <span key={i} style={{
-                            fontSize: 12, padding: '4px 10px', borderRadius: 99,
-                            background: '#F1F5F9', color: '#64748B', fontWeight: 500,
-                            border: '1px solid #E2E8F0',
-                          }}>{p}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
-                      Resumo Executivo
+              {(() => {
+                const dr = editMode && editResult ? editResult : processResult;
+                if (!dr) return null;
+
+                const inputStyle: React.CSSProperties = {
+                  border: '1px solid #E2E8F0', borderRadius: 6, padding: '6px 10px',
+                  fontSize: 13, width: '100%', fontFamily: FONT, color: '#0F172A',
+                  background: '#FFF', outline: 'none',
+                };
+                const textareaStyle: React.CSSProperties = { ...inputStyle, resize: 'vertical' as const, minHeight: 60 };
+
+                /* helper: update a field in editResult */
+                const setField = <K extends keyof TranscricaoProcResult>(key: K, val: TranscricaoProcResult[K]) =>
+                  setEditResult(prev => prev ? { ...prev, [key]: val } : prev);
+
+                /* helper: update an item in a string-array field */
+                const setArrayItem = (key: 'presentesConfirmados' | 'citados' | 'riscosBlockers' | 'estacionamento' | 'incertezas', idx: number, val: string) =>
+                  setEditResult(prev => {
+                    if (!prev) return prev;
+                    const arr = [...prev[key]]; arr[idx] = val;
+                    return { ...prev, [key]: arr };
+                  });
+                const removeArrayItem = (key: 'presentesConfirmados' | 'citados' | 'riscosBlockers' | 'estacionamento' | 'incertezas', idx: number) =>
+                  setEditResult(prev => {
+                    if (!prev) return prev;
+                    const arr = [...prev[key]]; arr.splice(idx, 1);
+                    return { ...prev, [key]: arr };
+                  });
+                const addArrayItem = (key: 'presentesConfirmados' | 'citados' | 'riscosBlockers' | 'estacionamento' | 'incertezas') =>
+                  setEditResult(prev => prev ? { ...prev, [key]: [...prev[key], ''] } : prev);
+
+                /* helper: editable string-array list */
+                const renderEditableList = (
+                  label: string, color: string, bgColor: string, borderColor: string,
+                  key: 'presentesConfirmados' | 'citados' | 'riscosBlockers' | 'estacionamento' | 'incertezas',
+                  items: string[],
+                ) => (
+                  <div style={{ marginBottom: 20 }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 600, color, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
+                      {label}
                     </h4>
-                    <p style={{ fontSize: 14, color: '#1E293B', lineHeight: 1.7, margin: 0 }}>
-                      {processResult.summary}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Decisoes tab */}
-              {activeTab === 'decisoes' && (
-                <div>
-                  {processResult.decisions.length === 0 ? (
-                    <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
-                      Nenhuma decisão identificada na transcrição.
-                    </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {processResult.decisions.map((d, i) => (
-                        <div key={i} style={{
-                          padding: 16, borderRadius: 10, background: '#F8FAFC',
-                          border: '1px solid #E2E8F0',
-                        }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', margin: '0 0 8px' }}>
-                            {i + 1}. {d.decision}
-                          </p>
-                          {d.rationale && (
-                            <p style={{ fontSize: 13, color: '#1E293B', margin: '0 0 6px', lineHeight: 1.5 }}>
-                              <strong style={{ color: '#059669' }}>Por quê:</strong> {d.rationale}
-                            </p>
-                          )}
-                          {d.descartado && (
-                            <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 6px', lineHeight: 1.5, fontStyle: 'italic' }}>
-                              <strong style={{ color: '#94A3B8' }}>Descartado:</strong> {d.descartado}
-                            </p>
-                          )}
-                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
-                            {d.assignee && (
-                              <span style={{ fontSize: 12, color: '#64748B' }}>
-                                <strong style={{ color: '#475569' }}>Responsável:</strong> {d.assignee}
-                              </span>
-                            )}
-                            {d.impact && (
-                              <span style={{ fontSize: 12, color: '#64748B' }}>
-                                <strong style={{ color: '#475569' }}>Impacto:</strong> {d.impact}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tarefas tab */}
-              {activeTab === 'tarefas' && (
-                <div>
-                  {processResult.tasks.length === 0 ? (
-                    <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
-                      Nenhuma tarefa identificada na transcrição.
-                    </p>
-                  ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ background: '#F8FAFC' }}>
-                            {['Tarefa', 'Responsável', 'Prioridade', 'Prazo'].map(h => (
-                              <th key={h} style={{
-                                padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
-                                color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px',
-                                borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap',
-                              }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {processResult.tasks.map((t, i) => {
-                            const pri = t.priority ? PRIORITY_MAP[t.priority] : null;
-                            return (
-                              <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                <td style={{ padding: '10px 12px', maxWidth: 320 }}>
-                                  <p style={{ margin: 0, fontWeight: 600, color: '#0F172A' }}>{t.title}</p>
-                                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748B' }}>{t.description}</p>
-                                  {t.contexto && (
-                                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
-                                      Contexto: {t.contexto}
-                                    </p>
-                                  )}
-                                </td>
-                                <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>
-                                  {t.assignee || '—'}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  {pri ? (
-                                    <span style={{
-                                      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99,
-                                      color: pri.color, background: pri.bg,
-                                    }}>{pri.label}</span>
-                                  ) : (
-                                    <span style={{ fontSize: 12, color: '#CBD5E1' }}>—</span>
-                                  )}
-                                </td>
-                                <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12 }}>
-                                  {t.dueDate || '—'}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Ata tab */}
-              {activeTab === 'ata' && (
-                <div>
-                  <pre style={{
-                    fontSize: 13, color: '#1E293B', whiteSpace: 'pre-wrap',
-                    fontFamily: FONT, lineHeight: 1.7, margin: 0,
-                    padding: 16, borderRadius: 10, background: '#F8FAFC',
-                    border: '1px solid #E2E8F0',
-                  }}>
-                    {processResult.minutes}
-                  </pre>
-                </div>
-              )}
-
-              {/* Incertezas tab */}
-              {activeTab === 'incertezas' && (
-                <div>
-                  {processResult.incertezas.length === 0 ? (
-                    <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
-                      Nenhuma incerteza identificada na transcrição.
-                    </p>
-                  ) : (
-                    <div>
-                      <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-                        Termos e referências que precisam ser verificados antes de distribuir a ata:
-                      </p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {processResult.incertezas.map((inc, i) => (
-                          <div key={i} style={{
-                            padding: '10px 14px', borderRadius: 8,
-                            background: '#F5F3FF', border: '1px solid #DDD6FE',
-                            fontSize: 13, color: '#5B21B6',
-                          }}>
-                            {inc}
+                    {editMode ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {items.map((item, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input value={item} onChange={e => setArrayItem(key, i, e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                            <button onClick={() => removeArrayItem(key, i)} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕</button>
                           </div>
                         ))}
+                        <button onClick={() => addArrayItem(key)} style={{ border: '1px dashed #CBD5E1', background: 'none', color: '#64748B', borderRadius: 6, padding: '6px 0', cursor: 'pointer', fontSize: 12 }}>+ Adicionar</button>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {items.map((p, i) => (
+                          <span key={i} style={{
+                            fontSize: 12, padding: '4px 10px', borderRadius: 99,
+                            background: bgColor, color, fontWeight: 500,
+                            border: `1px solid ${borderColor}`,
+                          }}>{p}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
 
-              {/* Riscos tab */}
-              {activeTab === 'riscos' && (
-                <div>
-                  {processResult.riscosBlockers.length === 0 && processResult.estacionamento.length === 0 ? (
-                    <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
-                      Nenhum risco, bloqueio ou item de estacionamento identificado.
-                    </p>
-                  ) : (
-                    <>
-                      {processResult.riscosBlockers.length > 0 && (
-                        <div style={{ marginBottom: 20 }}>
-                          <h4 style={{ fontSize: 12, fontWeight: 600, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>
-                            Riscos e Bloqueios
+                return (
+                  <>
+                    {/* Resumo tab */}
+                    {activeTab === 'resumo' && (
+                      <div>
+                          <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
+                            Resumo Executivo
                           </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {processResult.riscosBlockers.map((r, i) => (
+                          {editMode ? (
+                            <textarea value={dr.summary} onChange={e => setField('summary', e.target.value)} style={{ ...textareaStyle, minHeight: 120 }} />
+                          ) : (
+                            <p style={{ fontSize: 14, color: '#1E293B', lineHeight: 1.7, margin: 0 }}>
+                              {dr.summary}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Decisoes tab */}
+                    {activeTab === 'decisoes' && (
+                      <div>
+                        {dr.decisions.length === 0 && !editMode ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
+                            Nenhuma decisão identificada na transcrição.
+                          </p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {dr.decisions.map((d, i) => (
                               <div key={i} style={{
-                                padding: '10px 14px', borderRadius: 8,
-                                background: '#FEF2F2', border: '1px solid #FECACA',
-                                fontSize: 13, color: '#991B1B',
+                                padding: 16, borderRadius: 10, background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
                               }}>
-                                {r}
+                                {editMode ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B' }}>Decisão {i + 1}</span>
+                                      <button onClick={() => setEditResult(prev => {
+                                        if (!prev) return prev;
+                                        const arr = [...prev.decisions]; arr.splice(i, 1);
+                                        return { ...prev, decisions: arr };
+                                      })} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕ Remover</button>
+                                    </div>
+                                    <input placeholder="Decisão" value={d.decision} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.decisions]; arr[i] = { ...arr[i], decision: e.target.value };
+                                      return { ...prev, decisions: arr };
+                                    })} style={{ ...inputStyle, fontWeight: 600 }} />
+                                    <input placeholder="Por quê (rationale)" value={d.rationale ?? ''} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.decisions]; arr[i] = { ...arr[i], rationale: e.target.value || undefined };
+                                      return { ...prev, decisions: arr };
+                                    })} style={inputStyle} />
+                                    <input placeholder="Descartado" value={d.descartado ?? ''} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.decisions]; arr[i] = { ...arr[i], descartado: e.target.value || undefined };
+                                      return { ...prev, decisions: arr };
+                                    })} style={inputStyle} />
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      <input placeholder="Responsável" value={d.assignee ?? ''} onChange={e => setEditResult(prev => {
+                                        if (!prev) return prev;
+                                        const arr = [...prev.decisions]; arr[i] = { ...arr[i], assignee: e.target.value || undefined };
+                                        return { ...prev, decisions: arr };
+                                      })} style={{ ...inputStyle, flex: 1 }} />
+                                      <input placeholder="Impacto" value={d.impact ?? ''} onChange={e => setEditResult(prev => {
+                                        if (!prev) return prev;
+                                        const arr = [...prev.decisions]; arr[i] = { ...arr[i], impact: e.target.value || undefined };
+                                        return { ...prev, decisions: arr };
+                                      })} style={{ ...inputStyle, flex: 1 }} />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', margin: '0 0 8px' }}>
+                                      {i + 1}. {d.decision}
+                                    </p>
+                                    {d.rationale && (
+                                      <p style={{ fontSize: 13, color: '#1E293B', margin: '0 0 6px', lineHeight: 1.5 }}>
+                                        <strong style={{ color: '#059669' }}>Por quê:</strong> {d.rationale}
+                                      </p>
+                                    )}
+                                    {d.descartado && (
+                                      <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 6px', lineHeight: 1.5, fontStyle: 'italic' }}>
+                                        <strong style={{ color: '#94A3B8' }}>Descartado:</strong> {d.descartado}
+                                      </p>
+                                    )}
+                                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
+                                      {d.assignee && (
+                                        <span style={{ fontSize: 12, color: '#64748B' }}>
+                                          <strong style={{ color: '#475569' }}>Responsável:</strong> {d.assignee}
+                                        </span>
+                                      )}
+                                      {d.impact && (
+                                        <span style={{ fontSize: 12, color: '#64748B' }}>
+                                          <strong style={{ color: '#475569' }}>Impacto:</strong> {d.impact}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             ))}
+                            {editMode && (
+                              <button onClick={() => setEditResult(prev => prev ? { ...prev, decisions: [...prev.decisions, { decision: '' }] } : prev)}
+                                style={{ border: '1px dashed #CBD5E1', background: 'none', color: '#64748B', borderRadius: 8, padding: '10px 0', cursor: 'pointer', fontSize: 13 }}>
+                                + Adicionar Decisão
+                              </button>
+                            )}
                           </div>
-                        </div>
-                      )}
-                      {processResult.estacionamento.length > 0 && (
-                        <div>
-                          <h4 style={{ fontSize: 12, fontWeight: 600, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>
-                            Itens de Estacionamento
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {processResult.estacionamento.map((e, i) => (
-                              <div key={i} style={{
-                                padding: '10px 14px', borderRadius: 8,
-                                background: '#FFFBEB', border: '1px solid #FDE68A',
-                                fontSize: 13, color: '#92400E',
-                              }}>
-                                {e}
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tarefas tab */}
+                    {activeTab === 'tarefas' && (
+                      <div>
+                        {dr.tasks.length === 0 && !editMode ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
+                            Nenhuma tarefa identificada na transcrição.
+                          </p>
+                        ) : editMode ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {dr.tasks.map((t, i) => (
+                              <div key={i} style={{ padding: 16, borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#64748B' }}>Tarefa {i + 1}</span>
+                                  <button onClick={() => setEditResult(prev => {
+                                    if (!prev) return prev;
+                                    const arr = [...prev.tasks]; arr.splice(i, 1);
+                                    return { ...prev, tasks: arr };
+                                  })} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕ Remover</button>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  <input placeholder="Título" value={t.title} onChange={e => setEditResult(prev => {
+                                    if (!prev) return prev;
+                                    const arr = [...prev.tasks]; arr[i] = { ...arr[i], title: e.target.value };
+                                    return { ...prev, tasks: arr };
+                                  })} style={{ ...inputStyle, fontWeight: 600 }} />
+                                  <textarea placeholder="Descrição" value={t.description} onChange={e => setEditResult(prev => {
+                                    if (!prev) return prev;
+                                    const arr = [...prev.tasks]; arr[i] = { ...arr[i], description: e.target.value };
+                                    return { ...prev, tasks: arr };
+                                  })} style={textareaStyle} />
+                                  <input placeholder="Contexto" value={t.contexto ?? ''} onChange={e => setEditResult(prev => {
+                                    if (!prev) return prev;
+                                    const arr = [...prev.tasks]; arr[i] = { ...arr[i], contexto: e.target.value || undefined };
+                                    return { ...prev, tasks: arr };
+                                  })} style={inputStyle} />
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <input placeholder="Responsável" value={t.assignee ?? ''} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.tasks]; arr[i] = { ...arr[i], assignee: e.target.value || undefined };
+                                      return { ...prev, tasks: arr };
+                                    })} style={{ ...inputStyle, flex: 1 }} />
+                                    <select value={t.priority ?? ''} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.tasks]; arr[i] = { ...arr[i], priority: (e.target.value || undefined) as any };
+                                      return { ...prev, tasks: arr };
+                                    })} style={{ ...inputStyle, flex: 1 }}>
+                                      <option value="">Prioridade...</option>
+                                      <option value="alta">Alta</option>
+                                      <option value="media">Média</option>
+                                      <option value="baixa">Baixa</option>
+                                    </select>
+                                    <input placeholder="Prazo" value={t.dueDate ?? ''} onChange={e => setEditResult(prev => {
+                                      if (!prev) return prev;
+                                      const arr = [...prev.tasks]; arr[i] = { ...arr[i], dueDate: e.target.value || undefined };
+                                      return { ...prev, tasks: arr };
+                                    })} style={{ ...inputStyle, flex: 1 }} />
+                                  </div>
+                                </div>
                               </div>
                             ))}
+                            <button onClick={() => setEditResult(prev => prev ? { ...prev, tasks: [...prev.tasks, { title: '', description: '' }] } : prev)}
+                              style={{ border: '1px dashed #CBD5E1', background: 'none', color: '#64748B', borderRadius: 8, padding: '10px 0', cursor: 'pointer', fontSize: 13 }}>
+                              + Adicionar Tarefa
+                            </button>
                           </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+                        ) : (
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                              <thead>
+                                <tr style={{ background: '#F8FAFC' }}>
+                                  {['Tarefa', 'Responsável', 'Prioridade', 'Prazo'].map(h => (
+                                    <th key={h} style={{
+                                      padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+                                      color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px',
+                                      borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap',
+                                    }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dr.tasks.map((t, i) => {
+                                  const pri = t.priority ? PRIORITY_MAP[t.priority] : null;
+                                  return (
+                                    <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                      <td style={{ padding: '10px 12px', maxWidth: 320 }}>
+                                        <p style={{ margin: 0, fontWeight: 600, color: '#0F172A' }}>{t.title}</p>
+                                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748B' }}>{t.description}</p>
+                                        {t.contexto && (
+                                          <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
+                                            Contexto: {t.contexto}
+                                          </p>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>
+                                        {t.assignee || '—'}
+                                      </td>
+                                      <td style={{ padding: '10px 12px' }}>
+                                        {pri ? (
+                                          <span style={{
+                                            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99,
+                                            color: pri.color, background: pri.bg,
+                                          }}>{pri.label}</span>
+                                        ) : (
+                                          <span style={{ fontSize: 12, color: '#CBD5E1' }}>—</span>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 12 }}>
+                                        {t.dueDate || '—'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Ata tab */}
+                    {activeTab === 'ata' && (
+                      <div>
+                        {editMode ? (
+                          <textarea
+                            value={dr.minutes}
+                            onChange={e => setField('minutes', e.target.value)}
+                            style={{
+                              ...textareaStyle, minHeight: 400, lineHeight: 1.7,
+                              padding: 16, borderRadius: 10, background: '#FFF',
+                            }}
+                          />
+                        ) : (
+                          <pre style={{
+                            fontSize: 13, color: '#1E293B', whiteSpace: 'pre-wrap',
+                            fontFamily: FONT, lineHeight: 1.7, margin: 0,
+                            padding: 16, borderRadius: 10, background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                          }}>
+                            {dr.minutes}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Incertezas tab */}
+                    {activeTab === 'incertezas' && (
+                      <div>
+                        {dr.incertezas.length === 0 && !editMode ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
+                            Nenhuma incerteza identificada na transcrição.
+                          </p>
+                        ) : (
+                          <div>
+                            {!editMode && (
+                              <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                                Termos e referências que precisam ser verificados antes de distribuir a ata:
+                              </p>
+                            )}
+                            {editMode ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {dr.incertezas.map((inc, i) => (
+                                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <input value={inc} onChange={e => setArrayItem('incertezas', i, e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                                    <button onClick={() => removeArrayItem('incertezas', i)} style={{ border: 'none', background: '#FEF2F2', color: '#DC2626', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕</button>
+                                  </div>
+                                ))}
+                                <button onClick={() => addArrayItem('incertezas')} style={{ border: '1px dashed #CBD5E1', background: 'none', color: '#64748B', borderRadius: 6, padding: '6px 0', cursor: 'pointer', fontSize: 12 }}>+ Adicionar</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {dr.incertezas.map((inc, i) => (
+                                  <div key={i} style={{
+                                    padding: '10px 14px', borderRadius: 8,
+                                    background: '#F5F3FF', border: '1px solid #DDD6FE',
+                                    fontSize: 13, color: '#5B21B6',
+                                  }}>
+                                    {inc}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Riscos tab */}
+                    {activeTab === 'riscos' && (
+                      <div>
+                        {dr.riscosBlockers.length === 0 && dr.estacionamento.length === 0 && !editMode ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: 24 }}>
+                            Nenhum risco, bloqueio ou item de estacionamento identificado.
+                          </p>
+                        ) : (
+                          <>
+                            {(dr.riscosBlockers.length > 0 || editMode) &&
+                              renderEditableList('Riscos e Bloqueios', '#DC2626', '#FEF2F2', '#FECACA', 'riscosBlockers', dr.riscosBlockers)
+                            }
+                            {(dr.estacionamento.length > 0 || editMode) &&
+                              renderEditableList('Itens de Estacionamento', '#D97706', '#FFFBEB', '#FDE68A', 'estacionamento', dr.estacionamento)
+                            }
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Modal Footer */}
@@ -997,28 +1230,82 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
               display: 'flex', justifyContent: 'flex-end', gap: 10,
               background: '#F8FAFC',
             }}>
-              <button
-                onClick={handleCopyResultMarkdown}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
-                  background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
-                  cursor: 'pointer', fontFamily: FONT,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
-              >
-                {resultCopied ? '✓ Copiado!' : '📋 Copiar Markdown'}
-              </button>
-              <button
-                onClick={handleDownloadMarkdown}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, border: 'none',
-                  background: '#059669', color: '#FFF', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: FONT,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
-              >
-                ⬇ Baixar .md
-              </button>
+              {editMode ? (
+                <>
+                  <button
+                    onClick={handleCancelEdit}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
+                      background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: FONT,
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingResult}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: 'none',
+                      background: '#059669', color: '#FFF', fontSize: 13, fontWeight: 600,
+                      cursor: savingResult ? 'wait' : 'pointer', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: savingResult ? 0.7 : 1,
+                    }}
+                  >
+                    {savingResult ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCopyResultMarkdown}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
+                      background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    {resultCopied ? '✓ Copiado!' : '📋 Copiar Markdown'}
+                  </button>
+                  <button
+                    onClick={handleDownloadMarkdown}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0',
+                      background: '#FFF', color: '#475569', fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    ⬇ Baixar .md
+                  </button>
+                  <button
+                    onClick={handleStartEdit}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: '1px solid #BFDBFE',
+                      background: '#EFF6FF', color: '#2563EB', fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    ✏ Editar
+                  </button>
+                  <button
+                    onClick={handleSaveProcessedResult}
+                    disabled={savingResult}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, border: 'none',
+                      background: '#059669', color: '#FFF', fontSize: 13, fontWeight: 600,
+                      cursor: savingResult ? 'wait' : 'pointer', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: savingResult ? 0.7 : 1,
+                    }}
+                  >
+                    {savingResult ? 'Salvando...' : (resultSourceRow?.processedAt ? 'Atualizar Resultado' : 'Salvar Resultado')}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

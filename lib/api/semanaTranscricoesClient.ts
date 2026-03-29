@@ -5,6 +5,18 @@ import { getAuthHeaders, clearToken } from '../session';
 
 const API_BASE = '/api';
 
+export interface TranscricaoProcResult {
+  presentesConfirmados: string[];
+  citados: string[];
+  summary: string;
+  decisions: Array<{ decision: string; rationale?: string; descartado?: string; assignee?: string; impact?: string }>;
+  tasks: Array<{ title: string; description: string; contexto?: string; assignee?: string; priority?: 'alta' | 'media' | 'baixa'; dueDate?: string }>;
+  minutes: string;
+  riscosBlockers: string[];
+  estacionamento: string[];
+  incertezas: string[];
+}
+
 export interface SemanaTranscricaoRow {
   id: string;
   semanaId: string;
@@ -19,6 +31,8 @@ export interface SemanaTranscricaoRow {
   storagePath: string;
   descricao: string | null;
   texto: string | null;
+  processedResult: TranscricaoProcResult | null;
+  processedAt: string | null;
   tipo: 'audio' | 'manual';
   createdAt: string;
 }
@@ -71,6 +85,18 @@ export async function createTranscricao(payload: CreateTranscricaoPayload): Prom
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error(res.error);
+  return res.data!;
+}
+
+export async function updateTranscricaoProcessedResult(
+  id: string,
+  processedResult: TranscricaoProcResult,
+): Promise<SemanaTranscricaoRow> {
+  const res = await fetchApi<SemanaTranscricaoRow>(
+    `${API_BASE}/semana-transcricoes?id=${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify({ processedResult }) },
+  );
   if (!res.ok) throw new Error(res.error);
   return res.data!;
 }

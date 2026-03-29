@@ -3,6 +3,7 @@
  * GET    ?farmId=xxx  — list all transcriptions for a farm
  * POST   { action: 'extract-text', id } — extract text from a stored document
  * POST   { semanaId, farmId, organizationId, ... } — create a new transcription record
+ * PATCH  ?id=xxx { processedResult } — save/update processed transcription result
  * DELETE ?id=xxx      — delete a transcription record (returns storagePath for client-side B2 cleanup)
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -12,6 +13,7 @@ import {
   listTranscricoesByFarm,
   getTranscricaoById,
   createTranscricao,
+  updateTranscricaoProcessedResult,
   deleteTranscricao,
 } from '../src/DB/repositories/semana-transcricoes.js';
 
@@ -97,6 +99,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         texto: texto ?? null,
         tipo: tipo ?? 'manual',
       });
+      jsonSuccess(res, row);
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      const id = typeof req.query?.id === 'string' ? req.query.id : '';
+      if (!id) {
+        jsonError(res, 'id obrigatório', { status: 400 });
+        return;
+      }
+      const existing = await getTranscricaoById(id);
+      if (!existing) {
+        jsonError(res, 'Transcrição não encontrada', { status: 404 });
+        return;
+      }
+      const { processedResult } = req.body ?? {};
+      if (!processedResult) {
+        jsonError(res, 'processedResult obrigatório', { status: 400 });
+        return;
+      }
+      const row = await updateTranscricaoProcessedResult(id, processedResult);
       jsonSuccess(res, row);
       return;
     }

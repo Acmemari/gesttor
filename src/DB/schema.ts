@@ -365,6 +365,8 @@ export const semanaTranscricoes = pgTable('semana_transcricoes', {
   storagePath: text('storage_path').notNull(),
   descricao: text('descricao'),
   texto: text('texto'),
+  processedResult: jsonb('processed_result'),
+  processedAt: timestamp('processed_at'),
   tipo: text('tipo').notNull().default('manual'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
