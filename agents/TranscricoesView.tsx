@@ -906,17 +906,16 @@ const TranscricoesView: React.FC<TranscricoesViewProps> = ({
                     {/* Resumo tab */}
                     {activeTab === 'resumo' && (
                       <div>
-                          <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
-                            Resumo Executivo
-                          </h4>
-                          {editMode ? (
-                            <textarea value={dr.summary} onChange={e => setField('summary', e.target.value)} style={{ ...textareaStyle, minHeight: 120 }} />
-                          ) : (
-                            <p style={{ fontSize: 14, color: '#1E293B', lineHeight: 1.7, margin: 0 }}>
-                              {dr.summary}
-                            </p>
-                          )}
-                        </div>
+                        <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
+                          Resumo Executivo
+                        </h4>
+                        {editMode ? (
+                          <textarea value={dr.summary} onChange={e => setField('summary', e.target.value)} style={{ ...textareaStyle, minHeight: 120 }} />
+                        ) : (
+                          <p style={{ fontSize: 14, color: '#1E293B', lineHeight: 1.7, margin: 0 }}>
+                            {dr.summary}
+                          </p>
+                        )}
                       </div>
                     )}
 
