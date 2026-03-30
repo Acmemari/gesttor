@@ -172,7 +172,7 @@ const CalendarAgent: React.FC = () => {
         </div>
       )}
 
-      <div className="h-[calc(100%-2rem)] min-h-[500px] rounded-xl border border-ai-border bg-white dark:bg-ai-surface overflow-hidden">
+      <div className="h-[calc(100%-2rem)] min-h-[500px] rounded-xl border border-ai-border bg-white dark:bg-ai-surface overflow-auto">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -182,6 +182,8 @@ const CalendarAgent: React.FC = () => {
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay',
           }}
+          height="auto"
+          fixedWeekCount={false}
           editable={true}
           selectable={true}
           selectMirror={true}
