@@ -10,6 +10,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq, and, gt, asc, inArray } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
 import {
   listAtasByFarm,
   getAtaById,
@@ -45,6 +46,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  let role: string;
+  try {
+    role = await getUserRole(userId);
+  } catch (err: any) {
+    jsonError(res, err.message, { status: err.status ?? 401 });
+    return;
+  }
+
   try {
     // ── GET ────────────────────────────────────────────────────────────────
     if (req.method === 'GET') {
@@ -55,6 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           jsonError(res, 'Ata não encontrada', { status: 404 });
           return;
         }
+        try { await assertFarmAccess(ata.farmId, userId, role); } catch (err: any) {
+          jsonError(res, err.message, { status: err.status ?? 403 }); return;
+        }
         jsonSuccess(res, ata);
         return;
       }
@@ -63,6 +75,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!farmId) {
         jsonError(res, 'farmId obrigatório', { status: 400 });
         return;
+      }
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
       }
       const rows = await listAtasByFarm(farmId);
       jsonSuccess(res, rows);
@@ -76,6 +91,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!semanaFechadaId || !farmId || !organizationId) {
         jsonError(res, 'Campos obrigatórios: semanaFechadaId, farmId, organizationId', { status: 400 });
         return;
+      }
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
       }
 
       // 1. Fetch closed week
@@ -119,10 +137,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .map(a => ({ titulo: a.titulo, responsavel: '', tag: a.tag || '', status: a.status }));
 
       // 5. Fetch activities for open week (planned)
+      let atividadesAbertaRaw: Awaited<ReturnType<typeof listAtividadesBySemana>> = [];
       let atividadesPlanejadas: Array<{ titulo: string; responsavel: string; tag: string; status: string }> = [];
       if (semanaAberta) {
-        const atividadesAberta = await listAtividadesBySemana(semanaAberta.id);
-        atividadesPlanejadas = atividadesAberta.map(a => ({
+        atividadesAbertaRaw = await listAtividadesBySemana(semanaAberta.id);
+        atividadesPlanejadas = atividadesAbertaRaw.map(a => ({
           titulo: a.titulo,
           responsavel: '',
           tag: a.tag || '',
@@ -156,8 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Enrich open week activities
       if (semanaAberta) {
-        const atividadesAberta = await listAtividadesBySemana(semanaAberta.id);
-        atividadesAberta.forEach((a, i) => {
+        atividadesAbertaRaw.forEach((a, i) => {
           const name = a.pessoaId ? pessoaNameMap.get(a.pessoaId) || '' : '';
           if (atividadesPlanejadas[i]) atividadesPlanejadas[i].responsavel = name;
         });
@@ -261,6 +279,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Ata não encontrada', { status: 404 });
         return;
       }
+      try { await assertFarmAccess(existing.farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
 
       const { conteudo } = req.body ?? {};
       if (!conteudo) {
@@ -284,6 +305,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!existing) {
         jsonError(res, 'Ata não encontrada', { status: 404 });
         return;
+      }
+      try { await assertFarmAccess(existing.farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
       }
       await deleteAta(id);
       jsonSuccess(res, { deleted: true });

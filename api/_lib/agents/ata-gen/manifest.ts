@@ -33,7 +33,7 @@ export const ataGenManifest: AgentManifest = {
   outputSchema: ataGenOutputSchema,
   modelPolicy: {
     provider: 'anthropic',
-    model: 'claude-3-haiku-20240307',
+    model: 'claude-haiku-4-5-20251001',
     fallback: [
       { provider: 'gemini', model: 'gemini-2.0-flash' },
       { provider: 'openai', model: 'gpt-4o-mini' },

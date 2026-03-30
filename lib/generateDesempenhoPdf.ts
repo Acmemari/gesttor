@@ -1,17 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
-
-interface ColaboradorStats {
-  pessoaId: string;
-  nome: string;
-  iniciais: string;
-  concluidas: number;
-  pendentes: number;
-  total: number;
-  eficiencia: number;
-  status: 'Excelente' | 'Bom' | 'Regular';
-}
+import type { ColaboradorStats } from '../types';
 
 export async function generateDesempenhoPdf(
   chartsEl: HTMLElement,
@@ -66,9 +56,10 @@ export async function generateDesempenhoPdf(
 
   autoTable(doc, {
     startY: chartsImgY,
-    head: [['Colaborador', 'Concluídas', 'Pendentes', 'Eficiência', 'Status']],
+    head: [['Colaborador', 'Total', 'Concluídas', 'Pendentes', 'Eficiência', 'Status']],
     body: colaboradores.map(c => [
       c.nome,
+      String(c.total),
       String(c.concluidas),
       String(c.pendentes),
       `${c.eficiencia}%`,
@@ -83,14 +74,15 @@ export async function generateDesempenhoPdf(
     },
     columnStyles: {
       0: { halign: 'left', fontStyle: 'bold' },
-      1: { halign: 'center', textColor: [22, 163, 74] },
-      2: { halign: 'center', textColor: [234, 88, 12] },
-      3: { halign: 'center', fontStyle: 'bold' },
-      4: { halign: 'center' },
+      1: { halign: 'center', fontStyle: 'bold' },
+      2: { halign: 'center', textColor: [22, 163, 74] },
+      3: { halign: 'center', textColor: [234, 88, 12] },
+      4: { halign: 'center', fontStyle: 'bold' },
+      5: { halign: 'center' },
     },
     didDrawCell: (hookData) => {
       // Color the Status column text dynamically
-      if (hookData.section === 'body' && hookData.column.index === 4) {
+      if (hookData.section === 'body' && hookData.column.index === 5) {
         const rowIdx = hookData.row.index;
         const c = colaboradores[rowIdx];
         if (c) {

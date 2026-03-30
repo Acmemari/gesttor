@@ -24,12 +24,14 @@ export async function getSemanaByDataInicio(dataInicio: string, farmId?: string 
   const rows = await db.select().from(semanas).where(conditions).orderBy(semanas.createdAt);
   if (rows.length === 0) return undefined;
   if (rows.length === 1) return rows[0];
-  // Mesclar: manter o mais antigo e reatribuir atividades dos duplicados
+  // Mesclar: manter o mais antigo e reatribuir atividades dos duplicados (em transacao)
   const [keeper, ...duplicates] = rows;
-  for (const dup of duplicates) {
-    await db.update(atividades).set({ semanaId: keeper.id }).where(eq(atividades.semanaId, dup.id));
-    await db.delete(semanas).where(eq(semanas.id, dup.id));
-  }
+  await db.transaction(async (tx) => {
+    for (const dup of duplicates) {
+      await tx.update(atividades).set({ semanaId: keeper.id }).where(eq(atividades.semanaId, dup.id));
+      await tx.delete(semanas).where(eq(semanas.id, dup.id));
+    }
+  });
   return keeper;
 }
 
@@ -209,6 +211,28 @@ export async function createHistorico(data: {
 
 export async function getHistoricoById(id: string) {
   const [row] = await db.select().from(historicoSemanas).where(eq(historicoSemanas.id, id)).limit(1);
+  return row;
+}
+
+export async function getHistoricoBySemanaId(semanaId: string) {
+  const [row] = await db.select().from(historicoSemanas)
+    .where(eq(historicoSemanas.semanaId, semanaId))
+    .limit(1);
+  return row;
+}
+
+export async function updateHistorico(id: string, data: {
+  total: number;
+  concluidas: number;
+  pendentes: number;
+}) {
+  const [row] = await db.update(historicoSemanas).set({
+    total: data.total,
+    concluidas: data.concluidas,
+    pendentes: data.pendentes,
+    closedAt: new Date(),
+    reopenedAt: new Date(),
+  }).where(eq(historicoSemanas.id, id)).returning();
   return row;
 }
 

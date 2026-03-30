@@ -6,6 +6,8 @@ import {
 import { Download, SlidersHorizontal, X } from 'lucide-react';
 import DateInputBR from '../components/DateInputBR';
 import { generateDesempenhoPdf } from '../lib/generateDesempenhoPdf';
+import { getDesempenho } from '../lib/api/desempenhoClient';
+import type { ColaboradorStats, DesempenhoData } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,22 +16,6 @@ interface Semana {
   data_inicio: string;
   data_fim: string;
   aberta: boolean;
-}
-
-interface ColaboradorStats {
-  pessoaId: string;
-  nome: string;
-  iniciais: string;
-  concluidas: number;
-  pendentes: number;
-  total: number;
-  eficiencia: number;
-  status: 'Excelente' | 'Bom' | 'Regular';
-}
-
-interface DesempenhoData {
-  colaboradores: ColaboradorStats[];
-  totalGlobal: { concluidas: number; pendentes: number; eficienciaMedia: number };
 }
 
 type PeriodoPreset = 'semana-atual' | 'ultima-semana' | 'mes-atual' | 'personalizado';
@@ -59,24 +45,6 @@ function toIso(date: Date) {
   return date.toISOString().split('T')[0];
 }
 
-// ─── Custom Donut Label ───────────────────────────────────────────────────────
-
-function CenterLabel({ viewBox, value }: any) {
-  const { cx, cy } = viewBox;
-  return (
-    <g>
-      <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="middle"
-        style={{ fontSize: 26, fontWeight: 700, fill: '#0f172a' }}>
-        {value}%
-      </text>
-      <text x={cx} y={cy + 18} textAnchor="middle" dominantBaseline="middle"
-        style={{ fontSize: 11, fill: '#94a3b8', letterSpacing: 1 }}>
-        GLOBAL
-      </text>
-    </g>
-  );
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast }) => {
@@ -97,9 +65,6 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
       return { dataInicio: semana.data_inicio, dataFim: semana.data_fim };
     }
     if (preset === 'ultima-semana') {
-      const start = new Date(today);
-      start.setDate(start.getDate() - start.getDay() - 7); // last Sunday - 7
-      // Monday last week
       const mon = new Date(today);
       mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7) - 7);
       const sun = new Date(mon);
@@ -123,15 +88,9 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
     if (!range) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        farmId,
-        dataInicio: range.dataInicio,
-        dataFim: range.dataFim,
-      });
-      const res = await fetch(`/api/desempenho?${params}`);
-      const json = await res.json();
-      if (json.ok) {
-        setData(json.data);
+      const result = await getDesempenho(farmId, range.dataInicio, range.dataFim);
+      if (result.ok) {
+        setData(result.data);
       } else {
         onToast?.('Erro ao carregar dados de desempenho', 'error');
       }
@@ -326,7 +285,7 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                     cursor={{ fill: '#f8fafc' }}
                   />
-                  <Bar dataKey="Alocadas" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Alocadas" fill="#79828b" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Realizadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

@@ -13,6 +13,7 @@ import {
   listHistoricoByFarm,
   createHistorico,
   getHistoricoById,
+  updateHistorico,
   deleteHistorico,
 } from '../src/DB/repositories/semanas.js';
 
@@ -66,6 +67,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total: Number(body?.total ?? 0),
       concluidas: Number(body?.concluidas ?? 0),
       pendentes: Number(body?.pendentes ?? 0),
+    });
+    jsonSuccess(res, row);
+    return;
+  }
+
+  if (req.method === 'PATCH') {
+    const id = typeof req.query?.id === 'string' ? req.query.id : null;
+    if (!id) { jsonError(res, 'id é obrigatório', { status: 400 }); return; }
+    const registro = await getHistoricoById(id);
+    if (!registro) { jsonError(res, 'Registro não encontrado', { status: 404 }); return; }
+    if (registro.farmId) {
+      try { await assertFarmAccess(registro.farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+    } else if (role !== 'admin' && role !== 'administrador') {
+      jsonError(res, 'Sem permissão', { status: 403 }); return;
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const row = await updateHistorico(id, {
+      total: Number(body?.total ?? registro.total),
+      concluidas: Number(body?.concluidas ?? registro.concluidas),
+      pendentes: Number(body?.pendentes ?? registro.pendentes),
     });
     jsonSuccess(res, row);
     return;

@@ -236,7 +236,7 @@ async function handleSendInvite(req: VercelRequest, res: VercelResponse) {
     .where(eq(people.id, pessoaId));
 
   // Enviar email
-  const appUrl = process.env.BETTER_AUTH_URL ?? process.env.VITE_APP_URL ?? 'https://gesttor.app';
+  const appUrl = process.env.APP_PUBLIC_URL ?? process.env.VITE_APP_URL ?? 'https://gesttor.app';
   const inviteUrl = `${appUrl}/convite?token=${token}`;
 
   const html = inviteType === 'upgrade'

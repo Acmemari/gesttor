@@ -57,6 +57,7 @@ export interface HistoricoSemanaRow {
   concluidas: number;
   pendentes: number;
   closed_at: string;
+  reopened_at: string | null;
 }
 
 // ─── Semanas ──────────────────────────────────────────────────────────────────
@@ -181,6 +182,13 @@ export interface HistoricoPayload {
 export async function createHistorico(payload: HistoricoPayload) {
   return apiFetch<HistoricoSemanaRow>('/api/historico-semanas', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateHistorico(id: string, payload: Partial<HistoricoPayload>) {
+  return apiFetch<HistoricoSemanaRow>(`/api/historico-semanas?id=${encodeURIComponent(id)}`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }

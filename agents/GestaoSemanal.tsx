@@ -52,6 +52,7 @@ interface HistoricoSemana {
   concluidas: number;
   pendentes: number;
   closed_at: string;
+  reopened_at: string | null;
 }
 
 interface Filters {
@@ -224,6 +225,7 @@ function normalizeHistorico(row: Record<string, unknown>): HistoricoSemana {
     concluidas: Number(row.concluidas ?? 0),
     pendentes: Number(row.pendentes ?? 0),
     closed_at: String(row.closed_at ?? row.closedAt ?? ''),
+    reopened_at: (row.reopened_at ?? row.reopenedAt ?? null) as string | null,
   };
 }
 
@@ -401,10 +403,10 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
       const isAdmin = user?.role === 'admin' || user?.role === 'administrador';
 
       const [pessoasRows, semanaRes, historicoRes, todasPessoasRows] = await Promise.all([
-        farmId ? listPessoasByFarm(farmId, { assumeTarefas: true }) : Promise.resolve([]),
-        (farmId || isAdmin) ? semanasApi.getCurrentSemana(farmId) : Promise.resolve({ ok: false, data: null }),
-        (farmId || isAdmin) ? semanasApi.listHistorico(farmId) : Promise.resolve({ ok: false, data: [] }),
-        farmId ? listPessoasByFarm(farmId, {}) : Promise.resolve([]),
+        (farmId ? listPessoasByFarm(farmId, { assumeTarefas: true }) : Promise.resolve([])).catch(() => []),
+        ((farmId || isAdmin) ? semanasApi.getCurrentSemana(farmId) : Promise.resolve({ ok: false, data: null })).catch(() => ({ ok: false as const, data: null })),
+        ((farmId || isAdmin) ? semanasApi.listHistorico(farmId) : Promise.resolve({ ok: false, data: [] })).catch(() => ({ ok: false as const, data: [] })),
+        (farmId ? listPessoasByFarm(farmId, {}) : Promise.resolve([])).catch(() => []),
       ]);
 
       const pessoasData: Pessoa[] = pessoasRows.map(p => ({
@@ -432,30 +434,16 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         ? normalizeSemana(semanaRes.data as Record<string, unknown>)
         : null;
 
-      // Auto-create first week if none exists
+      // If no open week, check if one exists for current dates (but don't auto-create)
       if (!semanaData) {
         const today = new Date();
         const monday = getMondayOfWeek(today);
-        const saturday = new Date(monday);
-        saturday.setDate(monday.getDate() + 5);
         const mondayStr = toDateStr(monday);
-        // Verificar se já existe semana para essas datas em qualquer modo
         const existenteRes = await semanasApi.getSemanaByDataInicio(mondayStr, farmId);
         if (existenteRes.ok && existenteRes.data) {
           semanaData = normalizeSemana(existenteRes.data as Record<string, unknown>);
-        } else {
-          const createRes = await semanasApi.createSemana({
-            farm_id: farmId,
-            numero: calcWeekNumber(today, modo),
-            modo,
-            aberta: true,
-            data_inicio: mondayStr,
-            data_fim: toDateStr(saturday),
-          });
-          semanaData = createRes.ok && createRes.data
-            ? normalizeSemana(createRes.data as Record<string, unknown>)
-            : null;
         }
+        // If still null, user must click "Abrir Semana" to create one
       }
 
       setSemana(semanaData);
@@ -482,7 +470,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     } finally {
       setLoading(false);
     }
-  }, [modo, selectedFarm?.id]);
+  }, [modo, selectedFarm?.id, user?.role]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -806,20 +794,35 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     try {
       const total = atividades.length;
       const concluidas = atividades.filter(a => a.status === 'concluída').length;
-      // Cria histórico primeiro; se falhar, não fecha a semana
-      const res2 = await semanasApi.createHistorico({
-        farm_id: semana.farm_id,
-        semana_id: semana.id,
-        semana_numero: calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo),
-        total,
-        concluidas,
-        pendentes: total - concluidas,
-      });
+      const pendentes = total - concluidas;
+      const existingHistorico = historico.find(h => h.semana_id === semana.id);
+      let res2: { ok: boolean; data?: unknown; error?: string };
+      if (existingHistorico) {
+        // Atualiza histórico existente (semana reaberta e re-fechada)
+        res2 = await semanasApi.updateHistorico(existingHistorico.id, {
+          semana_numero: calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo),
+          total,
+          concluidas,
+          pendentes,
+        });
+      } else {
+        // Primeiro fechamento: cria histórico
+        res2 = await semanasApi.createHistorico({
+          farm_id: semana.farm_id,
+          semana_id: semana.id,
+          semana_numero: calcWeekNumber(new Date(semana.data_inicio + 'T00:00:00'), modo),
+          total,
+          concluidas,
+          pendentes,
+        });
+      }
       if (!res2.ok) { onToast?.('Erro ao registrar histórico.', 'error'); return; }
       const res1 = await semanasApi.updateSemana(semana.id, { aberta: false });
       if (!res1.ok) {
-        // Rollback: deleta o histórico criado
-        await semanasApi.deleteHistorico((res2.data as { id: string }).id);
+        // Rollback: só deleta se foi criado (não se foi atualizado)
+        if (!existingHistorico) {
+          await semanasApi.deleteHistorico((res2.data as { id: string }).id);
+        }
         onToast?.('Erro ao fechar semana.', 'error');
         return;
       }
@@ -828,7 +831,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     } finally {
       setOperating(false);
     }
-  }, [semana, atividades, fetchData, operating, onToast]);
+  }, [semana, atividades, historico, modo, fetchData, operating, onToast]);
 
   const handleAbrirSemanaDoHistorico = useCallback(async (semanaId: string | null, semanaNumero: number) => {
     setLoading(true);
@@ -1059,7 +1062,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
             dataFim: semana.data_fim,
           });
           setSelectedCarryOver(new Set(pending.map(a => a.id)));
-          await fetchData();
+          // Don't fetchData here — modal is open with current data.
+          // fetchData will be called after the modal closes (handleConfirmCarryOver or dismiss).
           return;
         }
       }
@@ -1076,15 +1080,15 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     try {
       const res = await semanasApi.updateSemana(semana.id, { aberta: true });
       if (res.ok) {
-        setSemana({ ...semana, aberta: true });
         onToast?.('Semana reaberta com sucesso', 'success');
+        await fetchData();
       } else {
         onToast?.('Erro ao reabrir semana', 'error');
       }
     } finally {
       setOperating(false);
     }
-  }, [operating, semana, canEditClosedWeek, onToast]);
+  }, [operating, semana, canEditClosedWeek, onToast, fetchData]);
 
   // ─── Project handlers ─────────────────────────────────────────────────────────
 
@@ -1426,6 +1430,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                           {h.closed_at && (
                             <span style={{ color: '#94A3B8', fontFamily: FONT, fontWeight: 400 }}>
                               {formatCanonicalWeekPeriod(new Date(h.closed_at))}
+                            </span>
+                          )}
+                          {h.reopened_at && (
+                            <span style={{ color: '#F59E0B', fontSize: 11, fontWeight: 500, fontStyle: 'italic' }}>
+                              alterada depois de fechar
                             </span>
                           )}
                         </span>

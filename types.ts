@@ -279,6 +279,24 @@ export interface DocumentUploadParams {
   description?: string;
 }
 
+// ─── Desempenho (Rotina Semanal) ─────────────────────────────────────────────
+
+export interface ColaboradorStats {
+  pessoaId: string;
+  nome: string;
+  iniciais: string;
+  concluidas: number;
+  pendentes: number;
+  total: number;
+  eficiencia: number;
+  status: 'Excelente' | 'Bom' | 'Regular';
+}
+
+export interface DesempenhoData {
+  colaboradores: ColaboradorStats[];
+  totalGlobal: { concluidas: number; pendentes: number; eficienciaMedia: number };
+}
+
 export interface DocumentFilter {
   organizationId?: string;
   category?: DocumentCategory;

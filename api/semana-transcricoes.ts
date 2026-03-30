@@ -9,6 +9,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { getUserRole, assertFarmAccess, assertOrgAccess } from './_lib/orgAccess.js';
 import {
   listTranscricoesByFarm,
   getTranscricaoById,
@@ -30,12 +31,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  let role: string;
+  try {
+    role = await getUserRole(userId);
+  } catch (err: any) {
+    jsonError(res, err.message, { status: err.status ?? 401 });
+    return;
+  }
+
   try {
     if (req.method === 'GET') {
       const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : '';
       if (!farmId) {
         jsonError(res, 'farmId obrigatório', { status: 400 });
         return;
+      }
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
       }
       const rows = await listTranscricoesByFarm(farmId);
       jsonSuccess(res, rows);
@@ -79,6 +91,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Campos obrigatórios: semanaId, farmId, organizationId', { status: 400 });
         return;
       }
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
 
       if (!isAudio && (!fileName || !originalName || !fileType || !storagePath)) {
         jsonError(res, 'Campos obrigatórios para upload manual: fileName, originalName, fileType, storagePath', { status: 400 });
@@ -114,6 +129,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Transcrição não encontrada', { status: 404 });
         return;
       }
+      try { await assertOrgAccess(existing.organizationId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
       const { processedResult } = req.body ?? {};
       if (!processedResult) {
         jsonError(res, 'processedResult obrigatório', { status: 400 });
@@ -134,6 +152,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!existing) {
         jsonError(res, 'Transcrição não encontrada', { status: 404 });
         return;
+      }
+      try { await assertOrgAccess(existing.organizationId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
       }
       await deleteTranscricao(id);
       jsonSuccess(res, { deleted: true, storagePath: existing.storagePath });

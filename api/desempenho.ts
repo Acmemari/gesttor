@@ -6,6 +6,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
+import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
 import { getDesempenhoByPeriod } from '../src/DB/repositories/semanas.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -28,6 +29,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!farmId || !dataInicio || !dataFim) {
     jsonError(res, 'farmId, dataInicio e dataFim são obrigatórios', { status: 400 });
+    return;
+  }
+
+  const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!isoDateRe.test(dataInicio) || !isoDateRe.test(dataFim)
+      || isNaN(Date.parse(dataInicio)) || isNaN(Date.parse(dataFim))) {
+    jsonError(res, 'dataInicio e dataFim devem estar no formato YYYY-MM-DD', { status: 400 });
+    return;
+  }
+
+  const rl = await checkCrudRateLimit({ userId });
+  if (!rl.allowed) {
+    jsonError(res, 'Muitas requisições. Tente novamente em breve.', { status: 429 });
     return;
   }
 

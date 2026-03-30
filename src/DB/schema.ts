@@ -348,9 +348,13 @@ export const historicoSemanas = pgTable('week_history', {
   concluidas: integer('concluidas').notNull().default(0),
   pendentes: integer('pendentes').notNull().default(0),
   closedAt: timestamp('closed_at').notNull().defaultNow(),
+  reopenedAt: timestamp('reopened_at'),
   semanaId: uuid('semana_id').references(() => semanas.id, { onDelete: 'set null' }),
   farmId: text('farm_id').references(() => farms.id, { onDelete: 'cascade' }),
-});
+}, (t) => [
+  index('idx_week_history_farm_id').on(t.farmId),
+  index('idx_week_history_closed_at').on(t.closedAt),
+]);
 
 export const semanaTranscricoes = pgTable('semana_transcricoes', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -42,7 +42,7 @@ export const transcricaoProcManifest: AgentManifest = {
   outputSchema: transcricaoProcOutputSchema,
   modelPolicy: {
     provider: 'anthropic',
-    model: 'claude-3-haiku-20240307',
+    model: 'claude-sonnet-4-6-20250514',
     fallback: [
       { provider: 'gemini', model: 'gemini-2.0-flash' },
       { provider: 'openai', model: 'gpt-4o-mini' },
