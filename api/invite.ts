@@ -247,17 +247,18 @@ async function handleSendInvite(req: VercelRequest, res: VercelResponse) {
     ? `Você foi adicionado à ${orgName} no Gesttor`
     : `Você foi convidado para o Gesttor — ${orgName}`;
 
-  void getResend().emails.send({
+  const result = await getResend().emails.send({
     from: 'Gesttor <gesttor@gesttor.app>',
     to: person.email,
     subject,
     html,
-  }).then((result) => {
-    if (result.error) console.error('[invite] Erro ao enviar email:', result.error);
-    else console.log(`[invite] Email de ${inviteType} enviado para`, person.email);
-  }).catch((err) => {
-    console.error('[invite] Falha ao enviar email:', err);
   });
+
+  if (result.error) {
+    console.error('[invite] Erro ao enviar email:', result.error);
+  } else {
+    console.log(`[invite] Email de ${inviteType} enviado para`, person.email);
+  }
 
   return jsonSuccess(res, { ok: true, email: person.email, inviteRole, inviteType, expiresAt });
 }
