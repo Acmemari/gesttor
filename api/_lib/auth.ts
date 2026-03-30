@@ -40,11 +40,25 @@ let _emailTemplate: string | null = null;
 
 function getResetPasswordHtml(resetUrl: string, userName?: string): string {
   if (!_emailTemplate) {
-    try {
-      const templatePath = path.resolve(process.cwd(), 'lib/email-templates/reset-password.html');
-      _emailTemplate = fs.readFileSync(templatePath, 'utf-8');
-    } catch {
-      // Fallback se o arquivo não existir
+    // Tentar múltiplos caminhos (process.cwd() pode variar em serverless)
+    const possiblePaths = [
+      path.resolve(process.cwd(), 'lib/email-templates/reset-password.html'),
+      path.resolve(__dirname, '../../lib/email-templates/reset-password.html'),
+      path.resolve('/var/task', 'lib/email-templates/reset-password.html'),
+    ];
+
+    for (const p of possiblePaths) {
+      try {
+        _emailTemplate = fs.readFileSync(p, 'utf-8');
+        break;
+      } catch {
+        // Tentar próximo caminho
+      }
+    }
+
+    if (!_emailTemplate) {
+      console.warn('[auth] Template de reset não encontrado, usando fallback inline');
+      // Fallback inline
       _emailTemplate = `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:40px 20px;">
           <h1 style="color:#1f1f1f;">Gesttor</h1>
@@ -136,8 +150,15 @@ export const auth = betterAuth({
     }
     return 'dev-insecure-secret-change-me';
   })(),
-  baseURL: process.env.BETTER_AUTH_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3333'),
+  baseURL: (() => {
+    // Em produção (Vercel), priorizar VERCEL_URL para evitar localhost em links de email
+    if (process.env.VERCEL_URL) {
+      return process.env.BETTER_AUTH_URL?.startsWith('https://')
+        ? process.env.BETTER_AUTH_URL
+        : `https://${process.env.VERCEL_URL}`;
+    }
+    return process.env.BETTER_AUTH_URL ?? 'http://localhost:3333';
+  })(),
   basePath: '/api/auth',
 
   // Passamos schema explicitamente para que o adapter NÃO acesse db._ no import
@@ -154,35 +175,30 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 6,
+    minPasswordLength: 8,
     autoSignIn: false,
     resetPasswordTokenExpiresIn: 3600, // 1 hora
     revokeSessionsOnPasswordReset: true,
 
     // Callback de envio de email de recuperação de senha via Resend
+    // Better Auth já trata timing attacks via runInBackgroundOrAwait — await aqui é seguro
     sendResetPassword: async ({ user, url }) => {
-      try {
-        const resend = getResend();
-        const html = getResetPasswordHtml(url, user.name);
+      const resend = getResend();
+      const html = getResetPasswordHtml(url, user.name);
 
-        // Não usar await para evitar timing attacks (conforme recomendação Better Auth)
-        void resend.emails.send({
-          from: 'Gesttor <gesttor@gesttor.app>',
-          to: user.email,
-          subject: 'Redefinir Senha — Gesttor',
-          html,
-        }).then((result) => {
-          if (result.error) {
-            console.error('[auth] Erro ao enviar email de reset:', result.error);
-          } else {
-            console.log('[auth] Email de reset enviado com sucesso');
-          }
-        }).catch((err) => {
-          console.error('[auth] Erro ao enviar email de reset:', err);
-        });
-      } catch (err) {
-        console.error('[auth] Erro ao preparar email de reset:', err);
+      const result = await resend.emails.send({
+        from: 'Gesttor <gesttor@gesttor.app>',
+        to: user.email,
+        subject: 'Redefinir Senha — Gesttor',
+        html,
+      });
+
+      if (result.error) {
+        console.error('[auth] Erro ao enviar email de reset:', result.error);
+        throw new Error(`Falha ao enviar email: ${result.error.message}`);
       }
+
+      console.log('[auth] Email de reset enviado para', user.email);
     },
 
     onPasswordReset: async ({ user }) => {

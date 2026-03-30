@@ -266,12 +266,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }),
       });
 
+      if (res.status >= 500) {
+        // Erro no servidor — email provavelmente NÃO foi enviado, informar usuário
+        log.error('resetPassword server error', new Error(`HTTP ${res.status}`));
+        return { success: false, error: 'Erro no servidor ao enviar email. Tente novamente em alguns minutos.' };
+      }
+
       if (!res.ok) {
+        // 4xx — logar mas não revelar ao usuário (anti-enumeração)
         const data = await res.json().catch(() => ({}));
         log.error('resetPassword error', new Error(data?.message ?? `HTTP ${res.status}`));
       }
 
-      // Sempre retornar sucesso para evitar enumeração de emails
+      // 2xx ou 4xx: retornar sucesso para evitar enumeração de emails
       return { success: true };
     } catch {
       return { success: false, error: 'Erro de conexão. Tente novamente.' };
