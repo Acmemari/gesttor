@@ -16,8 +16,13 @@ import bcrypt from 'bcrypt';
 import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { db } from '../../src/DB/index.js';
 import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles, people, organizations } from '../../src/DB/schema.js';
+
+// ESM compat: __dirname não existe em ESM
+const __filename_esm = fileURLToPath(import.meta.url);
+const __dirname_esm = path.dirname(__filename_esm);
 
 // ── Resend (lazy — evita falha se RESEND_API_KEY não estiver definido) ────────
 
@@ -43,7 +48,7 @@ function getResetPasswordHtml(resetUrl: string, userName?: string): string {
     // Tentar múltiplos caminhos (process.cwd() pode variar em serverless)
     const possiblePaths = [
       path.resolve(process.cwd(), 'lib/email-templates/reset-password.html'),
-      path.resolve(__dirname, '../../lib/email-templates/reset-password.html'),
+      path.resolve(__dirname_esm, '../../lib/email-templates/reset-password.html'),
       path.resolve('/var/task', 'lib/email-templates/reset-password.html'),
     ];
 
