@@ -247,7 +247,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { label: 'saved_questionnaires', sql: `DELETE FROM saved_questionnaires WHERE user_id = $1` },
             { label: 'saved_feedbacks', sql: `DELETE FROM saved_feedbacks WHERE created_by = $1` },
             { label: 'ai_token_usage', sql: `DELETE FROM ai_token_usage WHERE user_id = $1` },
-            { label: 'program_audit_log', sql: `DELETE FROM program_audit_log WHERE changed_by = $1` },
             { label: 'farm_maps', sql: `DELETE FROM farm_maps WHERE uploaded_by = $1` },
             { label: 'organization_documents', sql: `DELETE FROM organization_documents WHERE uploaded_by = $1` },
             { label: 'support_ticket_messages', sql: `DELETE FROM support_ticket_messages WHERE author_id = $1` },
