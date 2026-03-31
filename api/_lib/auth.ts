@@ -338,6 +338,30 @@ export const auth = betterAuth({
           } catch (err) {
             console.error('[auth] Erro ao atualizar last_login:', err);
           }
+
+          // Auto-aceitar convite pendente para usuários existentes (safety net)
+          try {
+            const { eq: eq2, and, isNotNull } = await import('drizzle-orm');
+            const now = new Date();
+            const [pendingInvite] = await db
+              .select()
+              .from(people)
+              .where(
+                and(
+                  eq2(people.userId, session.userId),
+                  eq2(people.inviteStatus, 'pending'),
+                  isNotNull(people.inviteExpiresAt),
+                ),
+              )
+              .limit(1);
+
+            if (pendingInvite && pendingInvite.inviteExpiresAt && pendingInvite.inviteExpiresAt > now) {
+              await applyInviteCredentials(session.userId, pendingInvite);
+              console.log(`[auth] Convite auto-aceito no login para userId=${session.userId}`);
+            }
+          } catch (inviteErr) {
+            console.error('[auth] Erro ao auto-aceitar convite no login:', inviteErr);
+          }
         },
       },
     },

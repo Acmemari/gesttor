@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, ArrowRight, Loader2, User, Building2, Phone, Eye, EyeOff } from 'lucide-react';
 import { APP_VERSION } from '../src/version';
 import { formatPhone, validatePhone } from '../lib/utils/phoneMask';
+import { acceptInvite } from '../lib/api/pessoasClient';
 
 interface LoginPageProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -11,13 +12,24 @@ interface LoginPageProps {
 
 const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const { login, signInWithOAuth, signup } = useAuth();
-  const [isSignup, setIsSignup] = useState(false);
-  const [email, setEmail] = useState('');
+
+  // Ler parâmetros de convite da URL (uma vez)
+  const [urlParams] = useState(() => new URLSearchParams(window.location.search));
+  const urlTab = urlParams.get('tab');
+  const urlEmail = urlParams.get('email');
+  const urlOrg = urlParams.get('org');
+  const urlInvite = urlParams.get('invite') === '1';
+  const urlInviteToken = urlParams.get('invite_token');
+
+  const [isSignup, setIsSignup] = useState(urlTab === 'signup');
+  const [email, setEmail] = useState(urlEmail ?? '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [organizationName, setOrganizationName] = useState('');
+  const [organizationName, setOrganizationName] = useState(urlOrg ?? '');
+  const [inviteToken] = useState(urlInviteToken ?? '');
+  const isInviteSignup = urlInvite;
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState<string | null>(null);
@@ -71,7 +83,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
       }
       setIsSubmitting(false);
     } else {
-      // Login flow - SIMPLES
+      // Login flow
       try {
         const result = await login(email, password);
 
@@ -80,6 +92,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
           setIsSubmitting(false);
           return;
         }
+
+        // Se tem invite_token, aceitar convite após login
+        if (inviteToken) {
+          try {
+            await acceptInvite(inviteToken);
+            onToast?.('Convite aceito! Suas permissões foram atualizadas.', 'success');
+          } catch (err: any) {
+            console.warn('[login] Erro ao aceitar convite:', err);
+            onToast?.('Login realizado, mas houve um erro ao aceitar o convite. Contate o administrador.', 'warning');
+          }
+        }
+
         // Login bem sucedido - AuthContext vai redirecionar
         setIsSubmitting(false);
       } catch {
@@ -127,10 +151,28 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
             </p>
           </div>
 
+          {/* Banner de convite */}
+          {isInviteSignup && urlOrg && (
+            <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-blue-700 font-medium">
+                Complete seu cadastro para acessar <strong>{urlOrg}</strong>
+              </p>
+            </div>
+          )}
+
+          {inviteToken && !isSignup && (
+            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-700 font-medium">
+                Faça login para aceitar o convite e acessar seus novos recursos
+              </p>
+            </div>
+          )}
+
           {/* Toggle between Login and Signup */}
           <div className="mb-3 flex p-0.5 bg-gray-100 rounded-lg">
             <button
               type="button"
+              disabled={isInviteSignup}
               onClick={() => {
                 setIsSignup(false);
                 setLoginError('');
@@ -144,12 +186,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
               }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
                 !isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              } ${isInviteSignup ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Entrar
             </button>
             <button
               type="button"
+              disabled={!!inviteToken}
               onClick={() => {
                 setIsSignup(true);
                 setLoginError('');
@@ -160,7 +203,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
               }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
                 isSignup ? 'bg-zinc-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              } ${inviteToken ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Cadastrar
             </button>
@@ -195,12 +238,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                 <input
                   type="email"
                   required
+                  readOnly={isInviteSignup}
                   value={email}
                   onChange={e => {
-                    setEmail(e.target.value);
-                    if (loginError) setLoginError('');
+                    if (!isInviteSignup) {
+                      setEmail(e.target.value);
+                      if (loginError) setLoginError('');
+                    }
                   }}
-                  className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-blue-50/60 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
+                  className={`block w-full pl-10 sm:pl-11 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none ${
+                    isInviteSignup
+                      ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-50/60'
+                  }`}
                   placeholder="exemplo@gesttor.app"
                 />
               </div>
@@ -332,9 +382,16 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
                     </div>
                     <input
                       type="text"
+                      readOnly={isInviteSignup && !!urlOrg}
                       value={organizationName}
-                      onChange={e => setOrganizationName(e.target.value)}
-                      className="block w-full pl-10 sm:pl-11 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none"
+                      onChange={e => {
+                        if (!(isInviteSignup && urlOrg)) setOrganizationName(e.target.value);
+                      }}
+                      className={`block w-full pl-10 sm:pl-11 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-all outline-none ${
+                        isInviteSignup && urlOrg
+                          ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                          : 'bg-gray-50'
+                      }`}
                       placeholder="Ex: Fazenda Santa Rita"
                     />
                   </div>

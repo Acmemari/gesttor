@@ -6,7 +6,6 @@ import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
 import ForgotPasswordPage from './components/ForgotPasswordPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
-import ConvitePage from './components/ConvitePage';
 import SubscriptionPage from './components/SubscriptionPage';
 import SettingsPage from './components/SettingsPage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -62,6 +61,47 @@ const LoadingFallback: React.FC = () => (
     <Loader2 size={24} className="animate-spin text-ai-subtext" />
   </div>
 );
+
+const ConviteRedirect: React.FC = () => {
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('token');
+    if (!token) {
+      window.location.replace('/sign-in');
+      return;
+    }
+
+    fetch(`/api/invite?token=${encodeURIComponent(token)}`)
+      .then(r => r.json())
+      .then(json => {
+        const data = json.data;
+        if (!data?.valid) {
+          window.location.replace('/sign-in');
+          return;
+        }
+
+        if (data.inviteType === 'upgrade' || data.hasAccount) {
+          window.location.replace(`/sign-in?invite_token=${token}`);
+        } else {
+          const params = new URLSearchParams({
+            tab: 'signup',
+            email: data.email ?? '',
+            org: data.orgName ?? '',
+            invite: '1',
+          });
+          window.location.replace(`/sign-in?${params.toString()}`);
+        }
+      })
+      .catch(() => {
+        window.location.replace('/sign-in');
+      });
+  }, []);
+
+  return (
+    <div className="h-screen w-screen flex items-center justify-center bg-ai-bg">
+      <Loader2 size={32} className="animate-spin text-ai-subtext" />
+    </div>
+  );
+};
 
 const AppContent: React.FC = () => {
   const { user, isLoading, logout, checkPermission, upgradePlan, authError, refreshProfile } = useAuth();
@@ -450,7 +490,9 @@ const AppContent: React.FC = () => {
           </div>
         );
       }
-      return pathname.startsWith('/sign-in') ? <LoginPage onForgotPassword={() => window.location.replace('/forgot-password')} /> : <SignUpPage />;
+      return pathname.startsWith('/sign-in')
+        ? <LoginPage onToast={handleToast} onForgotPassword={() => window.location.replace('/forgot-password')} />
+        : <SignUpPage />;
     }
 
     // Forgot password — solicita email de recuperação
@@ -473,14 +515,9 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Aceitar convite — cria conta via link de convite
+    // Aceitar convite — redirect para /sign-in com params adequados (backward compat)
     if (pathname === '/convite') {
-      return (
-        <ConvitePage
-          onToast={handleToast}
-          onSuccess={() => window.location.replace('/sign-in')}
-        />
-      );
+      return <ConviteRedirect />;
     }
 
     // Legacy OAuth callback — redirect to home

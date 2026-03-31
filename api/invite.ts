@@ -73,9 +73,9 @@ function getUpgradeHtml(inviteUrl: string, userName: string, orgName: string, ro
           <h1 style="color:#1f1f1f;">Gesttor</h1>
           <p>Olá {{NAME}},</p>
           <p>Você foi adicionado(a) à organização <strong>{{ORG_NAME}}</strong> como <strong>{{ROLE_NAME}}</strong> no Gesttor.</p>
-          <p>Como você já possui uma conta, basta aceitar o convite para acessar todos os recursos.</p>
+          <p>Como você já possui uma conta, basta fazer login para acessar automaticamente todos os recursos.</p>
           <p style="text-align:center;margin:32px 0;">
-            <a href="{{INVITE_URL}}" style="background:#1f1f1f;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Aceitar convite</a>
+            <a href="{{INVITE_URL}}" style="background:#1f1f1f;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Fazer login</a>
           </p>
           <p style="font-size:12px;color:#666;">Este link expira em 72 horas.</p>
         </div>`;
@@ -116,6 +116,7 @@ async function handleGetToken(req: VercelRequest, res: VercelResponse) {
       id: people.id,
       fullName: people.fullName,
       email: people.email,
+      organizationId: people.organizationId,
       inviteRole: people.inviteRole,
       inviteStatus: people.inviteStatus,
       inviteExpiresAt: people.inviteExpiresAt,
@@ -136,6 +137,17 @@ async function handleGetToken(req: VercelRequest, res: VercelResponse) {
     return jsonSuccess(res, { valid: false, reason: person ? 'expired' : 'not_found' });
   }
 
+  // Buscar nome da organização
+  let orgName = '';
+  if (person.organizationId) {
+    const [org] = await db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, person.organizationId))
+      .limit(1);
+    if (org) orgName = org.name;
+  }
+
   return jsonSuccess(res, {
     valid: true,
     name: person.fullName,
@@ -143,6 +155,7 @@ async function handleGetToken(req: VercelRequest, res: VercelResponse) {
     role: person.inviteRole,
     inviteType: person.inviteType ?? 'new_account',
     hasAccount: !!person.userId,
+    orgName,
   });
 }
 
@@ -237,7 +250,21 @@ async function handleSendInvite(req: VercelRequest, res: VercelResponse) {
 
   // Enviar email
   const appUrl = process.env.APP_PUBLIC_URL ?? process.env.VITE_APP_URL ?? 'https://gesttor.app';
-  const inviteUrl = `${appUrl}/convite?token=${token}`;
+
+  let inviteUrl: string;
+  if (inviteType === 'new_account') {
+    // Novo usuário → tela de cadastro com dados pré-preenchidos
+    const params = new URLSearchParams({
+      tab: 'signup',
+      email: person.email,
+      org: orgName,
+      invite: '1',
+    });
+    inviteUrl = `${appUrl}/sign-in?${params.toString()}`;
+  } else {
+    // Usuário existente (upgrade) → tela de login com token
+    inviteUrl = `${appUrl}/sign-in?invite_token=${token}`;
+  }
 
   const html = inviteType === 'upgrade'
     ? getUpgradeHtml(inviteUrl, person.fullName, orgName, inviteRole === 'analista' ? 'Analista' : 'Cliente')
