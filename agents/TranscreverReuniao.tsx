@@ -1,7 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Upload, Loader2, CheckCircle, AlertCircle, Copy, Save } from 'lucide-react';
 import { getAuthHeaders } from '../lib/session';
 import { createTranscricao } from '../lib/api/semanaTranscricoesClient';
+import { useFarm } from '../contexts/FarmContext';
+import { useAuth } from '../contexts/AuthContext';
+import { listSemanasByFarm } from '../lib/api/semanasClient';
 
 const ACCEPTED_TYPES = '.mp3,.m4a,.wav,.webm,.ogg';
 const MAX_MB = 200;
@@ -30,14 +33,38 @@ interface TranscricaoData {
 }
 
 interface TranscreverReuniaoProps {
-  farmId: string;
-  organizationId: string;
-  semanas: SemanaOption[];
+  farmId?: string;
+  organizationId?: string;
+  semanas?: SemanaOption[];
   onSaved?: () => void;
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-export default function TranscreverReuniao({ farmId, organizationId, semanas, onSaved, onToast }: TranscreverReuniaoProps) {
+export default function TranscreverReuniao({ farmId: farmIdProp, organizationId: orgIdProp, semanas: semanasProp, onSaved, onToast }: TranscreverReuniaoProps) {
+  const { selectedFarm } = useFarm();
+  const { user } = useAuth();
+
+  const farmId = farmIdProp ?? selectedFarm?.id ?? '';
+  const organizationId = orgIdProp ?? user?.organizationId ?? '';
+
+  const [localSemanas, setLocalSemanas] = useState<SemanaOption[]>([]);
+  const semanas = semanasProp ?? localSemanas;
+
+  // Carregar semanas quando não recebidas via prop
+  useEffect(() => {
+    if (semanasProp || !farmId) return;
+    listSemanasByFarm(farmId).then(rows =>
+      setLocalSemanas(rows.map(s => ({
+        id: s.id,
+        numero: s.numero,
+        data_inicio: s.data_inicio,
+        data_fim: s.data_fim,
+        modo: s.modo,
+        aberta: s.aberta,
+      }))),
+    ).catch(() => setLocalSemanas([]));
+  }, [farmId, semanasProp]);
+
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TranscricaoData | null>(null);
@@ -45,10 +72,15 @@ export default function TranscreverReuniao({ farmId, organizationId, semanas, on
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [selectedSemanaId, setSelectedSemanaId] = useState<string>(
-    () => semanas.find(s => s.aberta)?.id ?? semanas[0]?.id ?? ''
-  );
+  const [selectedSemanaId, setSelectedSemanaId] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Selecionar semana aberta quando semanas carregarem
+  useEffect(() => {
+    if (!selectedSemanaId && semanas.length > 0) {
+      setSelectedSemanaId(semanas.find(s => s.aberta)?.id ?? semanas[0]?.id ?? '');
+    }
+  }, [semanas, selectedSemanaId]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0] ?? null;

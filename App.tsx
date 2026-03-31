@@ -1019,7 +1019,7 @@ const AppContent: React.FC = () => {
       case 'transcrever-reuniao':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <TranscreverReuniao />
+            <TranscreverReuniao onToast={handleToast} />
           </Suspense>
         );
       case 'area-certificados':
