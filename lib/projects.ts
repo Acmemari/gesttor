@@ -5,6 +5,19 @@ export interface ProjectStakeholderRow {
   activity: string;
 }
 
+export interface ProjectTransformationRow {
+  id: string;
+  project_id: string;
+  text: string;
+  evidence: string[];
+  sort_order: number;
+}
+
+export interface TransformationPayloadItem {
+  text: string;
+  evidence: string[];
+}
+
 export interface ProjectRow {
   id: string;
   created_by: string;
@@ -13,6 +26,7 @@ export interface ProjectRow {
   description: string | null;
   transformations_achievements: string | null;
   success_evidence: string[];
+  transformations: ProjectTransformationRow[];
   start_date: string | null;
   end_date: string | null;
   sort_order: number;
@@ -28,6 +42,7 @@ export interface ProjectPayload {
   organization_id?: string | null;
   transformations_achievements?: string | null;
   success_evidence?: string[] | null;
+  transformations?: TransformationPayloadItem[];
   start_date?: string | null;
   end_date?: string | null;
   stakeholder_matrix?: ProjectStakeholderRow[];
@@ -121,10 +136,17 @@ export async function createProject(createdBy: string, payload: ProjectPayload):
   const successEvidence = Array.isArray(payload.success_evidence)
     ? payload.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim())
     : [];
+  const transformations = Array.isArray(payload.transformations)
+    ? payload.transformations.filter(t => t.text?.trim()).map(t => ({
+        text: t.text.trim(),
+        evidence: Array.isArray(t.evidence) ? t.evidence.filter((e: string) => typeof e === 'string' && e.trim()).map((e: string) => e.trim()) : [],
+      }))
+    : undefined;
   return projectsApi.createProject(createdBy, {
     ...payload,
     stakeholder_matrix: stakeholder,
     success_evidence: successEvidence,
+    transformations,
   });
 }
 
@@ -137,6 +159,12 @@ export async function updateProject(projectId: string, payload: Partial<ProjectP
   }
   if (Array.isArray(cleaned.success_evidence)) {
     cleaned.success_evidence = cleaned.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim());
+  }
+  if (Array.isArray(cleaned.transformations)) {
+    cleaned.transformations = cleaned.transformations.filter(t => t.text?.trim()).map(t => ({
+      text: t.text.trim(),
+      evidence: Array.isArray(t.evidence) ? t.evidence.filter((e: string) => typeof e === 'string' && e.trim()).map((e: string) => e.trim()) : [],
+    }));
   }
   return projectsApi.updateProject(projectId, cleaned);
 }

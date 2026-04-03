@@ -16,6 +16,10 @@ import {
   deleteProject,
   getNextSortOrder,
 } from '../src/DB/repositories/projects.js';
+import {
+  fetchByProjectIds,
+  upsertForProject,
+} from '../src/DB/repositories/projectTransformations.js';
 
 const MAX_NAME_LENGTH = 300;
 const MAX_STAKEHOLDER_ROWS = 50;
@@ -41,6 +45,7 @@ function mapRow(r: Record<string, unknown>) {
     description: r.description ?? null,
     transformations_achievements: r.transformationsAchievements ?? r.transformations_achievements ?? null,
     success_evidence: r.successEvidence ?? r.success_evidence ?? [],
+    transformations: [] as { id: string; project_id: string; text: string; evidence: string[]; sort_order: number }[],
     start_date: r.startDate ?? r.start_date ?? null,
     end_date: r.endDate ?? r.end_date ?? null,
     stakeholder_matrix: r.stakeholderMatrix ?? r.stakeholder_matrix ?? [],
@@ -50,6 +55,33 @@ function mapRow(r: Record<string, unknown>) {
     created_at: r.createdAt ?? r.created_at ?? null,
     updated_at: r.updatedAt ?? r.updated_at ?? null,
   };
+}
+
+function mapTransformationRow(r: Record<string, unknown>) {
+  return {
+    id: r.id as string,
+    project_id: (r.projectId ?? r.project_id) as string,
+    text: r.text as string,
+    evidence: (r.evidence ?? []) as string[],
+    sort_order: (r.sortOrder ?? r.sort_order ?? 0) as number,
+  };
+}
+
+async function attachTransformations(mapped: ReturnType<typeof mapRow>[]) {
+  const ids = mapped.map(m => m.id as string).filter(Boolean);
+  if (!ids.length) return mapped;
+  const allTransformations = await fetchByProjectIds(ids);
+  const byProject = new Map<string, typeof mapped[0]['transformations']>();
+  for (const t of allTransformations) {
+    const mt = mapTransformationRow(t as unknown as Record<string, unknown>);
+    const arr = byProject.get(mt.project_id) ?? [];
+    arr.push(mt);
+    byProject.set(mt.project_id, arr);
+  }
+  for (const m of mapped) {
+    m.transformations = byProject.get(m.id as string) ?? [];
+  }
+  return mapped;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -92,7 +124,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 100 });
-      jsonSuccess(res, rows.map(mapRow));
+      const mapped = await attachTransformations(rows.map(mapRow));
+      jsonSuccess(res, mapped);
       return;
     }
 
@@ -109,12 +142,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 1000 });
-      jsonSuccess(res, rows.map(mapRow));
+      const mapped = await attachTransformations(rows.map(mapRow));
+      jsonSuccess(res, mapped);
       return;
     }
 
     const rows = await fetchProjectsByCreatedBy(userId, { organizationId });
-    jsonSuccess(res, rows.map(mapRow));
+    const mapped = await attachTransformations(rows.map(mapRow));
+    jsonSuccess(res, mapped);
     return;
   }
 
@@ -183,7 +218,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stakeholder_matrix: stakeholder,
       program_type: body?.program_type ? String(body.program_type) : 'assessoria',
     });
-    jsonSuccess(res, mapRow(row));
+
+    // Save transformations linked to the new project
+    let transformationRows: unknown[] = [];
+    if (Array.isArray(body?.transformations)) {
+      const items = (body.transformations as { text?: string; evidence?: string[] }[])
+        .filter(t => typeof t?.text === 'string' && t.text.trim())
+        .map(t => ({
+          text: String(t.text).trim(),
+          evidence: Array.isArray(t.evidence) ? t.evidence.filter((e: unknown) => typeof e === 'string' && (e as string).trim()) : [],
+        }));
+      transformationRows = await upsertForProject(row.id, items);
+    }
+
+    const mapped = mapRow(row);
+    mapped.transformations = (transformationRows as Record<string, unknown>[]).map(mapTransformationRow);
+    jsonSuccess(res, mapped);
     return;
   }
 
@@ -280,7 +330,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const row = await updateProject(projectId, payload);
-    jsonSuccess(res, mapRow(row));
+
+    // Update transformations if provided
+    let transformationRows: unknown[] | undefined;
+    if (Array.isArray(body?.transformations)) {
+      const items = (body.transformations as { text?: string; evidence?: string[] }[])
+        .filter(t => typeof t?.text === 'string' && t.text.trim())
+        .map(t => ({
+          text: String(t.text).trim(),
+          evidence: Array.isArray(t.evidence) ? t.evidence.filter((e: unknown) => typeof e === 'string' && (e as string).trim()) : [],
+        }));
+      transformationRows = await upsertForProject(projectId, items);
+    }
+
+    const mapped = mapRow(row);
+    if (transformationRows) {
+      mapped.transformations = (transformationRows as Record<string, unknown>[]).map(mapTransformationRow);
+    } else {
+      const existing = await fetchByProjectIds([projectId]);
+      mapped.transformations = (existing as unknown as Record<string, unknown>[]).map(mapTransformationRow);
+    }
+    jsonSuccess(res, mapped);
     return;
   }
 

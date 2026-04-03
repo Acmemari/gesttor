@@ -654,8 +654,34 @@ const ProjectPrintPDF = ({ data }: { data: ProjectPrintData }) => {
           <Text>{project.description || 'Nenhuma descrição fornecida.'}</Text>
         </View>
 
-        {/* Transformações */}
-        {project.transformations_achievements && (
+        {/* Transformações e Evidências */}
+        {project.transformations && project.transformations.length > 0 && (
+          <View>
+            <View style={styles.sectionTitleBox}>
+              <Text style={styles.sectionTitleText}>Transformações Esperadas e Evidências de Sucesso</Text>
+              <View style={styles.sectionLine} />
+            </View>
+            {project.transformations.map((tr, tIdx) => (
+              <View key={tIdx} wrap={false} style={{ marginBottom: 8 }}>
+                <View style={styles.descBox}>
+                  <Text style={{ fontWeight: 700 }}>{tIdx + 1}. {tr.text}</Text>
+                </View>
+                {tr.evidence && tr.evidence.filter(e => e.trim()).length > 0 && (
+                  <View style={{ ...styles.evGrid, marginLeft: 12 }}>
+                    {tr.evidence.filter(e => e.trim()).map((ev, eIdx) => (
+                      <View key={eIdx} style={styles.evItem} wrap={false}>
+                        <Text style={styles.evNum}>{eIdx + 1}</Text>
+                        <Text style={styles.evText}>{ev}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+        {/* Fallback: old fields for projects not yet migrated */}
+        {(!project.transformations || project.transformations.length === 0) && project.transformations_achievements && (
           <View wrap={false}>
             <View style={styles.sectionTitleBox}>
               <Text style={styles.sectionTitleText}>Transformações e Conquistas Esperadas</Text>
@@ -666,9 +692,7 @@ const ProjectPrintPDF = ({ data }: { data: ProjectPrintData }) => {
             </View>
           </View>
         )}
-
-        {/* Evidências */}
-        {project.success_evidence && project.success_evidence.filter(e => e.trim()).length > 0 && (
+        {(!project.transformations || project.transformations.length === 0) && project.success_evidence && project.success_evidence.filter(e => e.trim()).length > 0 && (
           <View wrap={false} style={{ marginTop: 10 }}>
             <View style={styles.sectionTitleBox}>
               <Text style={styles.sectionTitleText}>Evidências de Sucesso</Text>

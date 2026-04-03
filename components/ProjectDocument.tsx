@@ -149,15 +149,15 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
   const selectedProgram = useMemo(() => tree.find(n => n.data.rawId === selectedProgramId), [tree, selectedProgramId]);
 
   const handleProgramChange = useCallback(
-    (field: keyof ProjectPayload, value: string | string[] | { name: string; activity: string }[] | null) => {
+    (field: keyof ProjectPayload, value: string | string[] | { name: string; activity: string }[] | { text: string; evidence: string[] }[] | null) => {
       if (readonly) return;
       if (!selectedProgram?.data.project) return;
       const p = selectedProgram.data.project;
 
       // Construir payload PARCIAL - so o campo que mudou
       const partial: Partial<ProjectPayload> = {};
-      if (field === 'success_evidence' && Array.isArray(value)) {
-        partial.success_evidence = value as string[];
+      if (field === 'transformations' && Array.isArray(value)) {
+        partial.transformations = value as { text: string; evidence: string[] }[];
       } else if (field === 'stakeholder_matrix' && Array.isArray(value)) {
         partial.stakeholder_matrix = value as { name: string; activity: string }[];
       } else if (typeof value === 'string') {
@@ -172,7 +172,7 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
           if (n.data.rawId !== p.id) return n;
           const proj = n.data.project!;
           const updated = { ...proj };
-          if (field === 'success_evidence' && Array.isArray(value)) updated.success_evidence = value as string[];
+          if (field === 'transformations' && Array.isArray(value)) updated.transformations = value as unknown as typeof updated.transformations;
           else if (field === 'stakeholder_matrix' && Array.isArray(value))
             updated.stakeholder_matrix = value as { name: string; activity: string }[];
           else if (typeof value === 'string') (updated as Record<string, unknown>)[field] = value || null;
@@ -573,55 +573,99 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
                   />
                 </div>
                 <div>
-                  <div className="text-sm text-ai-subtext mb-1">Transformações e conquistas esperadas:</div>
-                  <InlineTextarea
-                    value={currentProgram.transformations_achievements || ''}
-                    onChange={v => handleProgramChange('transformations_achievements', v)}
-                    placeholder="O que será transformado?"
-                    rows={2}
-                    disabled={readonly}
-                  />
-                </div>
-                <div>
-                  <div className="text-sm text-ai-subtext mb-2">Evidências de sucesso:</div>
-                  <div className="space-y-2 pl-2">
-                    {(currentProgram.success_evidence?.length ? currentProgram.success_evidence : ['']).map(
-                      (item, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <InlineText
-                            value={item}
-                            onChange={v => {
-                              const arr = [...(currentProgram.success_evidence || [''])];
-                              arr[idx] = v;
-                              handleProgramChange('success_evidence', arr);
-                            }}
-                            placeholder={`Evidência ${idx + 1}`}
-                            disabled={readonly}
-                            className="flex-1"
-                          />
-                          {!readonly && <button
-                            type="button"
-                            onClick={() => {
-                              const arr = (currentProgram.success_evidence || ['']).filter((_, i) => i !== idx);
-                              handleProgramChange('success_evidence', arr.length ? arr : ['']);
-                            }}
-                            className="p-1 text-ai-subtext hover:text-red-500"
-                          >
-                            <Trash2 size={14} />
-                          </button>}
-                        </div>
-                      ),
-                    )}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm text-ai-subtext">Transformações esperadas:</div>
                     {!readonly && <button
                       type="button"
-                      onClick={() =>
-                        handleProgramChange('success_evidence', [...(currentProgram.success_evidence || []), ''])
-                      }
+                      onClick={() => {
+                        const trs = [...(currentProgram.transformations || []), { text: '', evidence: [''] }];
+                        handleProgramChange('transformations', trs as { text: string; evidence: string[] }[]);
+                      }}
                       className="text-xs text-ai-accent hover:underline flex items-center gap-1"
                     >
                       <Plus size={12} />
-                      Adicionar evidência
+                      Adicionar transformação
                     </button>}
+                  </div>
+                  <div className="space-y-3 pl-2">
+                    {(currentProgram.transformations as unknown as { text: string; evidence: string[] }[] || []).length > 0
+                      ? (currentProgram.transformations as unknown as { text: string; evidence: string[] }[]).map(
+                        (tr, tIdx) => (
+                          <div key={tIdx} className="rounded-lg border border-ai-border bg-ai-surface/50 p-2 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <InlineText
+                                value={tr.text}
+                                onChange={v => {
+                                  const trs = [...(currentProgram.transformations as unknown as { text: string; evidence: string[] }[])];
+                                  trs[tIdx] = { ...trs[tIdx], text: v };
+                                  handleProgramChange('transformations', trs as { text: string; evidence: string[] }[]);
+                                }}
+                                placeholder={`Transformação ${tIdx + 1}`}
+                                disabled={readonly}
+                                className="flex-1"
+                              />
+                              {!readonly && <button
+                                type="button"
+                                onClick={() => {
+                                  const trs = (currentProgram.transformations as unknown as { text: string; evidence: string[] }[]).filter((_, i) => i !== tIdx);
+                                  handleProgramChange('transformations', (trs.length ? trs : [{ text: '', evidence: [''] }]) as { text: string; evidence: string[] }[]);
+                                }}
+                                className="p-1 text-ai-subtext hover:text-red-500"
+                              >
+                                <Trash2 size={14} />
+                              </button>}
+                            </div>
+                            <div className="ml-3 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-ai-subtext">Evidências:</span>
+                                {!readonly && <button
+                                  type="button"
+                                  onClick={() => {
+                                    const trs = [...(currentProgram.transformations as unknown as { text: string; evidence: string[] }[])];
+                                    trs[tIdx] = { ...trs[tIdx], evidence: [...trs[tIdx].evidence, ''] };
+                                    handleProgramChange('transformations', trs as { text: string; evidence: string[] }[]);
+                                  }}
+                                  className="text-xs text-ai-accent hover:underline flex items-center gap-1"
+                                >
+                                  <Plus size={10} />
+                                  Adicionar
+                                </button>}
+                              </div>
+                              {tr.evidence.map((ev, eIdx) => (
+                                <div key={eIdx} className="flex items-center gap-2">
+                                  <InlineText
+                                    value={ev}
+                                    onChange={v => {
+                                      const trs = [...(currentProgram.transformations as unknown as { text: string; evidence: string[] }[])];
+                                      const evArr = [...trs[tIdx].evidence];
+                                      evArr[eIdx] = v;
+                                      trs[tIdx] = { ...trs[tIdx], evidence: evArr };
+                                      handleProgramChange('transformations', trs as { text: string; evidence: string[] }[]);
+                                    }}
+                                    placeholder={`Evidência ${eIdx + 1}`}
+                                    disabled={readonly}
+                                    className="flex-1"
+                                  />
+                                  {!readonly && <button
+                                    type="button"
+                                    onClick={() => {
+                                      const trs = [...(currentProgram.transformations as unknown as { text: string; evidence: string[] }[])];
+                                      const evArr = trs[tIdx].evidence.filter((_, i) => i !== eIdx);
+                                      trs[tIdx] = { ...trs[tIdx], evidence: evArr.length ? evArr : [''] };
+                                      handleProgramChange('transformations', trs as { text: string; evidence: string[] }[]);
+                                    }}
+                                    className="p-1 text-ai-subtext hover:text-red-500"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ),
+                      )
+                      : <div className="text-xs text-ai-subtext">Nenhuma transformação cadastrada.</div>
+                    }
                   </div>
                 </div>
                 <div>

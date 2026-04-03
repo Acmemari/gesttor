@@ -1,12 +1,17 @@
 import type { ProjectStakeholderRow } from '../../lib/projects';
 
+export interface TransformationFormItem {
+  id?: string;
+  text: string;
+  evidence: string[];
+}
+
 export interface ProgramFormState {
   name: string;
   description: string;
   start_date: string;
   end_date: string;
-  transformations_achievements: string;
-  success_evidence: string[];
+  transformations: TransformationFormItem[];
   stakeholder_matrix: ProjectStakeholderRow[];
   program_type: 'assessoria' | 'fazenda';
 }
@@ -48,8 +53,7 @@ export const INITIAL_PROGRAM_FORM: ProgramFormState = {
   description: '',
   start_date: '',
   end_date: '',
-  transformations_achievements: '',
-  success_evidence: [''],
+  transformations: [{ text: '', evidence: [''] }],
   stakeholder_matrix: [{ name: '', activity: '' }],
   program_type: 'assessoria',
 };

@@ -174,42 +174,66 @@ const buildProjectStructurePdfDoc = (data: ProjectStructurePdfData): jsPDF => {
   y += cardH + 5;
   drawSeparator();
 
-  // Conquistas esperadas
-  sectionTitle('Transformações e conquistas esperadas');
-  const trans = normalizeText(project.transformations_achievements, 'Não informado.');
-  const transTextLines = splitLines(trans, cw - 8);
-  const transBoxH = Math.max(12, transTextLines.length * 4 + 6);
-  ensureSpace(transBoxH + 2);
-  doc.setFillColor(...COLORS.softBg);
-  doc.setDrawColor(...COLORS.border);
-  doc.roundedRect(m, y, cw, transBoxH, 2, 2, 'FD');
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...COLORS.slate600);
-  doc.text(transTextLines, m + 4, y + 5);
-  y += transBoxH + 2;
-  drawSeparator();
-
-  // Evidências de sucesso
-  sectionTitle('Evidências de sucesso');
-  const evidence = project.success_evidence || [];
-  if (evidence.length === 0) {
-    text('Nenhuma evidência cadastrada.', m, y, 8, 'normal', [...COLORS.slate500]);
-    y += 6;
-  } else {
-    evidence.forEach((item, idx) => {
-      const itemStr = normalizeText(item, '—');
-      const lines = splitLines(itemStr, cw - 7);
-      const evidenceBlockH = Math.max(4.2, lines.length * 3.8);
-      ensureSpace(evidenceBlockH + 1);
-      text(`${idx + 1}.`, m, y, 8, 'bold', [...COLORS.slate500]);
+  // Transformações esperadas e evidências
+  sectionTitle('Transformações esperadas e evidências de sucesso');
+  const transformations = project.transformations || [];
+  if (transformations.length > 0) {
+    transformations.forEach((tr: { text: string; evidence: string[] }, tIdx: number) => {
+      const trText = normalizeText(tr.text, '—');
+      const trLines = splitLines(`${tIdx + 1}. ${trText}`, cw - 8);
+      const trBoxH = Math.max(5, trLines.length * 4 + 2);
+      ensureSpace(trBoxH + 2);
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...COLORS.slate600);
-      doc.text(lines, m + 7, y);
-      y += evidenceBlockH;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...COLORS.slate800);
+      doc.text(trLines, m + 4, y);
+      y += trBoxH;
+      const evs = (tr.evidence || []).filter((e: string) => e.trim());
+      evs.forEach((ev: string, eIdx: number) => {
+        const evStr = normalizeText(ev, '—');
+        const evLines = splitLines(evStr, cw - 14);
+        const evBlockH = Math.max(4.2, evLines.length * 3.8);
+        ensureSpace(evBlockH + 1);
+        text(`${eIdx + 1}.`, m + 7, y, 8, 'bold', [...COLORS.slate500]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.slate600);
+        doc.text(evLines, m + 14, y);
+        y += evBlockH;
+      });
+      y += 2;
     });
-    y += 2;
+  } else {
+    // Fallback: old fields
+    const trans = normalizeText(project.transformations_achievements, 'Não informado.');
+    const transTextLines = splitLines(trans, cw - 8);
+    const transBoxH = Math.max(12, transTextLines.length * 4 + 6);
+    ensureSpace(transBoxH + 2);
+    doc.setFillColor(...COLORS.softBg);
+    doc.setDrawColor(...COLORS.border);
+    doc.roundedRect(m, y, cw, transBoxH, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...COLORS.slate600);
+    doc.text(transTextLines, m + 4, y + 5);
+    y += transBoxH + 2;
+
+    const evidence = project.success_evidence || [];
+    if (evidence.length > 0) {
+      evidence.forEach((item: string, idx: number) => {
+        const itemStr = normalizeText(item, '—');
+        const lines = splitLines(itemStr, cw - 7);
+        const evidenceBlockH = Math.max(4.2, lines.length * 3.8);
+        ensureSpace(evidenceBlockH + 1);
+        text(`${idx + 1}.`, m, y, 8, 'bold', [...COLORS.slate500]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.slate600);
+        doc.text(lines, m + 7, y);
+        y += evidenceBlockH;
+      });
+      y += 2;
+    }
   }
   drawSeparator();
 

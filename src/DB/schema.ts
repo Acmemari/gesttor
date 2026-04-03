@@ -417,6 +417,16 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export const projectTransformations = pgTable('project_transformations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  text: text('text').notNull(),
+  evidence: jsonb('evidence').default('[]'),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const deliveries = pgTable('deliveries', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdBy: text('created_by'),

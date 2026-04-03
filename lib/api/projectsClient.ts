@@ -12,6 +12,14 @@ export interface ProjectStakeholderRow {
   activity: string;
 }
 
+export interface ProjectTransformationRow {
+  id: string;
+  project_id: string;
+  text: string;
+  evidence: string[];
+  sort_order: number;
+}
+
 export interface ProjectRow {
   id: string;
   created_by: string;
@@ -20,6 +28,7 @@ export interface ProjectRow {
   description: string | null;
   transformations_achievements: string | null;
   success_evidence: string[];
+  transformations: ProjectTransformationRow[];
   start_date: string | null;
   end_date: string | null;
   sort_order: number;
@@ -35,12 +44,18 @@ export interface FetchProjectsFilters {
   clientMode?: boolean;
 }
 
+export interface TransformationPayloadItem {
+  text: string;
+  evidence: string[];
+}
+
 export interface ProjectPayload {
   name: string;
   description?: string | null;
   organization_id?: string | null;
   transformations_achievements?: string | null;
   success_evidence?: string[] | null;
+  transformations?: TransformationPayloadItem[];
   start_date?: string | null;
   end_date?: string | null;
   stakeholder_matrix?: ProjectStakeholderRow[];

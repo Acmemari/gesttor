@@ -315,8 +315,13 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
           description: p.description || '',
           start_date: p.start_date || '',
           end_date: p.end_date || '',
-          transformations_achievements: p.transformations_achievements || '',
-          success_evidence: p.success_evidence?.length ? [...p.success_evidence] : [''],
+          transformations: p.transformations?.length
+            ? p.transformations.map((tr: { id: string; text: string; evidence: string[] }) => ({
+                id: tr.id,
+                text: tr.text,
+                evidence: tr.evidence.length ? [...tr.evidence] : [''],
+              }))
+            : [{ text: '', evidence: [''] }],
           stakeholder_matrix: p.stakeholder_matrix?.length ? [...p.stakeholder_matrix] : [{ name: '', activity: '' }],
           program_type: (p.program_type as 'assessoria' | 'fazenda') ?? 'assessoria',
         });
@@ -440,8 +445,12 @@ const EAPMindMapInner: React.FC<EAPMindMapProps> = ({ effectiveUserId, selectedO
       organization_id: selectedOrganizationId || null,
       start_date: programForm.start_date || null,
       end_date: programForm.end_date || null,
-      transformations_achievements: programForm.transformations_achievements.trim() || null,
-      success_evidence: programForm.success_evidence.map(s => s.trim()).filter(Boolean),
+      transformations: programForm.transformations
+        .filter(t => t.text.trim())
+        .map(t => ({
+          text: t.text.trim(),
+          evidence: t.evidence.map(e => e.trim()).filter(Boolean),
+        })),
       stakeholder_matrix: programForm.stakeholder_matrix
         .map(r => ({ name: r.name.trim(), activity: r.activity.trim() }))
         .filter(r => r.name || r.activity),

@@ -393,8 +393,13 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
         description: t.description || '',
         start_date: t.start_date || '',
         end_date: t.end_date || '',
-        transformations_achievements: t.transformations_achievements || '',
-        success_evidence: t.success_evidence.length ? [...t.success_evidence] : [''],
+        transformations: t.transformations?.length
+          ? t.transformations.map(tr => ({
+              id: tr.id,
+              text: tr.text,
+              evidence: tr.evidence.length ? [...tr.evidence] : [''],
+            }))
+          : [{ text: '', evidence: [''] }],
         stakeholder_matrix: t.stakeholder_matrix.length ? [...t.stakeholder_matrix] : [{ name: '', activity: '' }],
         program_type: (t.program_type as 'assessoria' | 'fazenda') ?? 'assessoria',
       });
@@ -507,8 +512,12 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
       organization_id: selectedOrganizationId || null,
       start_date: programForm.start_date || null,
       end_date: programForm.end_date || null,
-      transformations_achievements: programForm.transformations_achievements.trim() || null,
-      success_evidence: programForm.success_evidence.map(s => s.trim()).filter(Boolean),
+      transformations: programForm.transformations
+        .filter(t => t.text.trim())
+        .map(t => ({
+          text: t.text.trim(),
+          evidence: t.evidence.map(e => e.trim()).filter(Boolean),
+        })),
       stakeholder_matrix: programForm.stakeholder_matrix
         .map(r => ({ name: r.name.trim(), activity: r.activity.trim() }))
         .filter(r => r.name || r.activity),

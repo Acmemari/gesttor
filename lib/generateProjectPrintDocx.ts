@@ -123,23 +123,37 @@ export async function generateProjectPrintDocx(data: ProjectPrintData): Promise<
     );
   }
 
-  if (project.transformations_achievements) {
+  if (project.transformations && project.transformations.length > 0) {
+    overviewChildren.push(
+      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Transformações Esperadas e Evidências de Sucesso", color: "1B2A4A" })], spacing: { before: 360, after: 240 } })
+    );
+    project.transformations.forEach((tr: { text: string; evidence: string[] }, tIdx: number) => {
+      overviewChildren.push(
+        new Paragraph({ children: [new TextRun({ text: `${tIdx + 1}. ${tr.text}`, size: 20, bold: true })], spacing: { after: 120 } })
+      );
+      const evs = (tr.evidence || []).filter((e: string) => e.trim());
+      evs.forEach((ev: string, eIdx: number) => {
+        overviewChildren.push(
+          new Paragraph({ children: [new TextRun({ text: `   ${eIdx + 1}. ${ev}`, size: 20 })], spacing: { after: 80 }, indent: { left: 360 } })
+        );
+      });
+    });
+  } else if (project.transformations_achievements) {
     overviewChildren.push(
       new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Transformações e Conquistas Esperadas", color: "1B2A4A" })], spacing: { before: 360, after: 240 } }),
       new Paragraph({ children: [new TextRun({ text: project.transformations_achievements, size: 20 })], spacing: { after: 360 } })
     );
-  }
-
-  const evList = (project.success_evidence || []).filter(e => e.trim());
-  if (evList.length > 0) {
-    overviewChildren.push(
-      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Evidências de Sucesso", color: "1B2A4A" })], spacing: { before: 360, after: 240 } })
-    );
-    evList.forEach((ev, i) => {
+    const evList = (project.success_evidence || []).filter((e: string) => e.trim());
+    if (evList.length > 0) {
       overviewChildren.push(
-        new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${ev}`, size: 20 })], spacing: { after: 120 } })
+        new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "Evidências de Sucesso", color: "1B2A4A" })], spacing: { before: 360, after: 240 } })
       );
-    });
+      evList.forEach((ev: string, i: number) => {
+        overviewChildren.push(
+          new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${ev}`, size: 20 })], spacing: { after: 120 } })
+        );
+      });
+    }
   }
 
   if (stakeholders.length > 0) {
