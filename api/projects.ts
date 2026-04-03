@@ -31,6 +31,27 @@ function isValidISODate(s: string): boolean {
   return ISO_DATE_RE.test(s) && !isNaN(new Date(s).getTime());
 }
 
+/** Converte row do Drizzle (camelCase) para formato snake_case esperado pelo frontend. */
+function mapRow(r: Record<string, unknown>) {
+  return {
+    id: r.id,
+    created_by: r.createdBy ?? r.created_by ?? null,
+    organization_id: r.organizationId ?? r.organization_id ?? null,
+    name: r.name,
+    description: r.description ?? null,
+    transformations_achievements: r.transformationsAchievements ?? r.transformations_achievements ?? null,
+    success_evidence: r.successEvidence ?? r.success_evidence ?? [],
+    start_date: r.startDate ?? r.start_date ?? null,
+    end_date: r.endDate ?? r.end_date ?? null,
+    stakeholder_matrix: r.stakeholderMatrix ?? r.stakeholder_matrix ?? [],
+    program_type: r.programType ?? r.program_type ?? 'assessoria',
+    sort_order: r.sortOrder ?? r.sort_order ?? 0,
+    percent: r.percent ?? 0,
+    created_at: r.createdAt ?? r.created_at ?? null,
+    updated_at: r.updatedAt ?? r.updated_at ?? null,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') {
@@ -71,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 100 });
-      jsonSuccess(res, rows);
+      jsonSuccess(res, rows.map(mapRow));
       return;
     }
 
@@ -88,12 +109,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       const rows = await fetchProjectsForOrganization(organizationId, { offset: 0, limit: 1000 });
-      jsonSuccess(res, rows);
+      jsonSuccess(res, rows.map(mapRow));
       return;
     }
 
     const rows = await fetchProjectsByCreatedBy(userId, { organizationId });
-    jsonSuccess(res, rows);
+    jsonSuccess(res, rows.map(mapRow));
     return;
   }
 
@@ -162,7 +183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stakeholder_matrix: stakeholder,
       program_type: body?.program_type ? String(body.program_type) : 'assessoria',
     });
-    jsonSuccess(res, row);
+    jsonSuccess(res, mapRow(row));
     return;
   }
 
@@ -259,7 +280,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const row = await updateProject(projectId, payload);
-    jsonSuccess(res, row);
+    jsonSuccess(res, mapRow(row));
     return;
   }
 
