@@ -32,7 +32,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({ title, subtitle, onClose
     <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={handleBackdrop}>
       <div
         ref={contentRef}
-        className="w-full max-w-2xl rounded-xl border border-ai-border bg-ai-bg shadow-xl max-h-[88vh] flex flex-col"
+        className="w-full max-w-4xl rounded-xl border border-ai-border bg-ai-bg shadow-xl max-h-[88vh] flex flex-col"
       >
         <header className="flex items-start justify-between px-6 py-4 border-b border-ai-border shrink-0">
           <div>
