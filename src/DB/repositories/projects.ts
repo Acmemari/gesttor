@@ -40,10 +40,10 @@ export async function createProject(data: {
     organizationId: data.organization_id ?? null,
     description: data.description ?? null,
     transformationsAchievements: data.transformations_achievements ?? null,
-    successEvidence: (data.success_evidence ?? []) as any,
+    successEvidence: (data.success_evidence ?? []) as string[],
     startDate: data.start_date ?? null,
     endDate: data.end_date ?? null,
-    stakeholderMatrix: (data.stakeholder_matrix ?? []) as any,
+    stakeholderMatrix: (data.stakeholder_matrix ?? []) as { name: string; activity: string }[],
     sortOrder: data.sort_order ?? 0,
     programType: data.program_type ?? 'assessoria',
   }).returning();
@@ -63,12 +63,12 @@ export async function updateProject(id: string, data: Record<string, unknown>) {
   if (data.organization_id !== undefined) mapped.organizationId = data.organization_id;
   if (data.program_type !== undefined) mapped.programType = data.program_type;
   
-  const [row] = await db.update(projects).set(mapped).where(eq(projects.id, id as any)).returning();
+  const [row] = await db.update(projects).set(mapped).where(eq(projects.id, id)).returning();
   return row;
 }
 
 export async function deleteProject(id: string) {
-  await db.delete(projects).where(eq(projects.id, id as any));
+  await db.delete(projects).where(eq(projects.id, id));
 }
 
 export async function getNextSortOrder(userId: string, organizationId?: string | null): Promise<number> {

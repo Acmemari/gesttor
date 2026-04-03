@@ -10,20 +10,9 @@ import * as initiativesApi from '../lib/api/initiativesClient';
 import * as deliveriesApi from '../lib/api/deliveriesClient';
 import { InlineText, InlineTextarea, InlineDate, InlineSelect, InlineNumber } from './eap/InlineField';
 import { getCurrentIsoDate } from './eap';
+import { addDaysIso } from '../lib/dateHelpers';
 
 const DEBOUNCE_MS = 600;
-
-function addDaysIso(iso: string, days: number): string {
-  try {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
-    const dt = new Date(`${iso}T00:00:00`);
-    if (Number.isNaN(dt.getTime())) return '';
-    dt.setDate(dt.getDate() + (Number.isFinite(days) ? days : 0));
-    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-  } catch {
-    return '';
-  }
-}
 
 interface ProjectDocumentProps {
   effectiveUserId: string;
@@ -96,11 +85,6 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
       });
       if (!mountedRef.current) return;
       setTree(t);
-      if (t.length > 0 && !selectedProgramId) {
-        setSelectedProgramId(t[0].data.rawId);
-      } else if (t.length > 0 && selectedProgramId && !t.some(n => n.data.rawId === selectedProgramId)) {
-        setSelectedProgramId(t[0].data.rawId);
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao carregar.';
       if (mountedRef.current) {
@@ -110,11 +94,20 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, selectedProgramId, toast]);
+  }, [effectiveUserId, selectedOrganizationId, selectedFarmId, readonly, toast]);
 
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  // Auto-selecao: selecionar primeiro projeto se nenhum selecionado ou se o selecionado nao existe mais
+  useEffect(() => {
+    if (tree.length === 0) return;
+    setSelectedProgramId(prev => {
+      if (!prev || !tree.some(n => n.data.rawId === prev)) return tree[0].data.rawId;
+      return prev;
+    });
+  }, [tree]);
 
   useEffect(() => {
     let active = true;
@@ -139,10 +132,12 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
         setSaving(true);
         try {
           await fn();
-          if (mountedRef.current) await loadTree();
           if (mountedRef.current) toast('Salvo.', 'success');
         } catch (err) {
-          if (mountedRef.current) toast(err instanceof Error ? err.message : 'Erro ao salvar.', 'error');
+          if (mountedRef.current) {
+            toast(err instanceof Error ? err.message : 'Erro ao salvar.', 'error');
+            await loadTree(); // Reverter estado otimista em caso de erro
+          }
         } finally {
           if (mountedRef.current) setSaving(false);
         }
@@ -158,25 +153,19 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
       if (readonly) return;
       if (!selectedProgram?.data.project) return;
       const p = selectedProgram.data.project;
-      const payload: ProjectPayload = {
-        name: p.name,
-        description: p.description ?? undefined,
-        organization_id: selectedOrganizationId ?? undefined,
-        start_date: p.start_date ?? undefined,
-        end_date: p.end_date ?? undefined,
-        transformations_achievements: p.transformations_achievements ?? undefined,
-        success_evidence: p.success_evidence,
-        stakeholder_matrix: p.stakeholder_matrix,
-      };
+
+      // Construir payload PARCIAL - so o campo que mudou
+      const partial: Partial<ProjectPayload> = {};
       if (field === 'success_evidence' && Array.isArray(value)) {
-        payload.success_evidence = value as string[];
+        partial.success_evidence = value as string[];
       } else if (field === 'stakeholder_matrix' && Array.isArray(value)) {
-        payload.stakeholder_matrix = value as { name: string; activity: string }[];
+        partial.stakeholder_matrix = value as { name: string; activity: string }[];
       } else if (typeof value === 'string') {
-        (payload as unknown as Record<string, unknown>)[field] = value || null;
+        (partial as Record<string, unknown>)[field] = value || null;
       }
+
       scheduleSave(`program-${p.id}`, async () => {
-        await updateProject(p.id, payload);
+        await updateProject(p.id, partial);
       });
       setTree(prev =>
         prev.map(n => {
@@ -191,7 +180,7 @@ const ProjectDocument: React.FC<ProjectDocumentProps> = ({
         }),
       );
     },
-    [readonly, selectedProgram, selectedOrganizationId, scheduleSave],
+    [readonly, selectedProgram, scheduleSave],
   );
 
   const handleDeliveryChange = useCallback(

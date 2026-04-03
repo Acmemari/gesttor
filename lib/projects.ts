@@ -82,6 +82,31 @@ function validatePayload(payload: ProjectPayload): void {
     throw new Error('A descrição das transformações é muito longa.');
 }
 
+function validatePartialPayload(payload: Partial<ProjectPayload>): void {
+  if (payload.name !== undefined) {
+    const name = payload.name?.trim() || '';
+    if (!name) throw new Error('O nome do projeto é obrigatório.');
+    if (name.length > MAX_NAME_LENGTH)
+      throw new Error(`O nome do projeto é muito longo (máx ${MAX_NAME_LENGTH} caracteres).`);
+  }
+
+  if (payload.start_date !== undefined && payload.start_date && !isValidISODate(payload.start_date)) {
+    throw new Error('Data de início do projeto com formato inválido (esperado AAAA-MM-DD).');
+  }
+  if (payload.end_date !== undefined && payload.end_date && !isValidISODate(payload.end_date)) {
+    throw new Error('Data final do projeto com formato inválido (esperado AAAA-MM-DD).');
+  }
+
+  if (payload.start_date && payload.end_date && payload.start_date > payload.end_date) {
+    throw new Error('A data de início do projeto não pode ser posterior à data final.');
+  }
+
+  if (payload.transformations_achievements !== undefined &&
+      (payload.transformations_achievements || '').length > MAX_TRANSFORMATIONS_LENGTH) {
+    throw new Error('A descrição das transformações é muito longa.');
+  }
+}
+
 export async function fetchProjects(createdBy: string, filters?: FetchProjectsFilters): Promise<ProjectRow[]> {
   validateUserId(createdBy);
   return projectsApi.fetchProjects(createdBy, filters);
@@ -103,20 +128,17 @@ export async function createProject(createdBy: string, payload: ProjectPayload):
   });
 }
 
-export async function updateProject(projectId: string, payload: ProjectPayload): Promise<ProjectRow> {
+export async function updateProject(projectId: string, payload: Partial<ProjectPayload>): Promise<ProjectRow> {
   validateProjectId(projectId);
-  validatePayload(payload);
-  const stakeholder = Array.isArray(payload.stakeholder_matrix)
-    ? payload.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS)
-    : undefined;
-  const successEvidence = Array.isArray(payload.success_evidence)
-    ? payload.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim())
-    : undefined;
-  return projectsApi.updateProject(projectId, {
-    ...payload,
-    stakeholder_matrix: stakeholder,
-    success_evidence: successEvidence,
-  });
+  validatePartialPayload(payload);
+  const cleaned: Partial<ProjectPayload> = { ...payload };
+  if (Array.isArray(cleaned.stakeholder_matrix)) {
+    cleaned.stakeholder_matrix = cleaned.stakeholder_matrix.slice(0, MAX_STAKEHOLDER_ROWS);
+  }
+  if (Array.isArray(cleaned.success_evidence)) {
+    cleaned.success_evidence = cleaned.success_evidence.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim());
+  }
+  return projectsApi.updateProject(projectId, cleaned);
 }
 
 export async function deleteProject(projectId: string): Promise<void> {

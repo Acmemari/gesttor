@@ -19,6 +19,7 @@ import {
 
 const MAX_NAME_LENGTH = 300;
 const MAX_STAKEHOLDER_ROWS = 50;
+const MAX_TRANSFORMATIONS_LENGTH = 10000;
 const VALID_PROGRAM_TYPES = ['assessoria', 'fazenda'];
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -135,6 +136,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (body?.transformations_achievements && String(body.transformations_achievements).length > MAX_TRANSFORMATIONS_LENGTH) {
+      jsonError(res, 'Descrição das transformações muito longa (máx 10.000 caracteres)', { status: 400 });
+      return;
+    }
+
     const organizationIdForProject = (body?.organization_id as string) || (body?.client_id as string) || null;
     if (organizationIdForProject && !isAdmin) {
       await assertOrgAccess(organizationIdForProject, userId, profile.role ?? 'visitante');
@@ -193,6 +199,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (body?.start_date && body?.end_date && String(body.start_date) > String(body.end_date)) {
       jsonError(res, 'Data de início não pode ser posterior à data final', { status: 400 });
+      return;
+    }
+
+    if (body?.transformations_achievements !== undefined && body.transformations_achievements &&
+        String(body.transformations_achievements).length > MAX_TRANSFORMATIONS_LENGTH) {
+      jsonError(res, 'Descrição das transformações muito longa (máx 10.000 caracteres)', { status: 400 });
       return;
     }
 

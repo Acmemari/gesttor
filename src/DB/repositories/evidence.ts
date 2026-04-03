@@ -1,15 +1,31 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../index.js';
 import { evidence, evidenceFiles } from '../schema.js';
 
 export async function listEvidenceByMilestone(milestoneId: string) {
   const evidenceRows = await db.select().from(evidence)
     .where(eq(evidence.milestoneId, milestoneId as any));
-  const result = await Promise.all(evidenceRows.map(async (e) => {
-    const files = await db.select().from(evidenceFiles).where(eq(evidenceFiles.evidenceId, e.id as any));
-    return { ...e, files };
+
+  if (evidenceRows.length === 0) return [];
+
+  // Buscar TODOS os files de uma vez (elimina N+1)
+  const evidenceIds = evidenceRows.map(e => e.id);
+  const allFiles = await db.select().from(evidenceFiles)
+    .where(inArray(evidenceFiles.evidenceId, evidenceIds as any));
+
+  // Agrupar em memoria
+  const filesByEvidenceId = new Map<string, typeof allFiles>();
+  for (const f of allFiles) {
+    const eid = f.evidenceId as string;
+    const list = filesByEvidenceId.get(eid) ?? [];
+    list.push(f);
+    filesByEvidenceId.set(eid, list);
+  }
+
+  return evidenceRows.map(e => ({
+    ...e,
+    files: filesByEvidenceId.get(e.id as string) ?? [],
   }));
-  return result;
 }
 
 export async function getEvidenceById(evidenceId: string) {

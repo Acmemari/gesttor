@@ -16,12 +16,31 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [tokenMissing, setTokenMissing] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     const readRecoveryEmail = async () => {
       try {
+        const searchParams = new URLSearchParams(window.location.search);
+
+        // Verificar token/error na URL imediatamente
+        const urlError = searchParams.get('error');
+        const token = searchParams.get('token');
+
+        if (isMounted && (urlError || !token)) {
+          if (urlError === 'INVALID_TOKEN') {
+            setError('Token inválido ou expirado. Solicite um novo link de recuperação.');
+          } else if (!token) {
+            setError('Token de recuperação não encontrado. Solicite um novo link.');
+          } else {
+            setError('Link de recuperação inválido. Solicite um novo link.');
+          }
+          setTokenMissing(true);
+          return;
+        }
+
         // Fonte 1: localStorage (definido ao solicitar recovery - PKCE flow)
         const emailFromStorage = localStorage.getItem('password_recovery_email');
         if (emailFromStorage && isMounted) {
@@ -29,7 +48,6 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
         }
 
         // Fonte 2: URL params
-        const searchParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '');
         const emailFromUrl = searchParams.get('email') || hashParams.get('email');
         if (emailFromUrl && isMounted) {
@@ -216,9 +234,20 @@ const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onToast, onSucces
               </p>
             )}
 
+            {tokenMissing && (
+              <button
+                type="button"
+                onClick={() => window.location.replace('/forgot-password')}
+                className="w-full flex items-center justify-center py-2.5 sm:py-3 px-4 bg-ai-text text-white rounded-lg hover:bg-black transition-colors font-medium text-xs sm:text-sm"
+              >
+                <span>Solicitar novo link</span>
+                <ArrowRight size={14} className="sm:w-4 sm:h-4 ml-2" />
+              </button>
+            )}
+
             <button
               type="submit"
-              disabled={isSubmitting || password.length < 8 || password !== confirmPassword}
+              disabled={isSubmitting || password.length < 8 || password !== confirmPassword || tokenMissing}
               className="w-full flex items-center justify-center py-2.5 sm:py-3 px-4 bg-ai-text text-white rounded-lg hover:bg-black transition-colors font-medium text-xs sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

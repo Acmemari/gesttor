@@ -6,6 +6,7 @@ import {
   type InitiativeWithProgress,
   type InitiativeTaskRow,
 } from './initiatives';
+import { formatDateBR } from './dateFormatters';
 
 export type WBSLevel = 'program' | 'delivery' | 'activity' | 'task';
 
@@ -27,22 +28,6 @@ export interface WBSNode {
   parentId: string | null;
   data: WBSNodeData;
   children: WBSNode[];
-}
-
-const DATE_FMT = new Intl.DateTimeFormat('pt-BR', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-
-function formatDateBR(raw: string | null): string {
-  if (!raw) return '—';
-  try {
-    const d = new Date(`${raw}T00:00:00`);
-    return Number.isNaN(d.getTime()) ? raw : DATE_FMT.format(d);
-  } catch {
-    return raw;
-  }
 }
 
 /**

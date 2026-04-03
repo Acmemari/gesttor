@@ -17,12 +17,17 @@ export async function listInitiativesByOrg(orgId: string) {
 export async function getInitiativeById(id: string) {
   const [row] = await db.select().from(initiatives).where(eq(initiatives.id, id as any)).limit(1);
   if (!row) return undefined;
-  const team = await db.select().from(initiativeTeam).where(eq(initiativeTeam.initiativeId, row.id as any));
-  const milestones = await db.select().from(initiativeMilestones)
-    .where(eq(initiativeMilestones.initiativeId, row.id as any))
-    .orderBy(initiativeMilestones.sortOrder);
-  const participants = await db.select().from(initiativeParticipants)
-    .where(eq(initiativeParticipants.initiativeId, row.id as any));
+
+  // Queries independentes em paralelo
+  const [team, milestones, participants] = await Promise.all([
+    db.select().from(initiativeTeam).where(eq(initiativeTeam.initiativeId, row.id as any)),
+    db.select().from(initiativeMilestones)
+      .where(eq(initiativeMilestones.initiativeId, row.id as any))
+      .orderBy(initiativeMilestones.sortOrder),
+    db.select().from(initiativeParticipants)
+      .where(eq(initiativeParticipants.initiativeId, row.id as any)),
+  ]);
+
   return { ...row, team, milestones, participants };
 }
 

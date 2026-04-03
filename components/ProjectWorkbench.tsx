@@ -41,6 +41,8 @@ import {
   type ActivityFormState,
   type TaskFormState,
 } from './eap';
+import { addDaysIso } from '../lib/dateHelpers';
+import { formatDateBR } from '../lib/dateFormatters';
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -71,30 +73,6 @@ interface WorkbenchTask {
 
 type ModalEntity = 'program' | 'delivery' | 'activity' | 'task';
 type ModalMode = 'create' | 'edit';
-
-function addDaysIso(iso: string, days: number): string {
-  try {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
-    const dt = new Date(`${iso}T00:00:00`);
-    if (Number.isNaN(dt.getTime())) return '';
-    dt.setDate(dt.getDate() + (Number.isFinite(days) ? days : 0));
-    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-  } catch {
-    return '';
-  }
-}
-
-const DATE_FMT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-function formatDateBR(raw: string | null): string {
-  if (!raw) return '—';
-  try {
-    const d = new Date(`${raw}T00:00:00`);
-    return Number.isNaN(d.getTime()) ? raw : DATE_FMT.format(d);
-  } catch {
-    return raw;
-  }
-}
 
 function swapSortOrderLocally<T extends { id: string; sort_order: number }>(
   rows: T[],
@@ -540,7 +518,14 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
     setSaving(true);
     try {
       const saved = editingId ? await updateProject(editingId, payload) : await createProject(effectiveUserId, payload);
-      await loadProjects();
+
+      // Atualizar state local diretamente com a resposta da API (evita reload completo)
+      if (editingId) {
+        setProjects(prev => prev.map(p => p.id === saved.id ? saved : p));
+      } else {
+        setProjects(prev => [...prev, saved]);
+      }
+
       setSelectedProgramId(saved.id);
       toast(editingId ? 'Projeto atualizado.' : 'Projeto criado.', 'success');
       closeModal();
@@ -549,7 +534,7 @@ const ProjectWorkbench: React.FC<ProjectWorkbenchProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [saving, programForm, selectedOrganizationId, editingId, effectiveUserId, loadProjects, toast, closeModal]);
+  }, [saving, programForm, selectedOrganizationId, editingId, effectiveUserId, toast, closeModal]);
 
   const deleteProgramById = useCallback(
     async (id: string) => {

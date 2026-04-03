@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Mail, ArrowRight, Loader2, User, Building2, Phone, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Loader2, User, Building2, Phone, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { APP_VERSION } from '../src/version';
 import { formatPhone, validatePhone } from '../lib/utils/phoneMask';
 import { acceptInvite } from '../lib/api/pessoasClient';
@@ -35,6 +35,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const [isOAuthLoading, setIsOAuthLoading] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSignupSuccess, setIsSignupSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +83,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
         return;
       }
       setIsSubmitting(false);
+      setIsSignupSuccess(true);
     } else {
       // Login flow
       try {
@@ -127,6 +129,35 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   // Real-time password validation
   const passwordsMatch = isSignup ? confirmPassword === '' || password === confirmPassword : true;
   const passwordLengthValid = isSignup ? password === '' || password.length >= 8 : true;
+
+  if (isSignupSuccess) {
+    return (
+      <div className="w-full min-h-screen bg-[#f5f5f5] text-ai-text font-sans overflow-y-auto flex items-center justify-center">
+        <div className="w-full max-w-md mx-auto px-4 py-3 sm:py-4">
+          <div className="flex flex-col items-center mb-3 sm:mb-4">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight">Gesttor</h1>
+            <p className="text-ai-subtext text-[10px] sm:text-xs mt-0.5">Calculadora de resultados para gestão de precisão</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 size={32} className="text-green-600" />
+            </div>
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-2">Conta criada com sucesso!</h2>
+            <p className="text-[11px] sm:text-xs text-gray-500 mb-4">
+              Faça login com seu email e senha para acessar a plataforma.
+            </p>
+            <button
+              onClick={() => window.location.replace('/sign-in')}
+              className="w-full flex items-center justify-center py-2.5 px-4 bg-zinc-900 text-white rounded-lg hover:bg-black transition-colors font-semibold text-sm"
+            >
+              <span>Ir para login</span>
+              <ArrowRight size={16} className="ml-2" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-screen bg-[#f5f5f5] text-ai-text font-sans overflow-y-auto flex items-center justify-center">
