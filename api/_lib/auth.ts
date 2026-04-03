@@ -233,6 +233,11 @@ export const auth = betterAuth({
   },
 
   trustedOrigins: [
+    // Domínios de produção conhecidos
+    'https://pecuaria-red.vercel.app',
+    'https://gesttor.app',
+    'https://www.gesttor.app',
+    // Desenvolvimento local
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
@@ -245,9 +250,14 @@ export const auth = betterAuth({
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'http://127.0.0.1:5173',
+    // Variáveis de ambiente (sobrescrevem / adicionam domínios extras)
     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
     ...(process.env.VITE_APP_URL ? [process.env.VITE_APP_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    // Suporte a múltiplos domínios extras via BETTER_AUTH_TRUSTED_ORIGINS (separado por vírgula)
+    ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS
+      ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+      : []),
   ],
 
   databaseHooks: {
