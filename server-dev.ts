@@ -248,6 +248,7 @@ app.all('/api/desempenho', (req, res) => handleApiRoute('./api/desempenho.ts', r
 // Evidências / Mapas de fazenda
 app.all('/api/evidence', (req, res) => handleApiRoute('./api/evidence.ts', req, res));
 app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req, res));
+app.all('/api/farm-locations', (req, res) => handleApiRoute('./api/farm-locations.ts', req, res));
 
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
@@ -269,11 +270,15 @@ app.all('/api/storage', (req, res) => handleApiRoute('./api/storage.ts', req, re
 
 // Cenários / Questionários / Feedbacks
 app.all('/api/cattle-scenarios', (req, res) => handleApiRoute('./api/cattle-scenarios.ts', req, res));
+app.all('/api/herd-evolution', (req, res) => handleApiRoute('./api/herd-evolution.ts', req, res));
 app.all('/api/saved-questionnaires', (req, res) => handleApiRoute('./api/saved-questionnaires.ts', req, res));
 app.all('/api/saved-feedbacks', (req, res) => handleApiRoute('./api/saved-feedbacks.ts', req, res));
 
 // Empresas assessoras
 app.all('/api/emp-ass', (req, res) => handleApiRoute('./api/emp-ass.ts', req, res));
+
+// Categorias de animais
+app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-categories.ts', req, res));
 
 // Admin / Auxiliares
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));

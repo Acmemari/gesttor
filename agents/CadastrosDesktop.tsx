@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase } from 'lucide-react';
+import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, Beef } from 'lucide-react';
 
 interface CadastroCardProps {
   title: React.ReactNode;
@@ -41,6 +41,7 @@ interface CadastrosDesktopProps {
   onSelectFazendas: () => void;
   onSelectClientes?: () => void;
   onSelectPessoas: () => void;
+  onSelectAnimalCategories?: () => void;
   onSelectPerfisConfig?: () => void;
   onSelectEmpAss?: () => void;
   showClientes?: boolean;
@@ -52,6 +53,7 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
   onSelectFazendas,
   onSelectClientes,
   onSelectPessoas,
+  onSelectAnimalCategories,
   onSelectPerfisConfig,
   onSelectEmpAss,
   showClientes = false,
@@ -95,6 +97,17 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       icon: <UserCircle size={24} />,
       onClick: onSelectPessoas,
     },
+    ...(onSelectAnimalCategories
+      ? [
+          {
+            id: 'animal-categories',
+            title: <CadastroTitle entity="Categoria Animal" />,
+            description: 'Defina as categorias do seu rebanho com pesos e valores de mercado.',
+            icon: <Beef size={24} />,
+            onClick: onSelectAnimalCategories,
+          },
+        ]
+      : []),
     ...(onSelectPerfisConfig
       ? [
           {

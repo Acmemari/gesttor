@@ -33,6 +33,7 @@ const AIAgentConfigAdmin = lazy(() => import('./agents/AIAgentConfigAdmin'));
 const FarmManagement = lazy(() => import('./agents/FarmManagement'));
 const PerfisCargoConfig = lazy(() => import('./agents/PerfisCargoConfig'));
 const EmpAssManagement = lazy(() => import('./agents/EmpAssManagement'));
+const AnimalCategoriesManagement = lazy(() => import('./agents/AnimalCategoriesManagement'));
 const QuestionnaireFiller = lazy(() => import('./agents/QuestionnaireFiller'));
 const ClientManagement = lazy(() => import('./agents/ClientManagement'));
 const AgilePlanning = lazy(() => import('./agents/AgilePlanning'));
@@ -50,6 +51,7 @@ const ProjectManagement = lazy(() => import('./agents/ProjectManagement'));
 const CalendarAgent = lazy(() => import('./agents/CalendarAgent'));
 const SupportTicketsDashboard = lazy(() => import('./agents/SupportTicketsDashboard'));
 const FeedbackList = lazy(() => import('./agents/FeedbackList'));
+const HerdEvolutionSimulator = lazy(() => import('./agents/HerdEvolutionSimulator'));
 const AreaCertificadosDesktop = lazy(() => import('./agents/AreaCertificadosDesktop'));
 const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'));
 const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
@@ -112,9 +114,9 @@ const AppContent: React.FC = () => {
   const prevActiveAppRef = React.useRef<'gesttor' | 'inttegra'>('gesttor');
   const [activeAgentId, setActiveAgentId] = useState<string>('cattle-profit');
   const [viewMode, setViewMode] = useState<
-    'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo'
+    'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution'
   >('desktop');
-  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass'>(
+  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
     'desktop',
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -676,6 +678,7 @@ const AppContent: React.FC = () => {
                 onSelectComparador={() => setViewMode('comparator')}
                 onSelectPlanejamentoAgil={() => setViewMode('agile-planning')}
                 onSelectAvaliacaoProtocolo={() => setViewMode('avaliacao-protocolo')}
+                onSelectHerdEvolution={() => setViewMode('herd-evolution')}
                 onSelectFeedbackAgent={() => setActiveAgentId('agent-feedback')}
                 showPlanejamentoAgil={user?.role === 'admin' || user?.qualification === 'analista' || user?.qualification === 'cliente'}
                 feedbackAgentUnlocked={canAccessFeedbackAgent}
@@ -702,6 +705,13 @@ const AppContent: React.FC = () => {
             </Suspense>
           ) : (
             <div className="p-8 text-ai-subtext">Acesso negado.</div>
+          );
+        }
+        if (viewMode === 'herd-evolution') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <HerdEvolutionSimulator onToast={addToast} />
+            </Suspense>
           );
         }
         if (viewMode === 'comparator') {
@@ -781,6 +791,7 @@ const AppContent: React.FC = () => {
                 onSelectFazendas={() => setCadastroView('farm')}
                 onSelectClientes={() => setCadastroView('client')}
                 onSelectPessoas={() => setCadastroView('people')}
+                onSelectAnimalCategories={() => setCadastroView('animal-categories')}
                 onSelectPerfisConfig={user?.role === 'admin' ? () => setCadastroView('perfis-config') : undefined}
                 onSelectEmpAss={user?.role === 'admin' ? () => setCadastroView('emp-ass') : undefined}
                 showClientes={user?.role === 'admin' || user?.qualification === 'analista'}
@@ -839,6 +850,13 @@ const AppContent: React.FC = () => {
             </Suspense>
           ) : (
             <div className="p-8 text-gray-500">Acesso restrito a administradores.</div>
+          );
+        }
+        if (cadastroView === 'animal-categories') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <AnimalCategoriesManagement onToast={handleToast} onBack={() => setCadastroView('desktop')} />
+            </Suspense>
           );
         }
         if (cadastroView === 'delivery') {
@@ -1139,6 +1157,7 @@ const AppContent: React.FC = () => {
                     : cadastroView === 'perfis-config' ? 'Perfis e Cargos'
                     : cadastroView === 'project' ? 'Projeto'
                     : cadastroView === 'delivery' ? 'Entregas'
+                    : cadastroView === 'animal-categories' ? 'Categorias de Animais'
                     : 'Cadastro';
 
                   const cancelEvent =
@@ -1181,6 +1200,7 @@ const AppContent: React.FC = () => {
                       viewMode === 'simulator' ? 'Simulador'
                       : viewMode === 'comparator' ? 'Comparador'
                       : viewMode === 'agile-planning' ? 'Planejamento Ágil'
+                      : viewMode === 'herd-evolution' ? 'Evolução do Rebanho'
                       : 'Avaliação Protocolo 5-3-9',
                   },
                 ]}

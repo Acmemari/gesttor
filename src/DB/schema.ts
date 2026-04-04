@@ -552,6 +552,33 @@ export const farmMaps = pgTable('farm_maps', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ── Farm Retiros & Locais ─────────────────────────────────────────────────────
+
+export const farmRetiros = pgTable('farm_retiros', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  totalArea: numeric('total_area'),
+  isDefault: boolean('is_default').default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_farm_retiros_farm_id').on(t.farmId),
+]);
+
+export const farmLocais = pgTable('farm_locais', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  retiroId: uuid('retiro_id').notNull().references(() => farmRetiros.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  area: numeric('area'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_farm_locais_retiro_id').on(t.retiroId),
+  index('idx_farm_locais_farm_id').on(t.farmId),
+]);
+
 // ── AI / Agents ────────────────────────────────────────────────────────────────
 
 export const agentRegistry = pgTable('agent_registry', {
@@ -786,6 +813,30 @@ export const supportTicketAttachments = pgTable('support_ticket_attachments', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_support_ticket_attachments_ticket_id').on(t.ticketId),
+]);
+
+// ── Animal Categories ─────────────────────────────────────────────────────────
+
+export const animalCategories = pgTable('animal_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  complemento: text('complemento'),
+  sexo: text('sexo').notNull(),
+  grupo: text('grupo').notNull(),
+  idadeFaixa: text('idade_faixa'),
+  pesoKg: numeric('peso_kg', { precision: 8, scale: 2 }),
+  ordem: integer('ordem').notNull().default(0),
+  percentual: numeric('percentual', { precision: 5, scale: 2 }),
+  unidadePeso: text('unidade_peso'),
+  valorKgArroba: numeric('valor_kg_arroba', { precision: 10, scale: 2 }),
+  valorCabeca: numeric('valor_cabeca', { precision: 10, scale: 2 }),
+  quantidade: integer('quantidade'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_animal_categories_org_id').on(t.organizationId),
 ]);
 
 // ── Other ──────────────────────────────────────────────────────────────────────

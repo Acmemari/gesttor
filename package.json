@@ -1,7 +1,7 @@
 {
   "name": "gesttor",
   "private": true,
-  "version": "1.5.77",
+  "version": "1.5.78",
   "type": "module",
   "engines": {
     "node": ">=20 <25"
@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx server-dev.ts",
+    "dev:py": "C:/Python314/python.exe -m uvicorn api.py.main:app --port 3002 --reload",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "build": "vite build",
     "preview": "vite preview",

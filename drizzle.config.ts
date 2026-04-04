@@ -26,6 +26,6 @@ export default defineConfig({
     'token_budgets', 'token_ledger', 'rate_limits', 'ai_token_usage', 'cattle_scenarios',
     'saved_questionnaires', 'questionnaire_questions', 'saved_feedbacks', 'support_tickets',
     'support_ticket_messages', 'support_ticket_reads', 'support_ticket_attachments',
-    'consulting_firms', 'app_settings',
+    'consulting_firms', 'app_settings', 'animal_categories',
   ],
 });
