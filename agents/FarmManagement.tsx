@@ -31,6 +31,7 @@ import {
 } from '../lib/api/farmsClient';
 import FarmPermissionsModal from '../components/FarmPermissionsModal';
 import FarmMapTab from '../components/FarmMapTab';
+import FarmLocaisTab from '../components/FarmLocaisTab';
 import {
   useFarmPermissions,
   useBatchFarmPermissions,
@@ -196,7 +197,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [permissionsModalFarm, setPermissionsModalFarm] = useState<Farm | null>(null);
   const [areaWarning, setAreaWarning] = useState<string | null>(null);
-  const [farmActiveTab, setFarmActiveTab] = useState<'dados' | 'mapa'>('dados');
+  const [farmActiveTab, setFarmActiveTab] = useState<'dados' | 'locais' | 'mapa'>('dados');
   const isLoading = hierarchyLoading.farms;
 
   const isCliente = user?.qualification === 'cliente';
@@ -1155,6 +1156,24 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
             type="button"
             onClick={() => {
               if (!editingFarm) {
+                onToast?.('Salve a fazenda primeiro para acessar os locais', 'warning');
+                return;
+              }
+              setFarmActiveTab('locais');
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${
+              farmActiveTab === 'locais'
+                ? 'bg-white text-emerald-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <MapPin size={14} />
+            Locais
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!editingFarm) {
                 onToast?.('Salve a fazenda primeiro para acessar o mapa', 'warning');
                 return;
               }
@@ -1742,7 +1761,19 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
         </fieldset>
         )}
 
-        {/* ─── Aba 2: Mapa ─── */}
+        {/* ─── Aba 2: Locais ─── */}
+        {farmActiveTab === 'locais' && editingFarm && (
+          <div className="flex-1">
+            <FarmLocaisTab
+              farmId={editingFarm.id}
+              farmName={editingFarm.name}
+              pastureArea={editingFarm.pastureArea}
+              readOnly={formReadOnly}
+            />
+          </div>
+        )}
+
+        {/* ─── Aba 3: Mapa ─── */}
         {farmActiveTab === 'mapa' && editingFarm && (
           <div className="flex-1">
             <FarmMapTab farmId={editingFarm.id} readOnly={formReadOnly} />

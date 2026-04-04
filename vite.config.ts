@@ -10,6 +10,12 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: 'localhost',
       proxy: {
+        // Proxy para Python API (Evolução do Rebanho) — deve vir ANTES de /api
+        '/api/py': {
+          target: 'http://localhost:3002',
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/api\/py/, ''),
+        },
         // Proxy para API routes em desenvolvimento
         '/api': {
           target: 'http://localhost:3001',

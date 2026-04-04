@@ -1,5 +1,6 @@
 import React from 'react';
 import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, Beef } from 'lucide-react';
+import { CategoriaAnimalIcon } from '../components/icons/CategoriaAnimalIcon';
 
 interface CadastroCardProps {
   title: React.ReactNode;
@@ -103,7 +104,7 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
             id: 'animal-categories',
             title: <CadastroTitle entity="Categoria Animal" />,
             description: 'Defina as categorias do seu rebanho com pesos e valores de mercado.',
-            icon: <Beef size={24} />,
+            icon: <CategoriaAnimalIcon size={24} />,
             onClick: onSelectAnimalCategories,
           },
         ]

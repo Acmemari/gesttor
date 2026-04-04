@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { ArrowLeftRight, Target, Star, CircleDollarSign, ClipboardCheck, MessageSquareText, Lock } from 'lucide-react';
+import { ArrowLeftRight, Target, Star, CircleDollarSign, ClipboardCheck, MessageSquareText, Lock, TrendingUp } from 'lucide-react';
 
 type TabId = 'todos' | 'favoritos' | 'recentes';
 
@@ -77,6 +77,7 @@ interface CalculadorasDesktopProps {
   onSelectPlanejamentoAgil?: () => void;
   onSelectAvaliacaoProtocolo?: () => void;
   onSelectFeedbackAgent?: () => void;
+  onSelectHerdEvolution?: () => void;
   showPlanejamentoAgil?: boolean;
   feedbackAgentUnlocked?: boolean;
 }
@@ -87,6 +88,7 @@ const CalculadorasDesktop: React.FC<CalculadorasDesktopProps> = ({
   onSelectPlanejamentoAgil,
   onSelectAvaliacaoProtocolo,
   onSelectFeedbackAgent,
+  onSelectHerdEvolution,
   showPlanejamentoAgil = false,
   feedbackAgentUnlocked = true,
 }) => {
@@ -159,8 +161,20 @@ const CalculadorasDesktop: React.FC<CalculadorasDesktopProps> = ({
     lockedLabel: !feedbackAgentUnlocked ? 'Em treinamento' : undefined,
   };
 
+  const herdEvolutionCard = onSelectHerdEvolution
+    ? {
+        id: 'herd-evolution',
+        title: 'Evolução do Rebanho',
+        description:
+          'Projete a evolução do rebanho mês a mês com base em índices zootécnicos, nascimentos, mortes, vendas e compras planejadas.',
+        icon: <TrendingUp size={19} />,
+        onClick: onSelectHerdEvolution,
+      }
+    : null;
+
   const cards = [
     ...baseCards,
+    ...(herdEvolutionCard ? [herdEvolutionCard] : []),
     ...(planejamentoCard ? [planejamentoCard] : []),
     ...(avaliacaoCard ? [avaliacaoCard] : []),
     feedbackCard,
