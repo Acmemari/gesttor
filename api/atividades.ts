@@ -94,6 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           data_termino: item.data_termino ? String(item.data_termino) : null,
           tag: item.tag ? String(item.tag) : '#planejamento',
           status: 'a fazer',
+          prioridade: item.prioridade ? String(item.prioridade) : 'média',
           parent_id: item.parent_id ? String(item.parent_id) : null,
         })),
       );
@@ -132,6 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         data_termino: body?.data_termino ? String(body.data_termino) : null,
         tag: body?.tag ? String(body.tag) : '#planejamento',
         status: statusRaw,
+        prioridade: body?.prioridade ? String(body.prioridade) : 'média',
         parent_id,
       });
       jsonSuccess(res, row);
@@ -158,6 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.pessoa_id !== undefined) partial.pessoa_id = body.pessoa_id ? String(body.pessoa_id) : null;
     if (body.data_termino !== undefined) partial.data_termino = body.data_termino ? String(body.data_termino) : null;
     if (body.tag !== undefined) partial.tag = String(body.tag);
+    if (body.prioridade !== undefined) partial.prioridade = String(body.prioridade);
     if (body.status !== undefined) {
       const s = String(body.status);
       if (!isValidStatus(s)) { jsonError(res, `status inválido: ${s}`, { status: 400 }); return; }

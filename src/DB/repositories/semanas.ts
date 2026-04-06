@@ -112,6 +112,7 @@ export async function createAtividade(data: {
   data_termino?: string | null;
   tag?: string;
   status?: string;
+  prioridade?: string;
   parent_id?: string | null;
 }) {
   const [row] = await db.insert(atividades).values({
@@ -122,6 +123,7 @@ export async function createAtividade(data: {
     dataTermino: data.data_termino ?? null,
     tag: data.tag ?? '#planejamento',
     status: data.status ?? 'a fazer',
+    prioridade: data.prioridade ?? 'média',
     parentId: data.parent_id ?? null,
   }).returning();
   return row;
@@ -135,6 +137,7 @@ export async function createAtividadesBulk(items: Array<{
   data_termino?: string | null;
   tag?: string;
   status?: string;
+  prioridade?: string;
   parent_id?: string | null;
 }>) {
   if (items.length === 0) return [];
@@ -146,6 +149,7 @@ export async function createAtividadesBulk(items: Array<{
     dataTermino: item.data_termino ?? null,
     tag: item.tag ?? '#planejamento',
     status: item.status ?? 'a fazer',
+    prioridade: item.prioridade ?? 'média',
     parentId: item.parent_id ?? null,
   }))).returning();
 }
@@ -157,6 +161,7 @@ export async function updateAtividade(id: string, data: Partial<{
   data_termino: string | null;
   tag: string;
   status: string;
+  prioridade: string;
   parent_id: string | null;
 }>) {
   const mapped: Record<string, unknown> = {};
@@ -166,6 +171,7 @@ export async function updateAtividade(id: string, data: Partial<{
   if ('data_termino' in data) mapped.dataTermino = data.data_termino;
   if (data.tag !== undefined) mapped.tag = data.tag;
   if (data.status !== undefined) mapped.status = data.status;
+  if (data.prioridade !== undefined) mapped.prioridade = data.prioridade;
   if ('parent_id' in data) mapped.parentId = data.parent_id;
   const [row] = await db.update(atividades).set(mapped).where(eq(atividades.id, id)).returning();
   return row;
@@ -267,6 +273,7 @@ export async function getDesempenhoByPeriod(
   farmId: string,
   dataInicio: string,
   dataFim: string,
+  prioridade?: string,
 ) {
   // Busca todas as atividades (tarefas + subtarefas) de semanas no período
   const rows = await db
@@ -284,6 +291,7 @@ export async function getDesempenhoByPeriod(
         eq(semanas.farmId, farmId),
         gte(semanas.dataInicio, dataInicio),
         lte(semanas.dataInicio, dataFim),
+        ...(prioridade ? [eq(atividades.prioridade, prioridade)] : []),
       ),
     );
 

@@ -321,6 +321,7 @@ export const atividades = pgTable('activities', {
   dataTermino: date('data_termino'),
   tag: text('tag').default('#planejamento'),
   status: text('status').notNull().default('a fazer'),
+  prioridade: text('prioridade').notNull().default('média'),
   parentId: uuid('parent_id').references((): any => atividades.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [

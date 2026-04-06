@@ -26,7 +26,9 @@ export async function getDesempenho(
   farmId: string,
   dataInicio: string,
   dataFim: string,
+  prioridade?: string,
 ): Promise<{ ok: true; data: DesempenhoData } | { ok: false; error: string }> {
   const params = new URLSearchParams({ farmId, dataInicio, dataFim });
+  if (prioridade) params.set('prioridade', prioridade);
   return apiFetch<DesempenhoData>(`/api/desempenho?${params}`);
 }

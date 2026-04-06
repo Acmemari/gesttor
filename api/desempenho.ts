@@ -25,10 +25,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { farmId, dataInicio, dataFim } = req.query as Record<string, string | undefined>;
+  const { farmId, dataInicio, dataFim, prioridade } = req.query as Record<string, string | undefined>;
 
   if (!farmId || !dataInicio || !dataFim) {
     jsonError(res, 'farmId, dataInicio e dataFim são obrigatórios', { status: 400 });
+    return;
+  }
+
+  if (prioridade && !['alta', 'média', 'baixa'].includes(prioridade)) {
+    jsonError(res, 'prioridade deve ser alta, média ou baixa', { status: 400 });
     return;
   }
 
@@ -52,6 +57,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const data = await getDesempenhoByPeriod(farmId, dataInicio, dataFim);
+  const data = await getDesempenhoByPeriod(farmId, dataInicio, dataFim, prioridade);
   jsonSuccess(res, data);
 }

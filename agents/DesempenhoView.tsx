@@ -52,6 +52,7 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [showFilter, setShowFilter] = useState(false);
+  const [prioridade, setPrioridade] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [data, setData] = useState<DesempenhoData | null>(null);
@@ -88,7 +89,7 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
     if (!range) return;
     setLoading(true);
     try {
-      const result = await getDesempenho(farmId, range.dataInicio, range.dataFim);
+      const result = await getDesempenho(farmId, range.dataInicio, range.dataFim, prioridade || undefined);
       if (result.ok) {
         setData(result.data);
       } else {
@@ -99,7 +100,7 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
     } finally {
       setLoading(false);
     }
-  }, [farmId, getRange, onToast]);
+  }, [farmId, getRange, onToast, prioridade]);
 
   useEffect(() => {
     fetchData();
@@ -174,6 +175,20 @@ const DesempenhoView: React.FC<DesempenhoViewProps> = ({ farmId, semana, onToast
             <Download size={14} />
             {exporting ? 'Gerando…' : 'Exportar PDF'}
           </button>
+          <select
+            value={prioridade}
+            onChange={e => setPrioridade(e.target.value)}
+            style={{
+              padding: '7px 14px',
+              border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff',
+              fontSize: 13, fontWeight: 500, color: '#334155', cursor: 'pointer',
+            }}
+          >
+            <option value="">Prioridade: Todas</option>
+            <option value="alta">Alta</option>
+            <option value="média">Média</option>
+            <option value="baixa">Baixa</option>
+          </select>
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setShowFilter(v => !v)}

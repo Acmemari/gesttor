@@ -4,7 +4,7 @@ import TranscricoesView from './TranscricoesView';
 import TranscreverReuniao from './TranscreverReuniao';
 import AtasView from './AtasView';
 import DateInputBR from '../components/DateInputBR';
-import { Clock, User, Search, MoreVertical } from 'lucide-react';
+import { Clock, User, MoreVertical } from 'lucide-react';
 import * as semanasApi from '../lib/api/semanasClient';
 import { listSemanaParticipantes, saveParticipantes, listSemanasByFarm, type SemanaParticipanteRow, type ParticipantePayload, type SemanaRow } from '../lib/api/semanasClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +40,7 @@ interface Atividade {
   data_termino: string | null;
   tag: string;
   status: 'a fazer' | 'em andamento' | 'pausada' | 'concluída';
+  prioridade: 'alta' | 'média' | 'baixa';
   parent_id: string | null;
   created_at: string;
 }
@@ -56,7 +57,7 @@ interface HistoricoSemana {
 }
 
 interface Filters {
-  titulo: string;
+  prioridade: string;
   descricao: string;
   pessoaId: string;
   dataTermino: string;
@@ -251,12 +252,13 @@ function normalizeAtividade(row: Record<string, unknown>): Atividade {
     data_termino: (row.data_termino ?? row.dataTermino ?? null) as string | null,
     tag: String(row.tag ?? '#planejamento'),
     status: (row.status ?? 'a fazer') as Atividade['status'],
+    prioridade: (row.prioridade ?? 'média') as Atividade['prioridade'],
     parent_id: (row.parent_id ?? row.parentId ?? null) as string | null,
     created_at: String(row.created_at ?? row.createdAt ?? ''),
   };
 }
 
-const EMPTY_FILTERS: Filters = { titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '', status: '' };
+const EMPTY_FILTERS: Filters = { prioridade: '', descricao: '', pessoaId: '', dataTermino: '', tag: '', status: '' };
 
 interface GestaoSemanalProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -287,7 +289,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [newForm, setNewForm] = useState({
-    titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento',
+    titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento', prioridade: 'média',
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -573,18 +575,11 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     return { parentTasks: parents, subtasksMap: subs };
   }, [atividades]);
 
-  const uniqueTags = useMemo(() => {
-    const tags = new Set(atividades.map(a => a.tag).filter(Boolean));
-    return Array.from(tags).sort();
-  }, [atividades]);
 
   const filteredParentTasks = useMemo(() => {
     let result = [...parentTasks];
-    if (filters.titulo) {
-      const q = filters.titulo.toLowerCase();
-      result = result.filter(a =>
-        a.titulo.toLowerCase().includes(q) || (a.tag && a.tag.toLowerCase().includes(q))
-      );
+    if (filters.prioridade) {
+      result = result.filter(a => a.prioridade === filters.prioridade);
     }
     if (filters.pessoaId)    result = result.filter(a => a.pessoa_id === filters.pessoaId);
     if (filters.dataTermino) result = result.filter(a => a.data_termino === filters.dataTermino);
@@ -612,7 +607,6 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
 
   const filteredProjectTasks = useMemo(() => {
     let result = [...projectTasks];
-    if (filters.titulo)    result = result.filter(t => t.titulo.toLowerCase().includes(filters.titulo.toLowerCase()));
     if (filters.descricao) result = result.filter(t => (t.descricao || '').toLowerCase().includes(filters.descricao.toLowerCase()));
     if (filters.pessoaId)  result = result.filter(t => t.pessoa_id === filters.pessoaId);
     if (filters.status)    result = result.filter(t => t.status === filters.status);
@@ -637,7 +631,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
   const resetForm = useCallback(() => {
-    setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
+    setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento', prioridade: 'média' });
     setEditingId(null);
   }, []);
 
@@ -649,6 +643,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
       pessoaId: at.pessoa_id ?? '',
       dataTermino: at.data_termino ?? '',
       tag: at.tag,
+      prioridade: at.prioridade ?? 'média',
     });
     setEditingId(at.id);
     setShowTaskModal(true);
@@ -680,6 +675,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         pessoa_id: pessoaId,
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
+        prioridade: newForm.prioridade,
       });
       if (!res.ok) { onToast?.('Erro ao salvar atividade.', 'error'); return; }
       setAtividades(prev => prev.map(a => a.id === editingId ? {
@@ -689,6 +685,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         pessoa_id: pessoaId,
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
+        prioridade: newForm.prioridade as Atividade['prioridade'],
       } : a));
       resetForm();
       setShowTaskModal(false);
@@ -700,11 +697,12 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         pessoa_id: pessoaId,
         data_termino: newForm.dataTermino || null,
         tag: newForm.tag,
+        prioridade: newForm.prioridade,
         status: 'a fazer',
       });
       if (!res.ok) { onToast?.('Erro ao adicionar atividade.', 'error'); return; }
       setAtividades(prev => [...prev, normalizeAtividade(res.data as Record<string, unknown>)]);
-      setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '' }));
+      setNewForm(prev => ({ ...prev, titulo: '', descricao: '', dataTermino: '', prioridade: 'média' }));
       setShowTaskModal(false);
     }
     } finally {
@@ -776,6 +774,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         pessoa_id: subtaskForm.pessoaId,
         data_termino: subtaskForm.dataTermino,
         tag: parent?.tag || '#planejamento',
+        prioridade: parent?.prioridade || 'média',
         status: 'a fazer',
         parent_id: parentId,
       });
@@ -961,9 +960,9 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     if (chosen.length > 0) {
       // Create parent tasks first
       const parentsRes = await semanasApi.createAtividadesBulk(
-        chosen.map(({ titulo, descricao, pessoa_id, data_termino, tag }) => ({
+        chosen.map(({ titulo, descricao, pessoa_id, data_termino, tag, prioridade }) => ({
           semana_id: carryOverModal.pendingSemanaId,
-          titulo, descricao, pessoa_id, data_termino, tag, status: 'a fazer' as const,
+          titulo, descricao, pessoa_id, data_termino, tag, prioridade, status: 'a fazer' as const,
         })),
       );
       if (!parentsRes.ok) { onToast?.('Erro ao transferir atividades.', 'error'); return; }
@@ -972,13 +971,13 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
       const oldToNew = new Map<string, string>();
       chosen.forEach((oldParent, i) => { if (newParents[i]) oldToNew.set(oldParent.id, newParents[i].id); });
       // Create pending subtasks with new parent IDs
-      const subsToCarry: Array<{ semana_id: string; titulo: string; descricao: string; pessoa_id: string | null; data_termino: string | null; tag: string; status: 'a fazer'; parent_id: string }> = [];
+      const subsToCarry: Array<{ semana_id: string; titulo: string; descricao: string; pessoa_id: string | null; data_termino: string | null; tag: string; prioridade: string; status: 'a fazer'; parent_id: string }> = [];
       for (const oldParent of chosen) {
         const subs = (subtasksMap.get(oldParent.id) || []).filter(s => s.status !== 'concluída');
         for (const sub of subs) {
           const newParentId = oldToNew.get(oldParent.id);
           if (newParentId) {
-            subsToCarry.push({ semana_id: carryOverModal.pendingSemanaId, titulo: sub.titulo, descricao: sub.descricao, pessoa_id: sub.pessoa_id, data_termino: sub.data_termino, tag: sub.tag, status: 'a fazer', parent_id: newParentId });
+            subsToCarry.push({ semana_id: carryOverModal.pendingSemanaId, titulo: sub.titulo, descricao: sub.descricao, pessoa_id: sub.pessoa_id, data_termino: sub.data_termino, tag: sub.tag, prioridade: sub.prioridade, status: 'a fazer', parent_id: newParentId });
           }
         }
       }
@@ -1595,17 +1594,16 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           background: '#FFF', borderRadius: 12, border: '1px solid #E2E8F0',
           padding: '10px 16px', flexWrap: 'wrap',
         }}>
-          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
-            <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            <input
-              type="text" placeholder="Filtrar título..." value={filters.titulo} list="titulo-tags-list"
-              onChange={e => setFilters(p => ({ ...p, titulo: e.target.value }))}
-              style={{ ...FILTER_BAR_ST, width: '100%', paddingLeft: 32 }}
-            />
-            <datalist id="titulo-tags-list">
-              {uniqueTags.map(tag => <option key={tag} value={tag} />)}
-            </datalist>
-          </div>
+          <select
+            value={filters.prioridade}
+            onChange={e => setFilters(p => ({ ...p, prioridade: e.target.value }))}
+            style={{ ...FILTER_BAR_ST, flex: '0 0 160px' }}
+          >
+            <option value="">Prioridade: Todos</option>
+            <option value="alta">Alta</option>
+            <option value="média">Média</option>
+            <option value="baixa">Baixa</option>
+          </select>
           <select value={filters.pessoaId} onChange={e => setFilters(p => ({ ...p, pessoaId: e.target.value }))} style={{ ...FILTER_BAR_ST, flex: '0 0 180px' }}>
             <option value="">Responsável: Todos</option>
             {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -1624,7 +1622,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
             <button
               onClick={() => {
                 if (!canEditInWeek) return;
-                setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento' });
+                setNewForm({ titulo: '', descricao: '', pessoaId: '', dataTermino: '', tag: '#planejamento', prioridade: 'média' });
                 setEditingId(null);
                 setShowTaskModal(true);
               }}
@@ -2096,6 +2094,18 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                   onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
                   style={INPUT_ST}
                 />
+              </div>
+              <div style={{ flex: '0 1 140px' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Prioridade</label>
+                <select
+                  value={newForm.prioridade}
+                  onChange={e => setNewForm(p => ({ ...p, prioridade: e.target.value }))}
+                  style={INPUT_ST}
+                >
+                  <option value="alta">Alta</option>
+                  <option value="média">Média</option>
+                  <option value="baixa">Baixa</option>
+                </select>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
