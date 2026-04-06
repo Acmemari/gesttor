@@ -647,7 +647,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'CPF já cadastrado nesta organização', { code: 'VALIDATION', status: 400 });
         return;
       }
-      console.error('[pessoas PATCH] erro ao atualizar pessoa');
+      console.error('[pessoas PATCH] erro ao atualizar pessoa:', err);
       jsonError(res, 'Erro ao atualizar pessoa', { status: 500 });
     }
     return;
@@ -669,7 +669,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await deactivatePessoa(pessoaId);
       jsonSuccess(res, { id: pessoaId, ativo: false });
     } catch {
-      console.error('[pessoas DELETE] erro ao desativar pessoa');
+      console.error('[pessoas DELETE] erro ao desativar pessoa:', err);
       jsonError(res, 'Erro ao desativar pessoa', { status: 500 });
     }
     return;

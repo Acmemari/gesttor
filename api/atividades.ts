@@ -47,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
 
+  try {
   const userId = await getAuthUserIdFromRequest(req);
   if (!userId) { jsonError(res, 'Não autorizado', { status: 401 }); return; }
 
@@ -195,4 +196,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   jsonError(res, 'Método não permitido', { status: 405 });
+  } catch (err) {
+    console.error('[atividades] erro não tratado:', err);
+    if (!res.headersSent) {
+      jsonError(res, 'Erro interno do servidor', { status: 500 });
+    }
+  }
 }
