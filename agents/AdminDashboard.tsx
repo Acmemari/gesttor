@@ -821,7 +821,7 @@ const AdminDashboard: React.FC = () => {
                                     email: client.email,
                                     qualification: client.qualification || 'visitante',
                                     status: client.status || 'active',
-                                    clientId: client.clientId || null,
+                                    clientId: client.organizationId || null,
                                   });
                                   // Carrega a lista de organizações sob demanda
                                   if (client.qualification === 'cliente') {
