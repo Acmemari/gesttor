@@ -190,6 +190,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `UPDATE user_profiles SET organization_id = $1 WHERE id = $2`,
               [clientOrgId, targetUserId],
             );
+            // Auto-cria registro em people (incompleto) para o cliente aparecer na lista de Pessoas
+            const { rows: existingPeople } = await pool.query(
+              `SELECT id FROM people WHERE user_id = $1 AND organization_id = $2 LIMIT 1`,
+              [targetUserId, clientOrgId],
+            );
+            if (existingPeople.length === 0) {
+              const { rows: profileData } = await pool.query(
+                `SELECT name, email, phone FROM user_profiles WHERE id = $1`,
+                [targetUserId],
+              );
+              if (profileData.length > 0) {
+                await pool.query(
+                  `INSERT INTO people (id, full_name, email, phone_whatsapp, organization_id, user_id, ativo, created_at, updated_at)
+                   VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true, now(), now())`,
+                  [profileData[0].name || 'Cliente', profileData[0].email, profileData[0].phone, clientOrgId, targetUserId],
+                );
+              }
+            }
           } else {
             // Visitante ou cliente sem org: limpa organization_id
             await pool.query(
