@@ -43,6 +43,9 @@ const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onToast, onBack
       }
 
       // Sucesso
+      try {
+        localStorage.setItem('password_recovery_email', email.trim());
+      } catch (_) {}
       setIsSuccess(true);
       setIsSubmitting(false);
       if (onToast) {

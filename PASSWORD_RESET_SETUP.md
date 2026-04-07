@@ -13,6 +13,15 @@ Este guia explica como configurar o fluxo completo de recuperação de senha no 
 
 ## Configuração no Supabase Dashboard
 
+## Variáveis de Ambiente da Aplicação
+
+Em produção, configure no deploy:
+
+- `APP_PUBLIC_URL=https://gesttor.app`
+- `BETTER_AUTH_URL=https://gesttor.app` (se usar essa variável no ambiente)
+
+O fluxo de recuperação usa `APP_PUBLIC_URL` como domínio canônico do link enviado por email. URLs de preview da Vercel podem continuar válidas para testes, mas não devem ser o link principal do usuário final.
+
 ### 1. Configurar URL de Redirecionamento
 
 1. Acesse o [Supabase Dashboard](https://app.supabase.com)
@@ -143,13 +152,17 @@ O template HTML está em `lib/email-templates/reset-password.html` e pode ser pe
    - Authentication > URL Configuration > Site URL: `https://gesttor.app`
    - Authentication > URL Configuration > Redirect URLs: `https://gesttor.app` e `https://gesttor.app/**`
 
-4. **Confirme que o token não expirou** (1 hora)
+4. **Verifique as variáveis de ambiente do deploy**:
+   - `APP_PUBLIC_URL=https://gesttor.app`
+   - `BETTER_AUTH_URL=https://gesttor.app` (se definida)
 
-5. **Hash fragment**: O Supabase usa hash fragments (`#access_token=...`) em vez de query strings. O código já está preparado para isso e detecta automaticamente
+5. **Confirme que o token não expirou** (1 hora)
 
-6. **Verifique o console do navegador** para ver se há erros de JavaScript
+6. **Hash fragment**: O Supabase usa hash fragments (`#access_token=...`) em vez de query strings. O código já está preparado para isso e detecta automaticamente
 
-7. **Script de detecção**: Um script no `index.html` detecta o hash fragment antes do React carregar e redireciona para a raiz se necessário
+7. **Verifique o console do navegador** para ver se há erros de JavaScript
+
+8. **Script de detecção**: Um script no `index.html` detecta o hash fragment antes do React carregar e redireciona para a raiz se necessário
 
 ### Template não aparece
 

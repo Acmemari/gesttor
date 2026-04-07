@@ -19,6 +19,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { db } from '../../src/DB/index.js';
 import { baUser, baSession, baAccount, baVerification, baRateLimit, userProfiles, people, organizations } from '../../src/DB/schema.js';
+import { buildPasswordResetLink, resolveAuthBaseUrl } from './publicAppUrl.js';
+import { applyResetPasswordTemplate } from './resetPasswordEmail.js';
 
 // ESM compat: __dirname não existe em ESM
 const __filename_esm = fileURLToPath(import.meta.url);
@@ -78,11 +80,7 @@ function getResetPasswordHtml(resetUrl: string, userName?: string): string {
     }
   }
 
-  const greeting = userName ? ` ${userName}` : '';
-  return _emailTemplate
-    .replace(/\{\{\s*\.ConfirmationURL\s*\}\}/g, resetUrl)
-    .replace(/\{\{URL\}\}/g, resetUrl)
-    .replace(/\{\{GREETING\}\}/g, greeting);
+  return applyResetPasswordTemplate(_emailTemplate, resetUrl, userName);
 }
 
 // ── applyInviteCredentials ────────────────────────────────────────────────────
@@ -156,13 +154,7 @@ export const auth = betterAuth({
     return 'dev-insecure-secret-change-me';
   })(),
   baseURL: (() => {
-    // Em produção (Vercel), priorizar VERCEL_URL para evitar localhost em links de email
-    if (process.env.VERCEL_URL) {
-      return process.env.BETTER_AUTH_URL?.startsWith('https://')
-        ? process.env.BETTER_AUTH_URL
-        : `https://${process.env.VERCEL_URL}`;
-    }
-    return process.env.BETTER_AUTH_URL ?? 'http://localhost:3333';
+    return resolveAuthBaseUrl(process.env);
   })(),
   basePath: '/api/auth',
 
@@ -187,9 +179,16 @@ export const auth = betterAuth({
 
     // Callback de envio de email de recuperação de senha via Resend
     // Better Auth já trata timing attacks via runInBackgroundOrAwait — await aqui é seguro
-    sendResetPassword: async ({ user, url }) => {
+    sendResetPassword: async ({ user, url, token }) => {
       const resend = getResend();
-      const html = getResetPasswordHtml(url, user.name);
+      const resetUrl = token ? buildPasswordResetLink(token, process.env) : url;
+      const html = getResetPasswordHtml(resetUrl, user.name);
+
+      console.log('[auth] Iniciando envio de reset password', {
+        email: user.email,
+        hasToken: !!token,
+        resetUrl,
+      });
 
       const result = await resend.emails.send({
         from: 'Gesttor <gesttor@gesttor.app>',
@@ -199,11 +198,19 @@ export const auth = betterAuth({
       });
 
       if (result.error) {
-        console.error('[auth] Erro ao enviar email de reset:', result.error);
+        console.error('[auth] Erro ao enviar email de reset', {
+          email: user.email,
+          resetUrl,
+          error: result.error,
+        });
         throw new Error(`Falha ao enviar email: ${result.error.message}`);
       }
 
-      console.log('[auth] Email de reset enviado para', user.email);
+      console.log('[auth] Email de reset enviado com sucesso', {
+        email: user.email,
+        resetUrl,
+        resendEmailId: result.data?.id ?? null,
+      });
     },
 
     onPasswordReset: async ({ user }) => {
@@ -250,6 +257,7 @@ export const auth = betterAuth({
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'http://127.0.0.1:5173',
+    ...(process.env.APP_PUBLIC_URL ? [process.env.APP_PUBLIC_URL] : []),
     // Variáveis de ambiente (sobrescrevem / adicionam domínios extras)
     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
     ...(process.env.VITE_APP_URL ? [process.env.VITE_APP_URL] : []),
