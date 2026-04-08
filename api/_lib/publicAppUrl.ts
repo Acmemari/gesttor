@@ -8,11 +8,15 @@ function normalizeOrigin(url: string): string {
 }
 
 export function resolvePublicAppUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const vercelDeploymentUrl = env.VERCEL_URL ? `https://${env.VERCEL_URL}` : undefined;
+  const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase();
+
   const candidates = [
     env.APP_PUBLIC_URL,
     env.VITE_APP_URL,
     env.BETTER_AUTH_URL,
-    env.VERCEL_URL ? `https://${env.VERCEL_URL}` : undefined,
+    vercelEnv === 'production' ? PRODUCTION_APP_URL : undefined,
+    vercelDeploymentUrl,
     PRODUCTION_APP_URL,
   ];
 

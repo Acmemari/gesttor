@@ -3,10 +3,13 @@
   "private": true,
   "version": "1.5.85",
   "type": "module",
+  "packageManager": "npm@10",
   "engines": {
-    "node": ">=20 <25"
+    "node": ">=20 <25",
+    "npm": ">=10"
   },
   "scripts": {
+    "preinstall": "node scripts/enforce-package-manager.mjs",
     "dev": "vite",
     "dev:api": "tsx server-dev.ts",
     "dev:py": "C:/Python314/python.exe -m uvicorn api.py.main:app --port 3002 --reload",

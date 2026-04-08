@@ -26,6 +26,13 @@ describe('publicAppUrl helpers', () => {
     } as NodeJS.ProcessEnv)).toBe('https://pecuaria-red.vercel.app');
   });
 
+  it('prefers the canonical production domain over VERCEL_URL on Vercel production', () => {
+    expect(resolvePublicAppUrl({
+      VERCEL_ENV: 'production',
+      VERCEL_URL: 'gesttor.vercel.app',
+    } as NodeJS.ProcessEnv)).toBe('https://gesttor.app');
+  });
+
   it('builds a direct reset-password link on the app domain', () => {
     const env = {
       APP_PUBLIC_URL: 'https://gesttor.app',

@@ -22,6 +22,8 @@ OPENAI_API_KEY=sk-sua-chave-real-aqui
 npm install
 ```
 
+Use apenas `npm` neste repositório. Há um `package-lock.json` versionado e o CI usa `npm ci`; `yarn install` pode falhar ao resolver/linkar `vitest` e `vite`.
+
 ## Passo 3: Iniciar os Servidores
 
 **Opção A - Tudo junto (recomendado):**
@@ -80,6 +82,7 @@ VITE v6.x.x  ready in xxx ms
 ### Erro: "Cannot find module"
 
 - Execute `npm install` novamente
+- Se você executou `yarn install`, remova `node_modules` e rode `npm install`
 - Verifique se todas as dependências estão instaladas
 
 ### Erro: "Port already in use"

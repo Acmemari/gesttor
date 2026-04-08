@@ -12,8 +12,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/1DqXzbKOjJ6Jc2P_jAFLhwU
 
 **Prerequisitos:** Node.js 20 (LTS) ou superior. Testado com Node 24. Se precisar alternar versões no Windows, use [nvm-windows](https://github.com/coreybutler/nvm-windows).
 
-1. Install dependencies:
+1. Install dependencies with npm:
    `npm install`
+   Do not use Yarn for this repository. It is locked with `package-lock.json`, and Yarn 1 can fail while linking the `vitest` and `vite` dependency graph.
 2. Configure as variáveis de ambiente em `.env.local` (veja `docs/ENVIRONMENT.md` para um exemplo completo):
    - `VITE_SUPABASE_URL` - URL do projeto Supabase (obrigatória)
    - `VITE_SUPABASE_ANON_KEY` - Chave anônima do Supabase (obrigatória)
@@ -77,6 +78,8 @@ npm run test:e2e:headed
 ```bash
 npx playwright install --with-deps chromium
 ```
+
+Se um `yarn install` anterior deixou `node_modules` incompleto, remova a pasta e rode `npm install` novamente antes de executar os testes.
 
 ### Testes de Carregamento
 
