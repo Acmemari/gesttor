@@ -28,8 +28,9 @@ import { eq, inArray } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { checkCrudRateLimit } from './_lib/crudRateLimit.js';
+import { assertFarmAccess, assertOrgAccess } from './_lib/orgAccess.js';
 import { db } from '../src/DB/index.js';
-import { userProfiles, people, farms as farmsTable, personProfiles, perfils, cargoFuncao } from '../src/DB/schema.js';
+import { userProfiles, people, farms as farmsTable, personProfiles, perfils, cargoFuncao, personFarms } from '../src/DB/schema.js';
 import {
   getPessoa,
   listPessoas,
@@ -55,7 +56,6 @@ import {
   removePessoaFazenda,
   getPessoaPermissoes,
   upsertPessoaPermissao,
-  analystCanAccessOrg,
   analystCanAccessPessoa,
   validateCPF,
   validatePhotoUrl,
@@ -73,6 +73,44 @@ async function getUserRole(userId: string): Promise<string | null> {
     .where(eq(userProfiles.id, userId))
     .limit(1);
   return p?.role ?? null;
+}
+
+async function canAccessPessoa(userId: string, role: string, pessoaId: string): Promise<boolean> {
+  if (role === 'administrador') return true;
+  if (role === 'analista') return analystCanAccessPessoa(userId, pessoaId);
+
+  const [person] = await db
+    .select({ organizationId: people.organizationId })
+    .from(people)
+    .where(eq(people.id, pessoaId as any))
+    .limit(1);
+
+  if (person?.organizationId) {
+    try {
+      await assertOrgAccess(person.organizationId, userId, role);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const [personFarm] = await db
+    .select({ organizationId: farmsTable.organizationId })
+    .from(personFarms)
+    .innerJoin(farmsTable, eq(farmsTable.id, personFarms.farmId))
+    .where(eq(personFarms.pessoaId, pessoaId as any))
+    .limit(1);
+
+  if (personFarm?.organizationId) {
+    try {
+      await assertOrgAccess(personFarm.organizationId, userId, role);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -96,8 +134,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const isAdmin = role === 'administrador';
-  const isAnalyst = role === 'analista' || isAdmin;
-  if (!isAnalyst) {
+  const isAnalyst = role === 'analista';
+  const isClient = role === 'cliente';
+  const canRead = isAdmin || isAnalyst || isClient;
+  const canManage = isAdmin || isAnalyst;
+
+  if (req.method === 'GET' && !canRead) {
+    jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+    return;
+  }
+
+  if (req.method !== 'GET' && !canManage) {
     jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
     return;
   }
@@ -130,13 +177,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET por farmId sem organizationId (compat lib/people.ts)
     if (farmIdParam && !orgIdParam && !idParam && !resource) {
-      if (!isAdmin) {
-        // Resolver a organização da fazenda e checar acesso
-        const [farm] = await db.select({ organizationId: farmsTable.organizationId }).from(farmsTable).where(eq(farmsTable.id, farmIdParam)).limit(1);
-        if (!farm?.organizationId || !(await analystCanAccessOrg(userId, farm.organizationId))) {
-          jsonError(res, 'Acesso negado a esta fazenda', { code: 'FORBIDDEN', status: 403 });
-          return;
-        }
+      try {
+        await assertFarmAccess(farmIdParam, userId, role);
+      } catch (err) {
+        const typedErr = err as { message?: string; code?: string; status?: number };
+        jsonError(res, typedErr.message ?? 'Acesso negado a esta fazenda', {
+          code: typedErr.code ?? 'FORBIDDEN',
+          status: typedErr.status ?? 403,
+        });
+        return;
       }
       const assumeTarefas = req.query?.assumeTarefas === 'true';
       const rows = await listPessoasByFarm(farmIdParam, { assumeTarefas });
@@ -200,7 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET por ID (com sub-recursos)
     if (idParam) {
-      if (!isAdmin && !(await analystCanAccessPessoa(userId, idParam))) {
+      if (!(await canAccessPessoa(userId, role, idParam))) {
         jsonError(res, 'Acesso negado a esta pessoa', { code: 'FORBIDDEN', status: 403 });
         return;
       }
@@ -248,8 +297,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET lista por organização
     if (orgIdParam) {
-      if (!isAdmin && !(await analystCanAccessOrg(userId, orgIdParam))) {
-        jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+      try {
+        await assertOrgAccess(orgIdParam, userId, role);
+      } catch (err) {
+        const typedErr = err as { message?: string; code?: string; status?: number };
+        jsonError(res, typedErr.message ?? 'Acesso negado a esta organização', {
+          code: typedErr.code ?? 'FORBIDDEN',
+          status: typedErr.status ?? 403,
+        });
         return;
       }
       const offset = Math.max(0, Number(req.query?.offset) || 0);
@@ -476,8 +531,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       jsonError(res, 'Campo organization_id é obrigatório', { code: 'VALIDATION', status: 400 });
       return;
     }
-    if (!isAdmin && !(await analystCanAccessOrg(userId, orgId))) {
-      jsonError(res, 'Acesso negado a esta organização', { code: 'FORBIDDEN', status: 403 });
+    try {
+      await assertOrgAccess(orgId, userId, role);
+    } catch (err) {
+      const typedErr = err as { message?: string; code?: string; status?: number };
+      jsonError(res, typedErr.message ?? 'Acesso negado a esta organização', {
+        code: typedErr.code ?? 'FORBIDDEN',
+        status: typedErr.status ?? 403,
+      });
       return;
     }
 
@@ -668,7 +729,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       await deactivatePessoa(pessoaId);
       jsonSuccess(res, { id: pessoaId, ativo: false });
-    } catch {
+    } catch (err) {
       console.error('[pessoas DELETE] erro ao desativar pessoa:', err);
       jsonError(res, 'Erro ao desativar pessoa', { status: 500 });
     }

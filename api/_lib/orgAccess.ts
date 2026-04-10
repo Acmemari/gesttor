@@ -35,6 +35,44 @@ export async function getUserRole(userId: string): Promise<string> {
 }
 
 /**
+ * Resolve a organização do cliente.
+ * Prioridade:
+ *  1. user_profiles.organization_id
+ *  2. organizations.owner_id
+ * Se encontrar apenas por owner_id, sincroniza user_profiles.organization_id.
+ */
+export async function resolveClientOrganizationId(userId: string): Promise<string | null> {
+  const [profile] = await db
+    .select({ organizationId: userProfiles.organizationId })
+    .from(userProfiles)
+    .where(eq(userProfiles.id, userId))
+    .limit(1);
+
+  if (profile?.organizationId) {
+    return profile.organizationId;
+  }
+
+  const [ownedOrg] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.ownerId, userId))
+    .limit(1);
+
+  if (!ownedOrg?.id) {
+    return null;
+  }
+
+  if (profile) {
+    await db
+      .update(userProfiles)
+      .set({ organizationId: ownedOrg.id, updatedAt: new Date() })
+      .where(eq(userProfiles.id, userId));
+  }
+
+  return ownedOrg.id;
+}
+
+/**
  * Verifica se o usuário tem acesso à organização.
  * Admin passa direto. Analista deve ser principal ou secundário.
  */
@@ -43,12 +81,8 @@ export async function assertOrgAccess(orgId: string, userId: string, role: strin
 
   // Clientes têm acesso apenas à sua própria organização
   if (role === 'cliente') {
-    const [clientProfile] = await db
-      .select({ organizationId: userProfiles.organizationId })
-      .from(userProfiles)
-      .where(eq(userProfiles.id, userId))
-      .limit(1);
-    if (clientProfile?.organizationId === orgId) return;
+    const clientOrgId = await resolveClientOrganizationId(userId);
+    if (clientOrgId === orgId) return;
     throw Object.assign(new Error('Sem permissão para esta organização'), {
       status: 403,
       code: 'FORBIDDEN',

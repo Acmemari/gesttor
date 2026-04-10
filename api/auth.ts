@@ -8,9 +8,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
-import { getUserRole } from './_lib/orgAccess.js';
+import { getUserRole, resolveClientOrganizationId } from './_lib/orgAccess.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
-import { db, pool, userProfiles, organizations, people } from '../src/DB/index.js';
+import { db, pool, userProfiles, people } from '../src/DB/index.js';
 
 async function getProfileWithClientId(userId: string) {
   const [profile] = await db
@@ -23,19 +23,8 @@ async function getProfileWithClientId(userId: string) {
 
   let clientId: string | null = null;
   if (profile.role === 'cliente') {
-    const [org] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.ownerId, userId))
-      .limit(1);
-    clientId = org?.id ?? null;
-
-    // Self-healing: se organization_id está nulo mas owner_id está correto, sincroniza
+    clientId = await resolveClientOrganizationId(userId);
     if (!profile.organizationId && clientId) {
-      await db
-        .update(userProfiles)
-        .set({ organizationId: clientId, updatedAt: new Date() })
-        .where(eq(userProfiles.id, userId));
       profile.organizationId = clientId;
     }
   }

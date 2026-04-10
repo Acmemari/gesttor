@@ -4,11 +4,12 @@
  * POST (validate) body: { analystId, organizationId, farmId }
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { and, eq, exists, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { assertOrgAccess, resolveClientOrganizationId } from './_lib/orgAccess.js';
 import { db } from '../src/DB/index.js';
-import { userProfiles, organizations, organizationAnalysts } from '../src/DB/schema.js';
+import { userProfiles } from '../src/DB/schema.js';
 import {
   getAnalystsForAdmin,
   getOrganizations,
@@ -71,11 +72,21 @@ async function loadUserProfile(userId: string): Promise<{
     .limit(1);
   if (!p) return null;
   const derived = deriveProfile(p.role ?? 'visitante');
+  const organizationId = derived.qualification === 'cliente'
+    ? await resolveClientOrganizationId(userId)
+    : (p.organizationId ?? null);
   return {
     role: derived.role,
     qualification: derived.qualification,
-    organizationId: p.organizationId ?? null,
+    organizationId,
   };
+}
+
+function toAccessRole(profile: { role: string; qualification: string }): string {
+  if (profile.role === 'admin') return 'administrador';
+  if (profile.qualification === 'analista') return 'analista';
+  if (profile.qualification === 'cliente') return 'cliente';
+  return 'visitante';
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -104,34 +115,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    if (postProfile.qualification === 'cliente') {
-      if (organizationId && postProfile.organizationId && organizationId !== postProfile.organizationId) {
+    if (organizationId) {
+      try {
+        await assertOrgAccess(organizationId, userId, toAccessRole(postProfile));
+      } catch {
         jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
         return;
-      }
-    } else if (postProfile.qualification === 'analista' && postProfile.role !== 'admin') {
-      if (organizationId) {
-        const [org] = await db
-          .select({ id: organizations.id })
-          .from(organizations)
-          .where(and(
-            eq(organizations.id, organizationId),
-            or(
-              eq(organizations.analystId, userId),
-              exists(
-                db.select().from(organizationAnalysts)
-                  .where(and(
-                    eq(organizationAnalysts.organizationId, organizations.id),
-                    eq(organizationAnalysts.analystId, userId),
-                  ))
-              ),
-            ),
-          ))
-          .limit(1);
-        if (!org) {
-          jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
-          return;
-        }
       }
     }
     // admin: acesso irrestrito
@@ -199,36 +188,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // Verifica que o usuário tem acesso à organização solicitada
-  if (profile.qualification === 'cliente') {
-    if (!profile.organizationId || organizationIdForFarms !== profile.organizationId) {
-      jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
-      return;
-    }
-  } else if (profile.qualification === 'analista' && profile.role !== 'admin') {
-    const [org] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(and(
-        eq(organizations.id, organizationIdForFarms),
-        or(
-          eq(organizations.analystId, userId),
-          exists(
-            db.select().from(organizationAnalysts)
-              .where(and(
-                eq(organizationAnalysts.organizationId, organizations.id),
-                eq(organizationAnalysts.analystId, userId),
-              ))
-          ),
-        ),
-      ))
-      .limit(1);
-    if (!org) {
-      jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
-      return;
-    }
+  try {
+    await assertOrgAccess(organizationIdForFarms, userId, toAccessRole(profile));
+  } catch {
+    jsonError(res, 'Acesso negado', { code: 'FORBIDDEN', status: 403 });
+    return;
   }
-  // admin: acesso irrestrito
 
   const includeInactive = req.query?.includeInactive === 'true';
   const { rows, hasMore } = await getFarms(organizationIdForFarms, { offset, limit, search, includeInactive });
