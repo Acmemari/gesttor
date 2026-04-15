@@ -99,6 +99,33 @@ export async function listAtividadesBySemana(semanaId: string) {
   return db.select().from(atividades).where(eq(atividades.semanaId, semanaId));
 }
 
+export async function listAtividadesByPeriod(farmId: string, dataInicio: string, dataFim: string) {
+  return db
+    .select({
+      id: atividades.id,
+      semanaId: atividades.semanaId,
+      titulo: atividades.titulo,
+      descricao: atividades.descricao,
+      pessoaId: atividades.pessoaId,
+      dataTermino: atividades.dataTermino,
+      tag: atividades.tag,
+      status: atividades.status,
+      prioridade: atividades.prioridade,
+      parentId: atividades.parentId,
+      createdAt: atividades.createdAt,
+    })
+    .from(atividades)
+    .innerJoin(semanas, eq(atividades.semanaId, semanas.id))
+    .where(
+      and(
+        eq(semanas.farmId, farmId),
+        gte(atividades.dataTermino, dataInicio),
+        lte(atividades.dataTermino, dataFim),
+      ),
+    )
+    .orderBy(asc(atividades.dataTermino), asc(atividades.createdAt));
+}
+
 export async function getAtividadeById(id: string) {
   const [row] = await db.select().from(atividades).where(eq(atividades.id, id)).limit(1);
   return row;

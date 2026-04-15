@@ -13,6 +13,7 @@ import { listPessoasByFarm, checkPermsByEmail } from '../lib/api/pessoasClient';
 import { listTasksByWeek, updateTask as updateProjectTask, type WeekTaskRow } from '../lib/api/tasksClient';
 import { createTranscricao } from '../lib/api/semanaTranscricoesClient';
 import { storageUpload } from '../lib/storage';
+import { calcWeekNumber, getMondayOfWeek, toIsoDate } from '../lib/weeklyUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,31 +137,6 @@ const FILTER_BAR_ST: React.CSSProperties = {
 const GRID_COLS = '1fr 180px 130px 110px 40px';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function calcWeekNumber(date: Date, modo: 'ano' | 'safra'): number {
-  if (modo === 'ano') {
-    // ISO week number (semana 1 = semana que contém a primeira quinta-feira do ano)
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  }
-  const month = date.getMonth();
-  const year = date.getFullYear();
-  const safraStart = month >= 6 ? new Date(year, 6, 1) : new Date(year - 1, 6, 1);
-  return Math.floor((date.getTime() - safraStart.getTime()) / (7 * 864e5)) + 1;
-}
-
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d;
-}
-
-function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
 
 function formatDatePtBr(dateStr: string | null): string {
   if (!dateStr) return '—';
@@ -440,7 +416,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
       if (!semanaData) {
         const today = new Date();
         const monday = getMondayOfWeek(today);
-        const mondayStr = toDateStr(monday);
+        const mondayStr = toIsoDate(monday);
         const existenteRes = await semanasApi.getSemanaByDataInicio(mondayStr, farmId);
         if (existenteRes.ok && existenteRes.data) {
           semanaData = normalizeSemana(existenteRes.data as Record<string, unknown>);
@@ -1016,8 +992,8 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
         numero: weekNum,
         modo,
         aberta: true,
-        data_inicio: toDateStr(monday),
-        data_fim: toDateStr(saturday),
+        data_inicio: toIsoDate(monday),
+        data_fim: toIsoDate(saturday),
       });
     } else {
       // Semana existente fechada: abre a próxima
@@ -1025,7 +1001,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
       nextStart.setDate(nextStart.getDate() + 7);
       const nextEnd = new Date(semana.data_fim + 'T00:00:00');
       nextEnd.setDate(nextEnd.getDate() + 7);
-      const nextStartStr = toDateStr(nextStart);
+      const nextStartStr = toIsoDate(nextStart);
 
       // Verificar se a próxima semana já existe para esta fazenda (evita duplicatas)
       const existenteRes = await semanasApi.getSemanaByDataInicio(nextStartStr, farmId);
@@ -1045,7 +1021,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           modo,
           aberta: true,
           data_inicio: nextStartStr,
-          data_fim: toDateStr(nextEnd),
+          data_fim: toIsoDate(nextEnd),
         });
         targetSemana = newRes.ok && newRes.data ? normalizeSemana(newRes.data as Record<string, unknown>) : null;
       }

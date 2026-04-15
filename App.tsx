@@ -150,7 +150,7 @@ const AppContent: React.FC = () => {
   // Recarregar hierarquia (organizações e fazendas) quando retornar ao workspace Pecuária
   useEffect(() => {
     if (prevActiveAppRef.current === 'inttegra' && activeApp === 'gesttor' && user) {
-      void refreshCurrentLevel('clients');
+      void refreshCurrentLevel('organizations');
     }
     prevActiveAppRef.current = activeApp;
   }, [activeApp, user, refreshCurrentLevel]);
@@ -1019,7 +1019,7 @@ const AppContent: React.FC = () => {
       case 'calendar':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <CalendarAgent />
+            <CalendarAgent onToast={handleToast} />
           </Suspense>
         );
       case 'rotinas-fazenda':
