@@ -284,6 +284,7 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
   const [operating, setOperating] = useState(false);
   const deletingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const descricaoTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
   const [subtaskForm, setSubtaskForm] = useState({ titulo: '', pessoaId: '', dataTermino: '' });
@@ -320,6 +321,19 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenuId]);
+
+  const resizeDescricaoTextarea = useCallback((textarea?: HTMLTextAreaElement | null) => {
+    const el = textarea ?? descricaoTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, 120)}px`;
+  }, []);
+
+  useEffect(() => {
+    if (!showTaskModal) return;
+    const frame = window.requestAnimationFrame(() => resizeDescricaoTextarea());
+    return () => window.cancelAnimationFrame(frame);
+  }, [showTaskModal, newForm.descricao, resizeDescricaoTextarea]);
 
   // canEditClosedWeek, canDeleteWeek e canFecharSemana: admin/analista ou pessoa com flag + email igual
   useEffect(() => {
@@ -2012,13 +2026,17 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#FFF', borderRadius: 16, padding: 24,
+              background: '#FFF', borderRadius: 16,
               maxWidth: 700, width: '100%',
+              maxHeight: 'min(85vh, 760px)',
               boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
               fontFamily: FONT,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 24px 20px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
               <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: editingId ? '#6366F1' : '#0F172A' }}>
                 {editingId ? 'Editando atividade' : 'Nova atividade'}
               </p>
@@ -2027,64 +2045,78 @@ const GestaoSemanal: React.FC<GestaoSemanalProps> = ({ onToast, activeView: acti
                 style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >✕</button>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-              <div style={{ flex: '1 1 160px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título <span style={{ color: '#EF4444' }}>*</span></label>
-                <input
-                  autoFocus
-                  type="text" placeholder="Título" value={newForm.titulo}
-                  onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && handleSave()}
-                  style={INPUT_ST}
-                />
-              </div>
-              <div style={{ flex: '2 1 220px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Descrição</label>
-                <input
-                  type="text" placeholder="Descrição breve" value={newForm.descricao}
-                  onChange={e => setNewForm(p => ({ ...p, descricao: e.target.value }))}
-                  style={INPUT_ST}
-                />
-              </div>
-              <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável <span style={{ color: '#EF4444' }}>*</span></label>
-                <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
-                  <option value="">Selecione</option>
-                  {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
-              </div>
-              <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Data Término <span style={{ color: '#EF4444' }}>*</span></label>
-                <DateInputBR
-                  value={newForm.dataTermino}
-                  onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
-                  className="w-full"
-                  weekStart={semana?.data_inicio ?? undefined}
-                  weekEnd={semana?.data_fim ?? undefined}
-                />
-              </div>
-              <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>#</label>
-                <input
-                  type="text" placeholder="#tag" value={newForm.tag}
-                  onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
-                  style={INPUT_ST}
-                />
-              </div>
-              <div style={{ flex: '0 1 140px' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Prioridade</label>
-                <select
-                  value={newForm.prioridade}
-                  onChange={e => setNewForm(p => ({ ...p, prioridade: e.target.value }))}
-                  style={INPUT_ST}
-                >
-                  <option value="alta">Alta</option>
-                  <option value="média">Média</option>
-                  <option value="baixa">Baixa</option>
-                </select>
+            <div style={{ padding: 24, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                <div style={{ flex: '1 1 160px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Título <span style={{ color: '#EF4444' }}>*</span></label>
+                  <input
+                    autoFocus
+                    type="text" placeholder="Título" value={newForm.titulo}
+                    onChange={e => setNewForm(p => ({ ...p, titulo: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleSave()}
+                    style={INPUT_ST}
+                  />
+                </div>
+                <div style={{ flex: '1 1 100%' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Descrição</label>
+                  <textarea
+                    ref={descricaoTextareaRef}
+                    placeholder="Descrição breve"
+                    value={newForm.descricao}
+                    onChange={e => {
+                      setNewForm(p => ({ ...p, descricao: e.target.value }));
+                      resizeDescricaoTextarea(e.target);
+                    }}
+                    rows={5}
+                    style={{
+                      ...INPUT_ST,
+                      minHeight: 120,
+                      lineHeight: 1.5,
+                      resize: 'none',
+                      overflowY: 'hidden',
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '0 1 140px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Responsável <span style={{ color: '#EF4444' }}>*</span></label>
+                  <select value={newForm.pessoaId} onChange={e => setNewForm(p => ({ ...p, pessoaId: e.target.value }))} style={INPUT_ST}>
+                    <option value="">Selecione</option>
+                    {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: '0 1 140px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Data Término <span style={{ color: '#EF4444' }}>*</span></label>
+                  <DateInputBR
+                    value={newForm.dataTermino}
+                    onChange={v => setNewForm(p => ({ ...p, dataTermino: v }))}
+                    className="w-full"
+                    weekStart={semana?.data_inicio ?? undefined}
+                    weekEnd={semana?.data_fim ?? undefined}
+                  />
+                </div>
+                <div style={{ flex: '0 1 140px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>#</label>
+                  <input
+                    type="text" placeholder="#tag" value={newForm.tag}
+                    onChange={e => setNewForm(p => ({ ...p, tag: e.target.value }))}
+                    style={INPUT_ST}
+                  />
+                </div>
+                <div style={{ flex: '0 1 140px' }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Prioridade</label>
+                  <select
+                    value={newForm.prioridade}
+                    onChange={e => setNewForm(p => ({ ...p, prioridade: e.target.value }))}
+                    style={INPUT_ST}
+                  >
+                    <option value="alta">Alta</option>
+                    <option value="média">Média</option>
+                    <option value="baixa">Baixa</option>
+                  </select>
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px 24px', borderTop: '1px solid #F1F5F9', flexShrink: 0 }}>
               <button
                 onClick={handleEditCancel}
                 style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B', cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: FONT }}
