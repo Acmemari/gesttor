@@ -1,5 +1,7 @@
-import React, { useState, useCallback } from 'react';
-import { ArrowLeftRight, Target, Star, CircleDollarSign, ClipboardCheck, MessageSquareText, Lock, TrendingUp } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ArrowLeftRight, Target, Star, CircleDollarSign, ClipboardCheck, MessageSquareText, Lock, TrendingUp, Newspaper, Scale } from 'lucide-react';
+
+import { SentimentMiniCard, type SentimentData } from '../components/SentimentoIndicator';
 
 type TabId = 'todos' | 'favoritos' | 'recentes';
 
@@ -78,6 +80,8 @@ interface CalculadorasDesktopProps {
   onSelectAvaliacaoProtocolo?: () => void;
   onSelectFeedbackAgent?: () => void;
   onSelectHerdEvolution?: () => void;
+  onSelectNoticiasPecuaria?: () => void;
+  onSelectVendoOuEngordo?: () => void;
   showPlanejamentoAgil?: boolean;
   feedbackAgentUnlocked?: boolean;
 }
@@ -89,11 +93,22 @@ const CalculadorasDesktop: React.FC<CalculadorasDesktopProps> = ({
   onSelectAvaliacaoProtocolo,
   onSelectFeedbackAgent,
   onSelectHerdEvolution,
+  onSelectNoticiasPecuaria,
+  onSelectVendoOuEngordo,
   showPlanejamentoAgil = false,
   feedbackAgentUnlocked = true,
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('todos');
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [cachedSentiment, setCachedSentiment] = useState<SentimentData | null>(null);
+
+  // Load cached sentiment from localStorage
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('gesttor:sentimento-mercado');
+      if (cached) setCachedSentiment(JSON.parse(cached));
+    } catch { /* ignore */ }
+  }, []);
 
   const toggleFavorite = useCallback((id: string) => {
     setFavoriteIds(prev => {
@@ -172,9 +187,33 @@ const CalculadorasDesktop: React.FC<CalculadorasDesktopProps> = ({
       }
     : null;
 
+  const noticiasPecuariaCard = onSelectNoticiasPecuaria
+    ? {
+        id: 'noticias-pecuaria',
+        title: 'Notícias da Pecuária',
+        description:
+          'Acompanhe as últimas notícias do mercado pecuário, preço do boi gordo, tendências e análises de sites, YouTube e Instagram.',
+        icon: <Newspaper size={19} />,
+        onClick: onSelectNoticiasPecuaria,
+      }
+    : null;
+
+  const vendoOuEngordoCard = onSelectVendoOuEngordo
+    ? {
+        id: 'vendo-ou-engordo',
+        title: 'Vendo ou Engordo',
+        description:
+          'Decida entre vender o garrote/boi magro agora, engordar na fazenda ou enviar ao boitel. Calcula TIR, ponto de equilíbrio e gera relatório completo.',
+        icon: <Scale size={19} />,
+        onClick: onSelectVendoOuEngordo,
+      }
+    : null;
+
   const cards = [
     ...baseCards,
+    ...(noticiasPecuariaCard ? [noticiasPecuariaCard] : []),
     ...(herdEvolutionCard ? [herdEvolutionCard] : []),
+    ...(vendoOuEngordoCard ? [vendoOuEngordoCard] : []),
     ...(planejamentoCard ? [planejamentoCard] : []),
     ...(avaliacaoCard ? [avaliacaoCard] : []),
     feedbackCard,
@@ -228,11 +267,19 @@ const CalculadorasDesktop: React.FC<CalculadorasDesktopProps> = ({
               onToggleFavorite={toggleFavorite}
               onClick={card.onClick}
               locked={!!('locked' in card && card.locked)}
-              lockedLabel={'lockedLabel' in card ? card.lockedLabel : undefined}
+              lockedLabel={'lockedLabel' in card ? (card as any).lockedLabel as string : undefined}
             />
           ))
         )}
       </div>
+
+      {/* Sentiment Mini Card — below the grid */}
+      {cachedSentiment && onSelectNoticiasPecuaria && (
+        <div className="mt-6">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Sentimento do Mercado</p>
+          <SentimentMiniCard data={cachedSentiment} onClick={onSelectNoticiasPecuaria} />
+        </div>
+      )}
     </div>
   );
 };

@@ -708,6 +708,21 @@ export const cattleScenarios = pgTable('cattle_scenarios', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export const engordaSimulations = pgTable('engorda_simulations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(),
+  organizationId: text('organization_id'),
+  farmId: text('farm_id'),
+  farmName: text('farm_name'),
+  name: text('name').notNull(),
+  category: text('category').notNull(),
+  inputs: jsonb('inputs').notNull(),
+  results: jsonb('results'),
+  reportMarkdown: text('report_markdown'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const savedQuestionnaires = pgTable('saved_questionnaires', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull(),

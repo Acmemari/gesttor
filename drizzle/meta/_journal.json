@@ -29,6 +29,20 @@
       "when": 1774372700625,
       "tag": "0003_chemical_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775478474843,
+      "tag": "0004_dark_lethal_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776243566805,
+      "tag": "0005_bored_meteorite",
+      "breakpoints": true
     }
   ]
 }

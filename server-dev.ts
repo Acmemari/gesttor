@@ -270,6 +270,7 @@ app.all('/api/storage', (req, res) => handleApiRoute('./api/storage.ts', req, re
 
 // Cenários / Questionários / Feedbacks
 app.all('/api/cattle-scenarios', (req, res) => handleApiRoute('./api/cattle-scenarios.ts', req, res));
+app.all('/api/engorda-simulations', (req, res) => handleApiRoute('./api/engorda-simulations.ts', req, res));
 app.all('/api/herd-evolution', (req, res) => handleApiRoute('./api/herd-evolution.ts', req, res));
 app.all('/api/saved-questionnaires', (req, res) => handleApiRoute('./api/saved-questionnaires.ts', req, res));
 app.all('/api/saved-feedbacks', (req, res) => handleApiRoute('./api/saved-feedbacks.ts', req, res));
@@ -284,6 +285,12 @@ app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-cat
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));
 app.all('/api/permissions', (req, res) => handleApiRoute('./api/permissions.ts', req, res));
 app.all('/api/diag', (req, res) => handleApiRoute('./api/diag.ts', req, res));
+
+// Notícias da Pecuária (scraping via Apify)
+app.all('/api/noticias-pecuaria', (req, res) => handleApiRoute('./api/noticias-pecuaria.ts', req, res));
+
+// Sentimento do Mercado (análise IA via Gemini)
+app.all('/api/sentimento-mercado', (req, res) => handleApiRoute('./api/sentimento-mercado.ts', req, res));
 
 // Hierarquia (analistas / clientes / fazendas)
 app.all('/api/hierarchy', (req, res) => handleApiRoute('./api/hierarchy.ts', req, res));

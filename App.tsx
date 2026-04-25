@@ -57,6 +57,8 @@ const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'
 const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
 const TranscreverReuniao = lazy(() => import('./agents/TranscreverReuniao'));
 const AgentUsageDashboard = lazy(() => import('./agents/AgentUsageDashboard'));
+const NoticiasPecuaria = lazy(() => import('./agents/NoticiasPecuaria'));
+const VendoOuEngordo = lazy(() => import('./agents/VendoOuEngordo'));
 
 const LoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full">
@@ -114,7 +116,7 @@ const AppContent: React.FC = () => {
   const prevActiveAppRef = React.useRef<'gesttor' | 'inttegra'>('gesttor');
   const [activeAgentId, setActiveAgentId] = useState<string>('cattle-profit');
   const [viewMode, setViewMode] = useState<
-    'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution'
+    'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution' | 'noticias-pecuaria' | 'vendo-ou-engordo'
   >('desktop');
   const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
     'desktop',
@@ -615,7 +617,10 @@ const AppContent: React.FC = () => {
   const isRhFeedbackList = activeAgentId === 'rh-feedback-list';
   const isProjectCadastro = activeAgentId === 'cadastros' && cadastroView === 'project';
   const isAvaliacaoProtocolo = activeAgentId === 'cattle-profit' && viewMode === 'avaliacao-protocolo';
-  const headerTitle = isAvaliacaoProtocolo
+  const isNoticiasPecuaria = activeAgentId === 'cattle-profit' && viewMode === 'noticias-pecuaria';
+  const headerTitle = isNoticiasPecuaria
+    ? 'Notícias da Pecuária'
+    : isAvaliacaoProtocolo
     ? 'Avaliação Protocolo 5-3-9'
     : isProjeto
       ? 'Projeto'
@@ -680,6 +685,8 @@ const AppContent: React.FC = () => {
                 onSelectAvaliacaoProtocolo={() => setViewMode('avaliacao-protocolo')}
                 onSelectHerdEvolution={() => setViewMode('herd-evolution')}
                 onSelectFeedbackAgent={() => setActiveAgentId('agent-feedback')}
+                onSelectNoticiasPecuaria={() => setViewMode('noticias-pecuaria')}
+                onSelectVendoOuEngordo={() => setViewMode('vendo-ou-engordo')}
                 showPlanejamentoAgil={user?.role === 'admin' || user?.qualification === 'analista' || user?.qualification === 'cliente'}
                 feedbackAgentUnlocked={canAccessFeedbackAgent}
               />
@@ -711,6 +718,20 @@ const AppContent: React.FC = () => {
           return (
             <Suspense fallback={<LoadingFallback />}>
               <HerdEvolutionSimulator onToast={addToast} />
+            </Suspense>
+          );
+        }
+        if (viewMode === 'noticias-pecuaria') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <NoticiasPecuaria onToast={handleToast} />
+            </Suspense>
+          );
+        }
+        if (viewMode === 'vendo-ou-engordo') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <VendoOuEngordo onBack={() => setViewMode('desktop')} onToast={handleToast} />
             </Suspense>
           );
         }
@@ -1201,6 +1222,7 @@ const AppContent: React.FC = () => {
                       : viewMode === 'comparator' ? 'Comparador'
                       : viewMode === 'agile-planning' ? 'Planejamento Ágil'
                       : viewMode === 'herd-evolution' ? 'Evolução do Rebanho'
+                      : viewMode === 'noticias-pecuaria' ? 'Notícias da Pecuária'
                       : 'Avaliação Protocolo 5-3-9',
                   },
                 ]}

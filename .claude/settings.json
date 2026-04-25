@@ -5,7 +5,10 @@
       "Bash(ls -la /c/gesttor/*.html)",
       "Bash(find /c/gesttor -path */node_modules -prune -o -type f -name *forgot* -o -type f -name *password*)",
       "Bash(find /c/gesttor/lib -type f -name *.ts -o -name *.tsx)",
-      "Bash(find /c/gesttor/api -type f -name *.ts)"
+      "Bash(find /c/gesttor/api -type f -name *.ts)",
+      "Bash(node -e ':*)",
+      "Bash(git rebase *)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
     ]
   }
 }
