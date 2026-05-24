@@ -14,6 +14,7 @@ import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
 import {
   listAtividadesBySemana,
+  listAtividadesByPeriod,
   getAtividadeById,
   getSemanaById,
   createAtividade,
@@ -61,12 +62,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'GET') {
     const semanaId = typeof req.query?.semanaId === 'string' ? req.query.semanaId : null;
-    if (!semanaId) { jsonError(res, 'semanaId é obrigatório', { status: 400 }); return; }
-    try { await assertSemanaAccess(semanaId, userId, role); } catch (err: any) {
-      jsonError(res, err.message, { status: err.status ?? 403 }); return;
+    const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : null;
+    const dataInicio = typeof req.query?.dataInicio === 'string' ? req.query.dataInicio : null;
+    const dataFim = typeof req.query?.dataFim === 'string' ? req.query.dataFim : null;
+
+    if (semanaId) {
+      try { await assertSemanaAccess(semanaId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+      const rows = await listAtividadesBySemana(semanaId);
+      jsonSuccess(res, rows);
+      return;
     }
-    const rows = await listAtividadesBySemana(semanaId);
-    jsonSuccess(res, rows);
+
+    if (farmId || dataInicio || dataFim) {
+      if (!farmId || !dataInicio || !dataFim) {
+        jsonError(res, 'farmId, dataInicio e dataFim são obrigatórios para consulta por período', { status: 400 });
+        return;
+      }
+      try { await assertFarmAccess(farmId, userId, role); } catch (err: any) {
+        jsonError(res, err.message, { status: err.status ?? 403 }); return;
+      }
+      const rows = await listAtividadesByPeriod(farmId, dataInicio, dataFim);
+      jsonSuccess(res, rows);
+      return;
+    }
+
+    jsonError(res, 'semanaId ou farmId+dataInicio+dataFim é obrigatório', { status: 400 });
     return;
   }
 

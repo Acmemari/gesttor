@@ -33,22 +33,50 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1777767354787,
-      "tag": "0004_lying_mandarin",
+      "when": 1775478474843,
+      "tag": "0004_dark_lethal_legion",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1778424180659,
-      "tag": "0005_late_rockslide",
+      "when": 1776243566805,
+      "tag": "0005_bored_meteorite",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
+      "when": 1777767354787,
+      "tag": "0004_lying_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778424180659,
+      "tag": "0005_farm_plano_contas",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778424200000,
+      "tag": "0006_itens_orcamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
       "when": 1779177133174,
       "tag": "0006_skinny_bill_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779177200000,
+      "tag": "0007_lancamentos_orcamento",
       "breakpoints": true
     }
   ]

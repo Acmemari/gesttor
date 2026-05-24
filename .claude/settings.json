@@ -19,7 +19,7 @@
       "Bash(tasklist /FI \"PID eq 28164\" /FO LIST)",
       "Read(//c/Users/anton/AppData/Local/Temp/**)",
       "Bash(ls c:\\\\\\\\gesttor\\\\\\\\components\\\\\\\\orcamento)",
-      "Bash(curl -s -o /dev/null -w \"HTTP=%{http_code} time=%{time_total}s\\\\n\" http://localhost:3001/api/lancamentos-orcamento)",
+      "Bash(curl -s -o /dev/null -w \"HTTP=%{http_code} time_total=%{time_total}s\\\\n\" http://localhost:3001/api/lancamentos-orcamento)",
       "Bash(grep -E \"\\(Sidebar\\\\.tsx|^App\\\\.tsx|CadastrosDesktop\\\\.tsx|pecuario/\\)\" C:\\\\\\\\Users\\\\\\\\anton\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\c--gesttor\\\\\\\\a5c7d8d7-5077-429d-9fec-861b469f2d2c\\\\\\\\tasks\\\\\\\\b8us6gc17.output)",
       "Bash(kill %1)"
     ],

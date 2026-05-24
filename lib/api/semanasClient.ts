@@ -81,7 +81,7 @@ export async function getSemanaById(id: string) {
 
 export async function listSemanasByFarm(farmId: string): Promise<SemanaRow[]> {
   const res = await apiFetch<SemanaRow[]>(`/api/semanas?farmId=${encodeURIComponent(farmId)}&list=true`);
-  if (!res.ok) throw new Error(res.error);
+  if ('error' in res) throw new Error(res.error);
   return res.data.map((r: any) => ({
     ...r,
     data_inicio: String(r.data_inicio ?? r.dataInicio ?? ''),
@@ -125,6 +125,15 @@ export async function updateSemana(id: string, partial: Partial<SemanaPayload & 
 
 export async function listAtividades(semanaId: string) {
   return apiFetch<AtividadeRow[]>(`/api/atividades?semanaId=${encodeURIComponent(semanaId)}`);
+}
+
+export async function listAtividadesByPeriod(farmId: string, dataInicio: string, dataFim: string) {
+  const params = new URLSearchParams({
+    farmId,
+    dataInicio,
+    dataFim,
+  });
+  return apiFetch<AtividadeRow[]>(`/api/atividades?${params.toString()}`);
 }
 
 export interface AtividadePayload {

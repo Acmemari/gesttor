@@ -13,7 +13,7 @@ Login e senha suporte@gesttor.app Senha: Gesttor@12
 
 https://sso.godaddy.com/login?app=email\&realm=pass
 
-Gmail: chakerdev12@gmail.com Ch@ker12
+Gmail: chakerdev12@gmail.com ch@ker12
 
 
 
@@ -28,6 +28,10 @@ chakerdev12@gmail.com Gesttor@12
 
 
 
+Apify: chakerdev12@gmail.com
+
+
+
 Falta:
 GitHub
 Vercell
@@ -36,7 +40,7 @@ API Gemini
 API Open AI
 
 Resend
-Backblaze B2
+Backblaze B2 070428@@nlcbjCnAR acmemari@gmail.com
 
 Neon: Github
 
