@@ -423,6 +423,23 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
     };
   }, [isModalOpen, isIndicatorsModalOpen, isRecriaIndicatorsModalOpen, isAverageHerdModalOpen]);
 
+  // Sincroniza o slider 'Venda bezerras ao desmame' com as porcentagens das categorias no sistema de Cria
+  useEffect(() => {
+    if (productionSystem === 'Cria') {
+      setAnimalCategories(prev =>
+        prev.map(cat => {
+          if (cat.id === CATEGORY_IDS.BEZERRA) {
+            return { ...cat, percentage: vendaBezerrasAoDesmame };
+          }
+          if (cat.id === CATEGORY_IDS.NOVILHA) {
+            return { ...cat, percentage: Math.max(0, 17 - vendaBezerrasAoDesmame) };
+          }
+          return cat;
+        })
+      );
+    }
+  }, [vendaBezerrasAoDesmame, productionSystem]);
+
   // Fechar popovers de peso ao clicar fora
   useEffect(() => {
     if (!weightCalculationInfoOpen) return;
