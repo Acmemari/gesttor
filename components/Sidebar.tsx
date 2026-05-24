@@ -33,7 +33,10 @@ import {
   ArrowLeftRight,
   PanelLeftClose,
   PanelLeft,
+  Wallet,
+  BarChart3,
 } from 'lucide-react';
+import { CattleHeadIcon } from './icons/CattleHeadIcon';
 
 interface SidebarProps {
   agents: Agent[];
@@ -45,6 +48,7 @@ interface SidebarProps {
   onLogout: () => void;
   onSettingsClick?: () => void;
   onSwitchToInttegra?: () => void;
+  onSwitchToOrcamentaria?: () => void;
 }
 
 const PROJETO_ID = 'projeto';
@@ -55,6 +59,9 @@ const PROJECT_STRUCTURE_ID = 'project-structure';
 const ROTINAS_FAZENDA_ID = 'rotinas-fazenda';
 const CALENDAR_ID = 'calendar';
 const RH_FEEDBACK_ID = 'rh-feedback-list';
+const PECUARIO_CADASTROS_ID = 'pecuario-cadastros';
+const PECUARIO_MOVIMENTOS_ID = 'pecuario-movimentos';
+const PECUARIO_RELATORIOS_ID = 'pecuario-relatorios';
 const isGerenciamentoView = (id: string) =>
   id === PROJETO_ID ||
   id === INICIATIVAS_OVERVIEW_ID ||
@@ -64,6 +71,10 @@ const isGerenciamentoView = (id: string) =>
   id === ROTINAS_FAZENDA_ID ||
   id === CALENDAR_ID ||
   id === 'gestao-semanal';
+const isPecuarioView = (id: string) =>
+  id === PECUARIO_CADASTROS_ID ||
+  id === PECUARIO_MOVIMENTOS_ID ||
+  id === PECUARIO_RELATORIOS_ID;
 
 const Sidebar: React.FC<SidebarProps> = ({
   agents,
@@ -75,10 +86,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   onSettingsClick,
   onSwitchToInttegra,
+  onSwitchToOrcamentaria,
 }) => {
   const { country, setCountry, paraguayEnabled } = useLocation();
   const [isIniciativasOpen, setIsIniciativasOpen] = useState(() => isGerenciamentoView(activeAgentId));
   const [isRhOpen, setIsRhOpen] = useState(() => activeAgentId === RH_FEEDBACK_ID);
+  const [isPecuarioOpen, setIsPecuarioOpen] = useState(() => isPecuarioView(activeAgentId));
   const canAccessRh = user?.role === 'admin' || user?.role === 'client' || user?.qualification === 'analista';
   const isVisitor = user?.qualification === 'visitante';
 
@@ -90,6 +103,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     if (activeAgentId === RH_FEEDBACK_ID) setIsRhOpen(true);
+  }, [activeAgentId]);
+
+  useEffect(() => {
+    if (isPecuarioView(activeAgentId)) setIsPecuarioOpen(true);
   }, [activeAgentId]);
 
   // isOpen = true → expanded (w-56), isOpen = false → collapsed icons only (w-14 on desktop, hidden on mobile)
@@ -304,6 +321,81 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
 
+            {/* Pecuário (menu retrátil: Cadastros + Movimentos + Relatórios) */}
+            <div className="space-y-0.5 mb-1">
+              <button
+                type="button"
+                onClick={() => !isVisitor && (collapsed ? onSelectAgent(PECUARIO_CADASTROS_ID) : setIsPecuarioOpen(!isPecuarioOpen))}
+                disabled={isVisitor}
+                className={`w-full flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-3'} py-2 rounded-md transition-all duration-200 text-left group ${
+                  isVisitor
+                    ? 'opacity-50 cursor-not-allowed text-ai-subtext'
+                    : `cursor-pointer ${isPecuarioView(activeAgentId) ? 'bg-ai-accent/5 text-ai-accent' : 'text-ai-subtext hover:bg-ai-surface2 hover:text-ai-text'}`
+                }`}
+                title="Pecuário"
+              >
+                <div className="flex items-center">
+                  <CattleHeadIcon size={16} className="flex-shrink-0 text-ai-subtext group-hover:text-ai-text" />
+                  {!collapsed && <span className="ml-3 text-sm font-medium block truncate">Pecuário</span>}
+                </div>
+                {!collapsed && (
+                  <ChevronDown
+                    size={14}
+                    className={`flex-shrink-0 transition-transform duration-200 ${isPecuarioOpen ? 'rotate-180' : ''}`}
+                  />
+                )}
+              </button>
+              {!collapsed && isPecuarioOpen && (
+                <div className="ml-4 space-y-0.5 border-l border-ai-border pl-2 overflow-hidden transition-all duration-200">
+                  <button
+                    type="button"
+                    onClick={() => !isVisitor && onSelectAgent(PECUARIO_CADASTROS_ID)}
+                    disabled={isVisitor}
+                    className={`w-full flex items-center px-2 py-1.5 rounded-md transition-all text-xs ${
+                      isVisitor
+                        ? 'opacity-50 cursor-not-allowed text-ai-subtext'
+                        : activeAgentId === PECUARIO_CADASTROS_ID
+                          ? 'bg-ai-accent/10 text-ai-accent'
+                          : 'text-ai-subtext hover:bg-ai-surface2 hover:text-ai-text'
+                    }`}
+                  >
+                    <ClipboardList size={14} className="flex-shrink-0 mr-2" />
+                    <span className="truncate">Cadastros</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => !isVisitor && onSelectAgent(PECUARIO_MOVIMENTOS_ID)}
+                    disabled={isVisitor}
+                    className={`w-full flex items-center px-2 py-1.5 rounded-md transition-all text-xs ${
+                      isVisitor
+                        ? 'opacity-50 cursor-not-allowed text-ai-subtext'
+                        : activeAgentId === PECUARIO_MOVIMENTOS_ID
+                          ? 'bg-ai-accent/10 text-ai-accent'
+                          : 'text-ai-subtext hover:bg-ai-surface2 hover:text-ai-text'
+                    }`}
+                  >
+                    <ArrowLeftRight size={14} className="flex-shrink-0 mr-2" />
+                    <span className="truncate">Movimentos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => !isVisitor && onSelectAgent(PECUARIO_RELATORIOS_ID)}
+                    disabled={isVisitor}
+                    className={`w-full flex items-center px-2 py-1.5 rounded-md transition-all text-xs ${
+                      isVisitor
+                        ? 'opacity-50 cursor-not-allowed text-ai-subtext'
+                        : activeAgentId === PECUARIO_RELATORIOS_ID
+                          ? 'bg-ai-accent/10 text-ai-accent'
+                          : 'text-ai-subtext hover:bg-ai-surface2 hover:text-ai-text'
+                    }`}
+                  >
+                    <BarChart3 size={14} className="flex-shrink-0 mr-2" />
+                    <span className="truncate">Relatórios</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {agents
               .filter(a => a.id !== 'cadastros' && a.id !== 'calendar' && a.id !== 'area-certificados')
               .map(agent => {
@@ -436,13 +528,31 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={onSwitchToInttegra}
-              className={`w-full flex items-center ${collapsed ? 'justify-center p-2 mb-1' : 'gap-2 px-3 py-2 mb-3'} rounded-md text-sm font-medium text-ai-subtext hover:text-emerald-600 hover:bg-emerald-50 transition-colors`}
+              className={`w-full flex items-center ${collapsed ? 'justify-center p-2 mb-1' : 'gap-2 px-3 py-2 mb-1'} rounded-md text-sm font-medium text-ai-subtext hover:text-emerald-600 hover:bg-emerald-50 transition-colors`}
               title="Ir para Inttegra"
             >
               <Layers size={14} className="text-emerald-500" />
               {!collapsed && (
                 <>
                   <span>Inttegra</span>
+                  <ArrowLeftRight size={12} className="ml-auto opacity-50" />
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Switch to Gestão Orçamentária - admin e analista */}
+          {onSwitchToOrcamentaria && (user?.role === 'admin' || user?.qualification === 'analista') && (
+            <button
+              type="button"
+              onClick={onSwitchToOrcamentaria}
+              className={`w-full flex items-center ${collapsed ? 'justify-center p-2 mb-1' : 'gap-2 px-3 py-2 mb-3'} rounded-md text-sm font-medium text-ai-subtext hover:text-amber-600 hover:bg-amber-50 transition-colors`}
+              title="Ir para Gestão Orçamentária"
+            >
+              <Wallet size={14} className="text-amber-500" />
+              {!collapsed && (
+                <>
+                  <span>Gestão Orçamentária</span>
                   <ArrowLeftRight size={12} className="ml-auto opacity-50" />
                 </>
               )}

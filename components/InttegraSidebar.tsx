@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { APP_VERSION } from '../src/version';
 import ProdutoCadastroModal from './ProdutoCadastroModal';
+import { CattleHeadIcon } from './icons/CattleHeadIcon';
 import {
   Settings,
   LogOut,
@@ -13,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
-  Beef,
   Package,
   Tractor,
   Sprout,
@@ -53,7 +53,7 @@ const expandableSections: ExpandableItem[] = [
   {
     id: 'pecuaria',
     label: 'Pecuária',
-    icon: Beef,
+    icon: CattleHeadIcon,
     subItems: [
       { label: 'Cadastros', icon: 'chevron' },
       { label: 'Movimentações', icon: 'chevron' },

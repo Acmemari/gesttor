@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   text,
@@ -857,3 +858,266 @@ export const appSettings = pgTable('app_settings', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   updatedBy: text('updated_by'),
 });
+
+// ── Gestão Orçamentária ────────────────────────────────────────────────────────
+// Workspace de planejamento orçamentário. Tabelas adicionadas no Phase 1 (MVP M1):
+// shell + cadastro de orçamento. Tabelas de itens/realizados/comentários ficam para Phase 2+.
+
+export const planoContas = pgTable('plano_contas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Código hierárquico tipo "4.1.3"; único globalmente.
+  numero: text('numero').notNull().unique(),
+  numeroPaiId: uuid('numero_pai_id').references((): any => planoContas.id, { onDelete: 'restrict' }),
+  nome: text('nome').notNull(),
+  // 'Mão de Obra Permanente' | 'Insumos do Rebanho' | 'Pastagem...' | etc.
+  perfilDesembolso: text('perfil_desembolso'),
+  // Ex.: ['AGRICULTURA','PECUÁRIA','OUTROS']. Postgres text[].
+  areasNegocio: text('areas_negocio').array(),
+  nivel: integer('nivel').notNull(),
+  isFolha: boolean('is_folha').notNull().default(false),
+  ativo: boolean('ativo').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_plano_contas_pai').on(t.numeroPaiId),
+  index('idx_plano_contas_ativo').on(t.ativo),
+]);
+
+export const orcamentos = pgTable('orcamentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  // Safra "25/26", "26/27" etc.
+  safra: text('safra').notNull(),
+  dataInicio: date('data_inicio').notNull(),
+  dataFim: date('data_fim').notNull(),
+  descricao: text('descricao'),
+  criadoPor: text('criado_por').notNull().references(() => userProfiles.id, { onDelete: 'restrict' }),
+  arquivado: boolean('arquivado').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_orcamentos_org_safra').on(t.organizationId, t.safra),
+  index('idx_orcamentos_arquivado').on(t.arquivado),
+]);
+
+export const orcamentoFarms = pgTable('orcamento_farms', {
+  orcamentoId: uuid('orcamento_id').notNull().references(() => orcamentos.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.orcamentoId, t.farmId] }),
+  index('idx_orcamento_farms_farm').on(t.farmId),
+]);
+
+export const orcamentoColaboradores = pgTable('orcamento_colaboradores', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orcamentoId: uuid('orcamento_id').notNull().references(() => orcamentos.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => userProfiles.id, { onDelete: 'cascade' }),
+  // 'gerente' | 'consultor' | 'readonly'
+  papel: text('papel').notNull().default('consultor'),
+  eAprovador: boolean('e_aprovador').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('orcamento_colab_orc_user_uidx').on(t.orcamentoId, t.userId),
+  index('idx_orcamento_colab_user').on(t.userId),
+]);
+
+export const orcamentoVersoes = pgTable('orcamento_versoes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orcamentoId: uuid('orcamento_id').notNull().references(() => orcamentos.id, { onDelete: 'cascade' }),
+  parentId: uuid('parent_id').references((): any => orcamentoVersoes.id, { onDelete: 'set null' }),
+  // 'rascunho' | 'em_aprovacao' | 'baseline' | 'forecast' | 'arquivado'
+  tipo: text('tipo').notNull().default('rascunho'),
+  nome: text('nome').notNull(),
+  criadoPor: text('criado_por').notNull().references(() => userProfiles.id, { onDelete: 'restrict' }),
+  aprovadoPor: text('aprovado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  aprovadoEm: timestamp('aprovado_em'),
+  // Em Forecast, último mês fechado; meses ≤ corte ficam read-only.
+  mesCorte: date('mes_corte'),
+  imutavel: boolean('imutavel').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_versoes_orcamento').on(t.orcamentoId),
+  index('idx_versoes_parent').on(t.parentId),
+]);
+
+export const premissas = pgTable('premissas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  versaoId: uuid('versao_id').notNull().references(() => orcamentoVersoes.id, { onDelete: 'cascade' }),
+  // Ex: 'preco_arroba_boi_gordo', 'dolar_projetado', 'ipca_projetado_anual'
+  chave: text('chave').notNull(),
+  valor: numeric('valor', { precision: 18, scale: 6 }),
+  unidade: text('unidade'),
+  // 'manual' | 'cepea' | 'b3' | 'usda' | 'bcb' | 'ibge' | 'anp'
+  fonte: text('fonte').notNull().default('manual'),
+  // NULL = anual; data específica = mensal.
+  mes: date('mes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_premissas_versao').on(t.versaoId),
+  index('idx_premissas_chave').on(t.chave),
+]);
+
+/**
+ * Itens de orçamento — uma linha por (versão, fazenda, conta-folha).
+ *
+ * Modelo "lazy": linha só existe se houver pelo menos um valor mensal preenchido.
+ * `valores_mensais` é JSONB com chaves no formato 'YYYY-MM-DD' (primeiro dia do mês).
+ *   Ex.: { "2026-07-01": "12000.00", "2026-08-01": "11500.00" }
+ */
+export const itensOrcamento = pgTable('itens_orcamento', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  versaoId: uuid('versao_id').notNull().references(() => orcamentoVersoes.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  planoContaId: uuid('plano_conta_id').notNull().references(() => planoContas.id, { onDelete: 'restrict' }),
+  valoresMensais: jsonb('valores_mensais').notNull().default('{}'),
+  observacao: text('observacao'),
+  atualizadoPor: text('atualizado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('itens_orcamento_versao_farm_conta_uidx').on(t.versaoId, t.farmId, t.planoContaId),
+  index('idx_itens_versao').on(t.versaoId),
+  index('idx_itens_conta').on(t.planoContaId),
+]);
+
+/**
+ * Lançamentos de despesa (modelo rico).
+ *
+ * Cada lançamento representa UM compromisso de despesa numa conta-folha, com
+ * recorrência (mensal/sazonal/única), distribuição mensal materializada e,
+ * opcionalmente, detalhamento em produtos.
+ *
+ * `itens_orcamento.valores_mensais` deixa de ser editado direto: passa a ser
+ * a soma agregada de todos lançamentos `status='ativo'` da mesma (versão, farm,
+ * conta-folha). Mantida via `recalcularItem()` em código TS após cada CRUD.
+ *
+ * `tipoOrigem`:
+ *   - 'modal'    → criado pela UI rica (form completo). Mostrado por padrão na aba.
+ *   - 'planilha' → shadow gerado por edição direta de célula no Fluxo. Oculto por padrão.
+ */
+export const lancamentosOrcamento = pgTable('lancamentos_orcamento', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  versaoId: uuid('versao_id').notNull().references(() => orcamentoVersoes.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  planoContaId: uuid('plano_conta_id').notNull().references(() => planoContas.id, { onDelete: 'restrict' }),
+  // 'mensal' | 'sazonal' | 'unica'
+  recorrencia: text('recorrencia').notNull().default('mensal'),
+  // Valor padrão por mês (mensal) ou base usada para preencher distribuição (sazonal/única).
+  // Quando há produtos, é recalculado como soma dos subtotais ÷ qtd-meses-ativos.
+  valorBase: numeric('valor_base', { precision: 18, scale: 2 }).notNull().default('0'),
+  // Materializado: { 'YYYY-MM-01': '1234.56' }. Fonte do que vai pra planilha.
+  distribuicaoMensal: jsonb('distribuicao_mensal').notNull().default('{}'),
+  // 'modal' | 'planilha'
+  tipoOrigem: text('tipo_origem').notNull().default('modal'),
+  descricao: text('descricao'),
+  observacao: text('observacao'),
+  // 'ativo' | 'rascunho'. Só 'ativo' soma na materialização.
+  status: text('status').notNull().default('ativo'),
+  criadoPor: text('criado_por').notNull().references(() => userProfiles.id, { onDelete: 'restrict' }),
+  atualizadoPor: text('atualizado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_lancamentos_versao_farm_conta').on(t.versaoId, t.farmId, t.planoContaId),
+  index('idx_lancamentos_versao_status').on(t.versaoId, t.status),
+  // Garante apenas 1 shadow por (versão, farm, conta-folha) — múltiplos modais permitidos.
+  uniqueIndex('lancamentos_shadow_uidx')
+    .on(t.versaoId, t.farmId, t.planoContaId)
+    .where(sql`tipo_origem = 'planilha'`),
+]);
+
+/**
+ * Produtos detalhados de um lançamento (opcionais).
+ *
+ * Quando há produtos, a soma dos subtotais sobrescreve `valorBase` do lançamento.
+ * Subtotal é calculado e persistido pelo backend (não confiamos no cliente).
+ */
+export const lancamentoProdutos = pgTable('lancamento_produtos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  lancamentoId: uuid('lancamento_id').notNull().references(() => lancamentosOrcamento.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  quantidade: numeric('quantidade', { precision: 18, scale: 4 }).notNull(),
+  unidade: text('unidade'),
+  valorUnitario: numeric('valor_unitario', { precision: 18, scale: 6 }).notNull(),
+  subtotal: numeric('subtotal', { precision: 18, scale: 2 }).notNull(),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_lancamento_produtos_lancamento').on(t.lancamentoId, t.ordem),
+]);
+
+/**
+ * Lista negra (blacklist) de contas do plano de contas POR FAZENDA.
+ *
+ * Modelo: tudo é ativo por default. Esta tabela só guarda exceções desativadas.
+ * `effective_active = NOT EXISTS (SELECT 1 FROM farm_plano_contas_inativas WHERE ...)`.
+ */
+export const farmPlanoContasInativas = pgTable('farm_plano_contas_inativas', {
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  planoContaId: uuid('plano_conta_id').notNull().references(() => planoContas.id, { onDelete: 'cascade' }),
+  desativadoPor: text('desativado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  desativadoEm: timestamp('desativado_em').notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.farmId, t.planoContaId] }),
+  index('idx_fpci_farm').on(t.farmId),
+]);
+
+export const logAuditoriaOrcamento = pgTable('log_auditoria_orcamento', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orcamentoId: uuid('orcamento_id').notNull().references(() => orcamentos.id, { onDelete: 'cascade' }),
+  versaoId: uuid('versao_id').references(() => orcamentoVersoes.id, { onDelete: 'set null' }),
+  usuarioId: text('usuario_id').notNull().references(() => userProfiles.id, { onDelete: 'restrict' }),
+  // 'criar_orcamento' | 'editar_premissa' | 'editar_item' | 'aprovar' | 'criar_forecast' | etc.
+  acao: text('acao').notNull(),
+  entidade: text('entidade').notNull(),
+  entidadeId: uuid('entidade_id'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  justificativa: text('justificativa'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_audit_orcamento_data').on(t.orcamentoId, t.createdAt),
+  index('idx_audit_versao').on(t.versaoId),
+]);
+
+// ── Mapa de Rebanho (Estoque de Partida) ──────────────────────────────────────
+// Inventário do rebanho em uma data de referência. Cada header representa uma
+// "fotografia" do rebanho de uma fazenda em uma data; os lançamentos formam a
+// matriz Local × Categoria com quantidade e peso médio por cabeça.
+
+export const mapaRebanhoHeaders = pgTable('mapa_rebanho_headers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  dataReferencia: date('data_referencia').notNull(),
+  // 'rascunho' | 'salvo'
+  status: text('status').notNull().default('rascunho'),
+  observacao: text('observacao'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  // Um único mapa por (fazenda, data de referência).
+  uniqueIndex('mapa_rebanho_headers_farm_data_uidx').on(t.farmId, t.dataReferencia),
+  index('idx_mapa_rebanho_headers_org').on(t.organizationId),
+  index('idx_mapa_rebanho_headers_farm').on(t.farmId),
+]);
+
+export const mapaRebanhoLancamentos = pgTable('mapa_rebanho_lancamentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mapaHeaderId: uuid('mapa_header_id').notNull().references(() => mapaRebanhoHeaders.id, { onDelete: 'cascade' }),
+  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').notNull().references(() => animalCategories.id, { onDelete: 'cascade' }),
+  quantidade: integer('quantidade').notNull().default(0),
+  pesoKgCabeca: numeric('peso_kg_cabeca', { precision: 8, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('mapa_rebanho_lanc_header_local_cat_uidx').on(t.mapaHeaderId, t.localId, t.categoriaId),
+  index('idx_mapa_rebanho_lanc_header').on(t.mapaHeaderId),
+]);

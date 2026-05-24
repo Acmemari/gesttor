@@ -27,5 +27,11 @@ export default defineConfig({
     'saved_questionnaires', 'questionnaire_questions', 'saved_feedbacks', 'support_tickets',
     'support_ticket_messages', 'support_ticket_reads', 'support_ticket_attachments',
     'consulting_firms', 'app_settings', 'animal_categories',
+    // Gestão Orçamentária
+    'plano_contas', 'orcamentos', 'orcamento_farms', 'orcamento_colaboradores',
+    'orcamento_versoes', 'premissas', 'log_auditoria_orcamento',
+    'farm_plano_contas_inativas', 'itens_orcamento',
+    // Mapa de Rebanho (Estoque de Partida)
+    'mapa_rebanho_headers', 'mapa_rebanho_lancamentos',
   ],
 });

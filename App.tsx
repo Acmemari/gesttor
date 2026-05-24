@@ -2,6 +2,11 @@ import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import Sidebar from './components/Sidebar';
 import InttegraSidebar from './components/InttegraSidebar';
 import InttegraDashboard from './components/InttegraDashboard';
+import OrcamentoSidebar from './components/orcamento/OrcamentoSidebar';
+import OrcamentoHeader from './components/orcamento/OrcamentoHeader';
+import GavetaGovernanca from './components/orcamento/GavetaGovernanca';
+import { OrcamentoProvider } from './contexts/OrcamentoContext';
+import type { OrcamentoView } from './components/orcamento/types';
 import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
 import ForgotPasswordPage from './components/ForgotPasswordPage';
@@ -31,6 +36,7 @@ const MarketTrends = lazy(() => import('./agents/MarketTrends'));
 const SavedScenarios = lazy(() => import('./agents/SavedScenarios'));
 const AIAgentConfigAdmin = lazy(() => import('./agents/AIAgentConfigAdmin'));
 const FarmManagement = lazy(() => import('./agents/FarmManagement'));
+const LocaisManagement = lazy(() => import('./agents/LocaisManagement'));
 const PerfisCargoConfig = lazy(() => import('./agents/PerfisCargoConfig'));
 const EmpAssManagement = lazy(() => import('./agents/EmpAssManagement'));
 const AnimalCategoriesManagement = lazy(() => import('./agents/AnimalCategoriesManagement'));
@@ -57,6 +63,11 @@ const RotinasFazendaDesktop = lazy(() => import('./agents/RotinasFazendaDesktop'
 const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
 const TranscreverReuniao = lazy(() => import('./agents/TranscreverReuniao'));
 const AgentUsageDashboard = lazy(() => import('./agents/AgentUsageDashboard'));
+const OrcamentoWorkspace = lazy(() => import('./agents/orcamento/OrcamentoWorkspace'));
+const PecuarioCadastrosDesktop = lazy(() => import('./agents/pecuario/PecuarioCadastrosDesktop'));
+const PecuarioMovimentos = lazy(() => import('./agents/pecuario/PecuarioMovimentos'));
+const PecuarioRelatorios = lazy(() => import('./agents/pecuario/PecuarioRelatorios'));
+const EstoquePartida = lazy(() => import('./agents/pecuario/EstoquePartida'));
 
 const LoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center h-full">
@@ -110,15 +121,16 @@ const AppContent: React.FC = () => {
   const { country } = useLocation();
   const { selectedFarm, setSelectedFarm } = useFarm();
   const { refreshCurrentLevel } = useHierarchy();
-  const [activeApp, setActiveApp] = useState<'gesttor' | 'inttegra'>('gesttor');
-  const prevActiveAppRef = React.useRef<'gesttor' | 'inttegra'>('gesttor');
+  const [activeApp, setActiveApp] = useState<'gesttor' | 'inttegra' | 'gestao-orcamentaria'>('gesttor');
+  const prevActiveAppRef = React.useRef<'gesttor' | 'inttegra' | 'gestao-orcamentaria'>('gesttor');
   const [activeAgentId, setActiveAgentId] = useState<string>('cattle-profit');
   const [viewMode, setViewMode] = useState<
     'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution'
   >('desktop');
-  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
+  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'locais' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
     'desktop',
   );
+  const [pecuarioCadastroView, setPecuarioCadastroView] = useState<'desktop' | 'estoque-partida' | 'animal-categories'>('desktop');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas'>('rotina');
   const [calculatorInputs, setCalculatorInputs] = useState<any>(null);
@@ -133,6 +145,9 @@ const AppContent: React.FC = () => {
     return true; // Default to open for SSR
   });
   const [isInttegraSidebarCollapsed, setIsInttegraSidebarCollapsed] = useState(false);
+  const [isOrcamentoSidebarCollapsed, setIsOrcamentoSidebarCollapsed] = useState(false);
+  const [orcamentoActiveView, setOrcamentoActiveView] = useState<OrcamentoView>('dashboard');
+  const [isGavetaOpen, setIsGavetaOpen] = useState(false);
   
   // Estado para controlar se está no formulário de fazendas
   const [isFarmFormView, setIsFarmFormView] = useState(false);
@@ -147,9 +162,9 @@ const AppContent: React.FC = () => {
 
   const canAccessFeedbackAgent = user?.qualification === 'analista';
 
-  // Recarregar hierarquia (organizações e fazendas) quando retornar ao workspace Pecuária
+  // Recarregar hierarquia (organizações e fazendas) ao retornar ao workspace Gesttor
   useEffect(() => {
-    if (prevActiveAppRef.current === 'inttegra' && activeApp === 'gesttor' && user) {
+    if (prevActiveAppRef.current !== 'gesttor' && activeApp === 'gesttor' && user) {
       void refreshCurrentLevel('clients');
     }
     prevActiveAppRef.current = activeApp;
@@ -240,7 +255,7 @@ const AppContent: React.FC = () => {
       // Define all potential agents
       const cadastrosAgent: Agent = {
         id: 'cadastros',
-        name: 'Cadastros',
+        name: 'Cadastros gerais',
         description: 'Fazendas, organizações e pessoas.',
         icon: 'folder-plus',
         category: 'zootecnico',
@@ -404,7 +419,7 @@ const AppContent: React.FC = () => {
       return [
         {
           id: 'cadastros',
-          name: 'Cadastros',
+          name: 'Cadastros gerais',
           description: 'Fazendas, organizações e pessoas.',
           icon: 'folder-plus',
           category: 'zootecnico' as const,
@@ -607,6 +622,9 @@ const AppContent: React.FC = () => {
   const isProjectStructure = activeAgentId === 'project-structure';
   const isCalendar = activeAgentId === 'calendar';
   const isRotinasFazenda = activeAgentId === 'rotinas-fazenda';
+  const isPecuarioCadastros = activeAgentId === 'pecuario-cadastros';
+  const isPecuarioMovimentos = activeAgentId === 'pecuario-movimentos';
+  const isPecuarioRelatorios = activeAgentId === 'pecuario-relatorios';
   const isGestaoSemanal = activeAgentId === 'gestao-semanal';
   const isTranscreverReuniao = activeAgentId === 'transcrever-reuniao';
   const isAreaCertificados = activeAgentId === 'area-certificados';
@@ -617,6 +635,12 @@ const AppContent: React.FC = () => {
   const isAvaliacaoProtocolo = activeAgentId === 'cattle-profit' && viewMode === 'avaliacao-protocolo';
   const headerTitle = isAvaliacaoProtocolo
     ? 'Avaliação Protocolo 5-3-9'
+    : isPecuarioCadastros
+      ? 'Pecuário · Cadastros'
+    : isPecuarioMovimentos
+      ? 'Pecuário · Movimentos'
+    : isPecuarioRelatorios
+      ? 'Pecuário · Relatórios'
     : isProjeto
       ? 'Projeto'
       : isIniciativasOverview
@@ -789,9 +813,9 @@ const AppContent: React.FC = () => {
               <CadastrosDesktop
                 onSelectProjeto={() => setCadastroView('project')}
                 onSelectFazendas={() => setCadastroView('farm')}
+                onSelectLocais={() => setCadastroView('locais')}
                 onSelectClientes={() => setCadastroView('client')}
                 onSelectPessoas={() => setCadastroView('people')}
-                onSelectAnimalCategories={() => setCadastroView('animal-categories')}
                 onSelectPerfisConfig={user?.role === 'admin' ? () => setCadastroView('perfis-config') : undefined}
                 onSelectEmpAss={user?.role === 'admin' ? () => setCadastroView('emp-ass') : undefined}
                 showClientes={user?.role === 'admin' || user?.qualification === 'analista'}
@@ -811,6 +835,13 @@ const AppContent: React.FC = () => {
           return (
             <Suspense fallback={<LoadingFallback />}>
               <FarmManagement onToast={handleToast} />
+            </Suspense>
+          );
+        }
+        if (cadastroView === 'locais') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <LocaisManagement onToast={handleToast} />
             </Suspense>
           );
         }
@@ -1046,6 +1077,44 @@ const AppContent: React.FC = () => {
             <AreaCertificadosDesktop />
           </Suspense>
         );
+      case 'pecuario-cadastros':
+        if (pecuarioCadastroView === 'estoque-partida') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <EstoquePartida onToast={handleToast} onBack={() => setPecuarioCadastroView('desktop')} />
+            </Suspense>
+          );
+        }
+        if (pecuarioCadastroView === 'animal-categories') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <AnimalCategoriesManagement
+                onToast={handleToast}
+                onBack={() => setPecuarioCadastroView('desktop')}
+              />
+            </Suspense>
+          );
+        }
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <PecuarioCadastrosDesktop
+              onSelectEstoquePartida={() => setPecuarioCadastroView('estoque-partida')}
+              onSelectAnimalCategories={() => setPecuarioCadastroView('animal-categories')}
+            />
+          </Suspense>
+        );
+      case 'pecuario-movimentos':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <PecuarioMovimentos />
+          </Suspense>
+        );
+      case 'pecuario-relatorios':
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <PecuarioRelatorios />
+          </Suspense>
+        );
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-ai-subtext">
@@ -1056,6 +1125,48 @@ const AppContent: React.FC = () => {
         );
     }
   };
+
+  if (activeApp === 'gestao-orcamentaria') {
+    return (
+      <OrcamentoProvider>
+        <div className="flex h-screen w-full bg-white overflow-hidden font-sans text-slate-900">
+          <OrcamentoSidebar
+            isOpen={isSidebarOpen}
+            toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            isCollapsed={isOrcamentoSidebarCollapsed}
+            onToggleCollapse={() => setIsOrcamentoSidebarCollapsed(!isOrcamentoSidebarCollapsed)}
+            onSwitchToGesttor={() => setActiveApp('gesttor')}
+            activeView={orcamentoActiveView}
+            onViewChange={setOrcamentoActiveView}
+          />
+
+          <div
+            className={`flex-1 min-w-0 flex flex-col h-full transition-all duration-200 relative ${
+              isSidebarOpen ? (isOrcamentoSidebarCollapsed ? 'md:ml-16' : 'md:ml-60') : 'ml-0'
+            }`}
+          >
+            <OrcamentoHeader
+              onOpenGoverness={() => setIsGavetaOpen(true)}
+              onNewBudget={() => setOrcamentoActiveView('cadastro-wizard')}
+            />
+
+            <main className="flex-1 min-h-0 bg-white overflow-hidden">
+              <Suspense fallback={<LoadingFallback />}>
+                <OrcamentoWorkspace
+                  view={orcamentoActiveView}
+                  onChangeView={setOrcamentoActiveView}
+                  onToast={(msg, kind) => handleToast(msg, kind ?? 'info')}
+                />
+              </Suspense>
+            </main>
+          </div>
+
+          <GavetaGovernanca isOpen={isGavetaOpen} onClose={() => setIsGavetaOpen(false)} />
+          <ToastContainer toasts={toasts} onClose={removeToast} />
+        </div>
+      </OrcamentoProvider>
+    );
+  }
 
   if (activeApp === 'inttegra') {
     return (
@@ -1120,6 +1231,7 @@ const AppContent: React.FC = () => {
         onSelectAgent={id => {
           if (id === 'cattle-profit') setViewMode('desktop');
           if (id === 'cadastros') setCadastroView('desktop');
+          if (id === 'pecuario-cadastros') setPecuarioCadastroView('desktop');
           setActiveAgentId(id);
         }}
         isOpen={isSidebarOpen}
@@ -1128,6 +1240,7 @@ const AppContent: React.FC = () => {
         onLogout={logout}
         onSettingsClick={() => setActiveAgentId('settings')}
         onSwitchToInttegra={() => setActiveApp('inttegra')}
+        onSwitchToOrcamentaria={() => setActiveApp('gestao-orcamentaria')}
       />
 
       {/* Main Content Area */}
@@ -1145,13 +1258,14 @@ const AppContent: React.FC = () => {
               <Breadcrumb
                 items={(() => {
                   const items: BreadcrumbItem[] = [
-                    { label: 'Cadastros', onClick: () => setCadastroView('desktop') },
+                    { label: 'Cadastros gerais', onClick: () => setCadastroView('desktop') },
                   ];
                   if (cadastroView === 'desktop') {
-                    return [{ label: 'Cadastros' }];
+                    return [{ label: 'Cadastros gerais' }];
                   }
                   const subLabel =
                     cadastroView === 'farm' ? 'Fazendas'
+                    : cadastroView === 'locais' ? 'Locais'
                     : cadastroView === 'client' ? 'Organizações'
                     : cadastroView === 'people' ? 'Pessoas'
                     : cadastroView === 'perfis-config' ? 'Perfis e Cargos'
@@ -1190,6 +1304,18 @@ const AppContent: React.FC = () => {
                   items.push({ label: formTitle });
                   return items;
                 })()}
+              />
+            ) : activeAgentId === 'pecuario-cadastros' && pecuarioCadastroView !== 'desktop' ? (
+              <Breadcrumb
+                items={[
+                  { label: 'Pecuário · Cadastros', onClick: () => setPecuarioCadastroView('desktop') },
+                  {
+                    label:
+                      pecuarioCadastroView === 'estoque-partida' ? 'Estoque de Partida'
+                      : pecuarioCadastroView === 'animal-categories' ? 'Categoria Animal'
+                      : 'Cadastro',
+                  },
+                ]}
               />
             ) : activeAgentId === 'cattle-profit' && viewMode !== 'desktop' ? (
               <Breadcrumb

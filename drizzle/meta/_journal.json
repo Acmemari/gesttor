@@ -29,6 +29,27 @@
       "when": 1774372700625,
       "tag": "0003_chemical_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777767354787,
+      "tag": "0004_lying_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778424180659,
+      "tag": "0005_late_rockslide",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779177133174,
+      "tag": "0006_skinny_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

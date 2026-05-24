@@ -7,8 +7,8 @@ import {
   GripVertical,
   Loader2,
   X,
-  Beef,
 } from 'lucide-react';
+import { CattleHeadIcon } from '../components/icons/CattleHeadIcon';
 import {
   DndContext,
   DragEndEvent,
@@ -344,7 +344,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
           </button>
         )}
         <div className="flex items-center gap-3">
-          <Beef size={24} className="text-gray-400" />
+          <CattleHeadIcon size={24} className="text-gray-400" />
           <div>
             <h2 className="text-xl font-bold text-gray-900">Categorias de Animais</h2>
             <p className="text-sm text-gray-500">
@@ -371,7 +371,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
         </div>
       ) : categories.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <Beef size={48} className="mx-auto mb-4 opacity-30" />
+          <CattleHeadIcon size={48} className="mx-auto mb-4 opacity-30" />
           <p className="text-sm">Nenhuma categoria cadastrada.</p>
           <p className="text-xs mt-1">Clique em "+ Nova Categoria" para começar.</p>
         </div>

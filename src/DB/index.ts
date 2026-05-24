@@ -35,7 +35,9 @@ function init(): { pool: Pool; db: ReturnType<typeof drizzle<typeof schema>> } {
     ssl: { rejectUnauthorized: false },
     max: 10,
     connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: 10000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 
   _db = drizzle(_pool, { schema });

@@ -280,6 +280,9 @@ app.all('/api/emp-ass', (req, res) => handleApiRoute('./api/emp-ass.ts', req, re
 // Categorias de animais
 app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-categories.ts', req, res));
 
+// Mapa de Rebanho (Estoque de Partida)
+app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));
+
 // Admin / Auxiliares
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));
 app.all('/api/permissions', (req, res) => handleApiRoute('./api/permissions.ts', req, res));
@@ -290,6 +293,16 @@ app.all('/api/hierarchy', (req, res) => handleApiRoute('./api/hierarchy.ts', req
 
 // Convites
 app.all('/api/invite', (req, res) => handleApiRoute('./api/invite.ts', req, res));
+
+// Gestão Orçamentária
+app.all('/api/orcamentos', (req, res) => handleApiRoute('./api/orcamentos.ts', req, res));
+app.all('/api/orcamentos-versoes', (req, res) => handleApiRoute('./api/orcamentos-versoes.ts', req, res));
+app.all('/api/orcamentos-colaboradores', (req, res) => handleApiRoute('./api/orcamentos-colaboradores.ts', req, res));
+app.all('/api/orcamentos-auditoria', (req, res) => handleApiRoute('./api/orcamentos-auditoria.ts', req, res));
+app.all('/api/plano-contas', (req, res) => handleApiRoute('./api/plano-contas.ts', req, res));
+app.all('/api/farm-plano-contas', (req, res) => handleApiRoute('./api/farm-plano-contas.ts', req, res));
+app.all('/api/orcamento-itens', (req, res) => handleApiRoute('./api/orcamento-itens.ts', req, res));
+app.all('/api/lancamentos-orcamento', (req, res) => handleApiRoute('./api/lancamentos-orcamento.ts', req, res));
 
 // ── Index ──────────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

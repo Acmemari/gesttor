@@ -63,3 +63,8 @@ test-results/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Vercel & Python
+.vercel/
+**/__pycache__/
+*.pyc

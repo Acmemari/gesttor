@@ -1,6 +1,5 @@
 import React from 'react';
-import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, Beef } from 'lucide-react';
-import { CategoriaAnimalIcon } from '../components/icons/CategoriaAnimalIcon';
+import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, MapPin } from 'lucide-react';
 
 interface CadastroCardProps {
   title: React.ReactNode;
@@ -40,9 +39,9 @@ const ProgramWorkIcon: React.FC = () => (
 interface CadastrosDesktopProps {
   onSelectProjeto?: () => void;
   onSelectFazendas: () => void;
+  onSelectLocais: () => void;
   onSelectClientes?: () => void;
   onSelectPessoas: () => void;
-  onSelectAnimalCategories?: () => void;
   onSelectPerfisConfig?: () => void;
   onSelectEmpAss?: () => void;
   showClientes?: boolean;
@@ -52,9 +51,9 @@ interface CadastrosDesktopProps {
 const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
   onSelectProjeto,
   onSelectFazendas,
+  onSelectLocais,
   onSelectClientes,
   onSelectPessoas,
-  onSelectAnimalCategories,
   onSelectPerfisConfig,
   onSelectEmpAss,
   showClientes = false,
@@ -79,6 +78,13 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       icon: <Building2 size={24} />,
       onClick: onSelectFazendas,
     },
+    {
+      id: 'locais',
+      title: <CadastroTitle entity="Locais" />,
+      description: 'Cadastre os locais (piquetes, retiros, currais) vinculados a cada fazenda.',
+      icon: <MapPin size={24} />,
+      onClick: onSelectLocais,
+    },
     ...(onSelectProjeto
       ? [
           {
@@ -98,17 +104,6 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
       icon: <UserCircle size={24} />,
       onClick: onSelectPessoas,
     },
-    ...(onSelectAnimalCategories
-      ? [
-          {
-            id: 'animal-categories',
-            title: <CadastroTitle entity="Categoria Animal" />,
-            description: 'Defina as categorias do seu rebanho com pesos e valores de mercado.',
-            icon: <CategoriaAnimalIcon size={24} />,
-            onClick: onSelectAnimalCategories,
-          },
-        ]
-      : []),
     ...(onSelectPerfisConfig
       ? [
           {
@@ -136,7 +131,7 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
   return (
     <div className="h-full flex flex-col p-8 md:p-12 max-w-7xl mx-auto">
       <header className="space-y-4 mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Cadastros</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Cadastros gerais</h1>
         <p className="text-sm text-gray-500 max-w-2xl">Escolha um bloco para um novo cadastro</p>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
