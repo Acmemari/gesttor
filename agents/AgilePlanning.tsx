@@ -9,7 +9,7 @@ import type { AgilePlanningReportData, HerdCompositionRow } from '../lib/agilePl
 import { generateAgilePlanningReportPDF, generateAgilePlanningReportPDFAsBase64 } from '../lib/generateAgilePlanningReportPDF';
 import { saveReportPdf } from '../lib/scenarios';
 import AgilePlanningReportView from '../components/reports/AgilePlanningReportView';
-import { Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Edit3, X, ListChecks, Info } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Edit3, X, ListChecks, Info, BookOpen, Percent, DollarSign, Calculator, TrendingUp } from 'lucide-react';
 
 // ============================================================================
 // TIPOS E INTERFACES
@@ -276,6 +276,8 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isIndicatorsModalOpen, setIsIndicatorsModalOpen] = useState(false);
   const [isAverageHerdModalOpen, setIsAverageHerdModalOpen] = useState(false);
+  const [showCalculationsDetail, setShowCalculationsDetail] = useState(false);
+  const [activeCalculationsTab, setActiveCalculationsTab] = useState<'valores' | 'performance' | 'financas'>('valores');
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof AnimalCategory } | null>(null);
   const [tempValue, setTempValue] = useState('');
 
@@ -404,11 +406,13 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
           setIsRecriaIndicatorsModalOpen(false);
         } else if (isAverageHerdModalOpen) {
           setIsAverageHerdModalOpen(false);
+        } else if (showCalculationsDetail) {
+          setShowCalculationsDetail(false);
         }
       }
     };
 
-    const hasOpenModal = isModalOpen || isIndicatorsModalOpen || isRecriaIndicatorsModalOpen || isAverageHerdModalOpen;
+    const hasOpenModal = isModalOpen || isIndicatorsModalOpen || isRecriaIndicatorsModalOpen || isAverageHerdModalOpen || showCalculationsDetail;
 
     if (hasOpenModal) {
       document.body.style.overflow = 'hidden';
@@ -421,7 +425,7 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = '';
     };
-  }, [isModalOpen, isIndicatorsModalOpen, isRecriaIndicatorsModalOpen, isAverageHerdModalOpen]);
+  }, [isModalOpen, isIndicatorsModalOpen, isRecriaIndicatorsModalOpen, isAverageHerdModalOpen, showCalculationsDetail]);
 
   // Sincroniza o slider 'Venda bezerras ao desmame' com as porcentagens das categorias no sistema de Cria
   useEffect(() => {
@@ -429,16 +433,45 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
       setAnimalCategories(prev =>
         prev.map(cat => {
           if (cat.id === CATEGORY_IDS.BEZERRA) {
-            return { ...cat, percentage: vendaBezerrasAoDesmame };
+            return { ...cat, percentage: vendaBezerrasAoDesmame / 2 };
           }
           if (cat.id === CATEGORY_IDS.NOVILHA) {
-            return { ...cat, percentage: Math.max(0, 17 - vendaBezerrasAoDesmame) };
+            return { ...cat, percentage: Math.max(0, 17 - (vendaBezerrasAoDesmame / 2)) };
           }
           return cat;
         })
       );
     }
   }, [vendaBezerrasAoDesmame, productionSystem]);
+
+  // Sincroniza o slider de 'Venda ao desmame' com as porcentagens das categorias no sistema de Ciclo Completo
+  useEffect(() => {
+    if (productionSystem === 'Ciclo Completo') {
+      setAnimalCategories(prev => {
+        const garrote = prev.find(c => c.id === CATEGORY_IDS.GARROTE)?.percentage ?? 0;
+        const touroDescarte = prev.find(c => c.id === CATEGORY_IDS.TOURO_DESCARTE)?.percentage ?? 0;
+
+        return prev.map(cat => {
+          if (cat.id === CATEGORY_IDS.BEZERRO) {
+            return { ...cat, percentage: cicloVendaAoDesmame / 2 };
+          }
+          if (cat.id === CATEGORY_IDS.BEZERRA) {
+            return { ...cat, percentage: cicloVendaAoDesmame / 2 };
+          }
+          if (cat.id === CATEGORY_IDS.BOI_GORDO) {
+            return { ...cat, percentage: Math.max(0, 50 - (cicloVendaAoDesmame / 2) - garrote - touroDescarte) };
+          }
+          if (cat.id === CATEGORY_IDS.NOVILHA) {
+            return { ...cat, percentage: Math.max(0, 17 - (cicloVendaAoDesmame / 2)) };
+          }
+          if (cat.id === CATEGORY_IDS.VACA_DESCARTE) {
+            return { ...cat, percentage: 33 };
+          }
+          return cat;
+        });
+      });
+    }
+  }, [cicloVendaAoDesmame, productionSystem]);
 
   // Fechar popovers de peso ao clicar fora
   useEffect(() => {
@@ -2123,13 +2156,21 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
         <div className="flex items-center gap-2 md:gap-3 text-xs md:text-sm text-ai-subtext flex-wrap">
           {/* Ver Relatório */}
           {selectedFarm && reportData && (
-            <div className="flex-shrink-0">
+            <div className="flex flex-col items-center gap-1 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setShowReportView(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-ai-accent text-white text-xs font-medium rounded-md hover:bg-ai-accentHover transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-ai-accent text-white text-xs font-medium rounded-md hover:bg-ai-accentHover transition-colors w-full justify-center"
               >
                 Ver Relatório
+              </button>
+              <button
+                type="button"
+                id="btn-detalhamento-calculos"
+                onClick={() => setShowCalculationsDetail(true)}
+                className="text-[11px] text-ai-accent hover:text-ai-accentHover font-semibold underline tracking-wide transition-colors cursor-pointer"
+              >
+                detalhamento
               </button>
             </div>
           )}
@@ -4453,6 +4494,722 @@ const AgilePlanning: React.FC<AgilePlanningProps> = ({ onToast }) => {
                 className="px-4 py-2 bg-ai-accent text-white rounded-lg hover:bg-ai-accentHover transition-colors font-medium"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal - Detalhamento de Fórmulas e Cálculos */}
+      {showCalculationsDetail && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              setShowCalculationsDetail(false);
+            }
+          }}
+        >
+          <div
+            className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col transition-all duration-300 transform scale-100 border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header do Modal */}
+            <div className="px-6 py-4 bg-gradient-to-r from-blue-700 via-indigo-600 to-indigo-800 text-white flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                  <Calculator className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Detalhamento Técnico de Cálculos</h2>
+                  <p className="text-xs text-blue-100">Fórmulas, fundamentos conceituais e contas matemáticas em tempo real</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCalculationsDetail(false)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Menu de Abas */}
+            <div className="flex gap-2 p-2 bg-slate-100/90 border-b border-slate-200 flex-shrink-0">
+              <button
+                onClick={() => setActiveCalculationsTab('valores')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all duration-200 ${
+                  activeCalculationsTab === 'valores'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <BookOpen size={14} />
+                1. Valores e Ancoragem
+              </button>
+              <button
+                onClick={() => setActiveCalculationsTab('performance')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all duration-200 ${
+                  activeCalculationsTab === 'performance'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <TrendingUp size={14} />
+                2. Resultados de Performance
+              </button>
+              <button
+                onClick={() => setActiveCalculationsTab('financas')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all duration-200 ${
+                  activeCalculationsTab === 'financas'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <DollarSign size={14} />
+                3. Finanças (Meta de Resultado)
+              </button>
+            </div>
+
+            {/* Conteúdo do Modal - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 max-h-[calc(90vh-140px)]">
+              
+              {/* ABA 1: VALORES E ANCORAGEM */}
+              {activeCalculationsTab === 'valores' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Card 1: Valor Calculado */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-01</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <Percent className="w-4 h-4 text-blue-500" />
+                      Valor Calculado (Remuneração)
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">CalculatedValue</span> = (percentage × operationPecuary) / 100
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      Determina o lucro operacional líquido absoluto (R$) que a atividade pecuária precisa entregar anualmente para satisfazer o retorno almejado sobre o patrimônio pecuário ativo.
+                    </div>
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 rounded-lg p-3 border border-blue-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-blue-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Ativo Pecuário: <span className="font-bold text-slate-800">{formatCurrency(operationPecuaryValue)}</span> | Retorno: <span className="font-bold text-slate-800">{percentage.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-900 mt-1 select-all">
+                        {percentage.toFixed(1)}% × {formatCurrency(operationPecuaryValue)} = {formatCurrency(calculatedValue)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Faturamento Necessário */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-02</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <DollarSign className="w-4 h-4 text-blue-500" />
+                      Faturamento Necessário
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">RequiredRevenue</span> = (CalculatedValue × 100) / expectedMargin
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      A receita bruta anual que a fazenda precisa obter com as vendas para que, mantendo a margem projetada, a remuneração alvo (Valor Calculado) seja alcançada.
+                    </div>
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 rounded-lg p-3 border border-blue-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-blue-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Remuneração Alvo: <span className="font-bold text-slate-800">{formatCurrency(calculatedValue)}</span> | Margem Esperada: <span className="font-bold text-slate-800">{expectedMargin.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-900 mt-1 select-all">
+                        {expectedMargin > 0 ? (
+                          <span>{formatCurrency(calculatedValue)} ÷ {expectedMargin.toFixed(1)}% = {formatCurrency(requiredRevenue)}</span>
+                        ) : (
+                          <span className="text-red-500">A margem deve ser maior que 0%</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Valor Médio de Venda */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-100">
+                        {productionSystem === 'Recria e Engorda' ? 'Recria e Engorda' : 'Cria / Ciclo Completo'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-03</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <Calculator className="w-4 h-4 text-purple-500" />
+                      Valor Médio de Venda
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      {productionSystem === 'Recria e Engorda' ? (
+                        <span><span className="text-emerald-400 font-semibold">AverageValue</span> = (Peso Venda × Rend. Carcaça% × Valor Venda) / 15</span>
+                      ) : (
+                        <span><span className="text-emerald-400 font-semibold">AverageValue</span> = Σ (Categoria.% × Peso_cabeca × Valor_unitario) / 100</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      {productionSystem === 'Recria e Engorda' ? (
+                        <span>Representa o valor de faturamento médio de um boi gordo gordo comercializado, baseado em peso de carcaça (@ pendurada, que corresponde à metade do peso vivo dividida por 15).</span>
+                      ) : (
+                        <span>Média ponderada do valor de venda de cada animal. Leva em conta a participação e os valores mercadológicos de bezerros (em kg) e animais adultos (em @, onde 1 @ = 30 kg).</span>
+                      )}
+                    </div>
+
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 rounded-lg p-3 border border-blue-100 flex flex-col gap-1.5 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-blue-700 font-bold">Cálculo Ponderado das Categorias</div>
+                      {productionSystem === 'Recria e Engorda' ? (
+                        <div className="text-sm font-bold text-indigo-900 select-all">
+                          ({recriaPesoVenda} kg × {recriaRendimentoCarcaca.toFixed(1)}% × {formatCurrency(recriaValorVenda)}) / 15 = {formatCurrency(averageValue)} por cabeça
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="text-xs text-slate-600 font-semibold">Categorias Ativas na Composição (Mix de Vendas):</div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {animalCategories.filter(c => c.percentage > 0).map(c => {
+                              const headValue = calculateValuePerHead(c);
+                              const weightedVal = (c.percentage * headValue) / 100;
+                              return (
+                                <div key={c.id} className="text-[11px] text-slate-600 bg-white p-2 rounded border border-slate-100">
+                                  <span className="font-bold text-slate-700">{c.name} ({c.percentage}%)</span>
+                                  <div className="text-slate-500 font-mono mt-0.5">
+                                    {isKgCategory(c.id) ? (
+                                      <span>{c.weight} kg × {formatCurrency(c.valuePerKg)}/kg</span>
+                                    ) : (
+                                      <span>{c.weight} @ × {formatCurrency(c.valuePerKg)}/@ ({c.weight * HERD_CONSTANTS.ARROBA_TO_KG} kg)</span>
+                                    )}
+                                    <span className="block text-slate-700 font-bold">Valor/Cab: {formatCurrency(headValue)} | Ponderado: {formatCurrency(weightedVal)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="text-sm font-bold text-indigo-900 border-t border-slate-200/60 pt-2 select-all">
+                            Soma Ponderada: {formatCurrency(averageValue)} por cabeça comercializada
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card 4: Vendas Necessárias */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-04</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <TrendingUp className="w-4 h-4 text-blue-500" />
+                      Vendas Necessárias
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">RequiredSales</span> = round(RequiredRevenue / AverageValue)
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      A meta física anual de comercialização de cabeças de gado. É o número real de animais que a fazenda precisa colocar no caminhão para bater as metas de ancoragem econômica.
+                    </div>
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 rounded-lg p-3 border border-blue-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-blue-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Faturamento: <span className="font-bold text-slate-800">{formatCurrency(requiredRevenue)}</span> | Valor Médio/cab: <span className="font-bold text-slate-800">{formatCurrency(averageValue)}</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-900 mt-1 select-all">
+                        {averageValue > 0 ? (
+                          <span>{formatCurrency(requiredRevenue)} ÷ {formatCurrency(averageValue)} = {requiredSales} Cabeças</span>
+                        ) : (
+                          <span className="text-red-500">Valor médio de venda inválido (zero)</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ABA 2: RESULTADOS DE PERFORMANCE */}
+              {activeCalculationsTab === 'performance' && (
+                <div className="space-y-6">
+                  {productionSystem !== 'Recria e Engorda' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Card 1: Taxa de Desmame */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Cria / Ciclo Completo</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-05</span>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                          <Percent className="w-4 h-4 text-emerald-500" />
+                          Taxa de Desmame
+                        </h3>
+                        <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                          <span className="text-emerald-400 font-semibold">WeaningRate</span> = (F/100) × (1 - PPP/100) × (1 - MB/100)
+                        </div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                          <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                          Indicador fundamental da eficiência da cria. Representa a proporção real de vacas prenhes que conseguem efetivamente colocar um bezerro vivo no desmame após perdas gestacionais e mortes infantis.
+                        </div>
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                          <div className="text-xs font-semibold text-slate-600 flex flex-wrap gap-2">
+                            <span>Fert.: <span className="font-bold text-slate-800">{fertility}%</span></span>
+                            <span>Perda Pré-Parto: <span className="font-bold text-slate-800">{prePartumLoss}%</span></span>
+                            <span>Mort. Bezerros: <span className="font-bold text-slate-800">{calfMortality}%</span></span>
+                          </div>
+                          <div className="text-sm font-bold text-emerald-950 mt-1 select-all">
+                            {(fertility / 100).toFixed(3)} × {(1 - prePartumLoss / 100).toFixed(3)} × {(1 - calfMortality / 100).toFixed(3)} = {(weaningRate * 100).toFixed(2)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 2: Kg desmamados por Matriz */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Cria / Ciclo Completo</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-06</span>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                          <TrendingUp className="w-4 h-4 text-emerald-500" />
+                          Kg Desmamados por Matriz
+                        </h3>
+                        <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                          <span className="text-emerald-400 font-semibold">KgPerMatrix</span> = WeaningRate × (PesoDesmameM + PesoDesmameF) / 2
+                        </div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                          <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                          Métrica de ouro da eficiência de produção na cria. Reflete os quilos de bezerro vivo que cada vaca em monta produz ao ano. Combina eficiência reprodutiva com ganho genético/nutricional de peso.
+                        </div>
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                          <div className="text-xs font-semibold text-slate-600">
+                            Taxa Desmame: <span className="font-bold text-slate-800">{(weaningRate * 100).toFixed(2)}%</span> | Peso Médio Desmame: <span className="font-bold text-slate-800">{((maleWeaningWeight + femaleWeaningWeight) / 2).toFixed(1)} kg</span>
+                          </div>
+                          <div className="text-sm font-bold text-emerald-950 mt-1 select-all">
+                            {(weaningRate).toFixed(4)} × {((maleWeaningWeight + femaleWeaningWeight) / 2).toFixed(1)} kg = {kgPerMatrix.toFixed(1)} kg desm/matriz
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Matrizes Necessárias */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Cria / Ciclo Completo</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-07</span>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                          <Calculator className="w-4 h-4 text-emerald-500" />
+                          Matrizes Necessárias
+                        </h3>
+                        <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                          <span className="text-emerald-400 font-semibold">RequiredMatrixes</span> = ⌈ RequiredSales / WeaningRate ⌉
+                        </div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                          <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                          O dimensionamento do rebanho de cria ativo (estação reprodutiva). Calcula a quantidade de vacas necessárias na monta para gerar o volume físico de animais a comercializar, arredondado para cima (`⌈ ⌉`).
+                        </div>
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                          <div className="text-xs font-semibold text-slate-600">
+                            Vendas Necessárias: <span className="font-bold text-slate-800">{requiredSales} cab.</span> | Taxa Desmame: <span className="font-bold text-slate-800">{(weaningRate * 100).toFixed(2)}%</span>
+                          </div>
+                          <div className="text-sm font-bold text-emerald-950 mt-1 select-all">
+                            {weaningRate > 0 ? (
+                              <span>⌈ {requiredSales} ÷ {(weaningRate).toFixed(4)} ⌉ = {requiredMatrixes} Matrizes</span>
+                            ) : (
+                              <span className="text-red-500">Taxa de desmame inválida (zero)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 4: Matrizes s/ Rebanho e Precocidade */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Cria / Ciclo Completo</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-08</span>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                          <Percent className="w-4 h-4 text-emerald-500" />
+                          Matrizes s/ Rebanho Médio
+                        </h3>
+                        <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                          <span className="text-emerald-400 font-semibold">MatricesOverAverageHerd</span> = 100 / (((IPM − 12) × 37.5 / 12) + 163.375)
+                        </div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                          <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                          Métrica Inttegra estrutural. Novilhas que emprenham tardiamente (IPM maior) precisam ser retidas na recria por mais tempo, gerando um estoque improdutivo maior na fazenda e diminuindo a proporção de vacas ativas no rebanho médio.
+                        </div>
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                          <div className="text-xs font-semibold text-slate-600">
+                            Idade de 1ª Monta (IPM): <span className="font-bold text-slate-800">{firstMatingAge} meses</span>
+                          </div>
+                          <div className="text-[11px] text-emerald-900 font-mono mt-0.5">
+                            Ind. Tempo = max(0, {firstMatingAge} - 12) = {Math.max(0, firstMatingAge - 12)} <br />
+                            Ind. Novilhas = ({Math.max(0, firstMatingAge - 12)} × 37.5) / 12 = {((Math.max(0, firstMatingAge - 12) * 37.5) / 12).toFixed(3)} <br />
+                            Fator Rebanho = {((Math.max(0, firstMatingAge - 12) * 37.5) / 12).toFixed(3)} + 163.375 = {(((Math.max(0, firstMatingAge - 12) * 37.5) / 12) + 163.375).toFixed(3)}
+                          </div>
+                          <div className="text-sm font-bold text-emerald-950 mt-1 border-t border-emerald-200/50 pt-1 select-all">
+                            Participação de Matrizes: {(matricesOverAverageHerd * 100).toFixed(2)}% do rebanho total
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* KPIs Universais de Lotação e Rebanho */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Card: Rebanho Médio Geral */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Todos os Sistemas</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{productionSystem === 'Recria e Engorda' ? 'C-37' : 'C-32'}</span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                        <ListChecks className="w-4 h-4 text-emerald-500" />
+                        Rebanho Médio Geral Ajustado
+                      </h3>
+                      <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                        {productionSystem === 'Recria e Engorda' ? (
+                          <span><span className="text-emerald-400 font-semibold">RecriaRebanhoAjustado</span> = [Sales × (PermanenciaMeses/12)] × (1 + Mort_R%)</span>
+                        ) : (
+                          <span><span className="text-emerald-400 font-semibold">RebanhoAjustado</span> = RebanhoCalculadoTabela × (1 + MortalidadeBezerros%)</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                        <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                        Estoque médio estável habitando a fazenda. No sistema de cria/ciclo completo, baseia-se no plantel reprodutivo detalhado no modal. Em recria/engorda, baseia-se no tempo de giro do estoque e reposição, inflado pela mortalidade que ocupa pasto antes de sucumbir.
+                      </div>
+                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                        <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                        {productionSystem === 'Recria e Engorda' ? (
+                          <div className="text-sm font-bold text-emerald-950 select-all">
+                            {requiredSales} cab. × ({recriaTempoPermanenciaMeses.toFixed(2)} meses / 12) × (1 + {recriaMortalidade.toFixed(1)}%) = {Math.round(recriaRebanhoMedioAjustado)} Cabeças
+                          </div>
+                        ) : (
+                          <div className="text-sm font-bold text-emerald-950 select-all">
+                            {rebanhoMedioCalculado.toFixed(1)} cab. (tabela) × (1 + {calfMortality.toFixed(1)}%) = {Math.round(rebanhoMedioAjustado)} Cabeças Estáveis
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card: Lotação */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Todos os Sistemas</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-12 / C-31</span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                        Lotação Física e Biológica (Cab/ha e UA/ha)
+                      </h3>
+                      <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                        {productionSystem === 'Recria e Engorda' ? (
+                          <span>
+                            <span className="text-emerald-400 font-semibold">Cab/Ha</span> = RebanhoRT / AreaPasto <br />
+                            <span className="text-emerald-400 font-semibold">UA/Ha</span> = [((PesoCompra + PesoVenda) / 2) / 450] × Cab/Ha
+                          </span>
+                        ) : (
+                          <span>
+                            <span className="text-emerald-400 font-semibold">Cab/Ha</span> = RebanhoAjustado / AreaPasto <br />
+                            <span className="text-emerald-400 font-semibold">UA/Ha</span> = TotalUA_Ajustado / AreaPasto (1 UA = 450 kg)
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                        <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                        Pressão física de gado sob o pasto. Lotação simples mede cabeças de gado por hectare. A lotação em Unidades Animais (UA = 450 kg) pondera o peso do animal sobre o solo para ajuste preciso da capacidade de suporte forrageiro.
+                      </div>
+                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                        <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                        {productionSystem === 'Recria e Engorda' ? (
+                          <div className="text-xs font-mono text-emerald-950 space-y-1 select-all">
+                            <div>Cab/ha: {recriaRebanhoMedioAjustado.toFixed(1)} cab. ÷ {(farm?.pastureArea ?? 0).toFixed(1)} ha = <span className="font-bold">{recriaLotacaoCabHa.toFixed(2)} cab/ha</span></div>
+                            <div>UA/ha: [({recriaPesoCompra} + {recriaPesoVenda}) / 2 / 450] × {recriaLotacaoCabHa.toFixed(2)} = <span className="font-bold">{recriaLotacaoUaHa.toFixed(2)} UA/ha</span></div>
+                          </div>
+                        ) : (
+                          <div className="text-xs font-mono text-emerald-950 space-y-1 select-all">
+                            <div>Cab/ha: {rebanhoMedioAjustado.toFixed(1)} cab. ÷ {(farm?.pastureArea ?? 0).toFixed(1)} ha = <span className="font-bold">{lotacaoCabecasHa.toFixed(2)} cab/ha</span></div>
+                            <div>UA/ha: {totalUAsAjustado.toFixed(1)} UAs ÷ {(farm?.pastureArea ?? 0).toFixed(1)} ha = <span className="font-bold">{lotacaoCabHa.toFixed(2)} UA/ha</span></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card: GMD Global (Apenas Cria e Ciclo) */}
+                    {productionSystem !== 'Recria e Engorda' && (
+                      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">Cria / Ciclo Completo</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-25</span>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                          <TrendingUp className="w-4 h-4 text-emerald-500" />
+                          Ganho Médio Diário Global (GMD)
+                        </h3>
+                        <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                          <span className="text-emerald-400 font-semibold">GmdGlobal</span> = [Σ (Quantidade_cat × Peso_Vivo_kg)] / RebanhoMédio / 365
+                        </div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                          <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                          Velocidade média diária ponderada de ganho de peso do plantel estável da fazenda. É a aceleração física de produção exigida para o giro zootécnico planejado.
+                        </div>
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1 shadow-sm mt-auto">
+                          <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                          <div className="text-xs text-slate-700">
+                            Total Peso Vivo: <span className="font-bold text-slate-800">{animalCategories.reduce((sum, category) => sum + (calculateQuantity(category.percentage) * (isKgCategory(category.id) ? category.weight : category.weight * HERD_CONSTANTS.ARROBA_TO_KG)), 0).toLocaleString('pt-BR')} kg</span>
+                          </div>
+                          <div className="text-sm font-bold text-emerald-950 mt-1 select-all">
+                            {rebanhoMedioCalculado > 0 ? (
+                              <span>{animalCategories.reduce((sum, category) => sum + (calculateQuantity(category.percentage) * (isKgCategory(category.id) ? category.weight : category.weight * HERD_CONSTANTS.ARROBA_TO_KG)), 0).toLocaleString('pt-BR')} kg ÷ {rebanhoMedioCalculado.toFixed(1)} cab. ÷ 365 = {gmdGlobal.toFixed(2)} kg/dia</span>
+                            ) : (
+                              <span>0 kg/dia</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Card: Produção de @/ha/ano */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">
+                          {isRecriaTerminacao ? 'Recria-Terminação' : 'Cria'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{isRecriaTerminacao ? 'C-27' : 'C-26'}</span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
+                        <Calculator className="w-4 h-4 text-emerald-500" />
+                        Produção de Arrobas por Hectare (@/ha/ano)
+                      </h3>
+                      <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                        {isRecriaTerminacao ? (
+                          <span>
+                            <span className="text-emerald-400 font-semibold">Prod@/ha</span> = (Ganho@/mês × 12 × RebanhoRT) / AreaPasto <br />
+                            Ganho@/mês = [(PesoVenda × Rend%) / 15 − PesoCompra / 30] / TempoMeses
+                          </span>
+                        ) : (
+                          <span><span className="text-emerald-400 font-semibold">Prod@/ha</span> = TotalArrobasVendidas / AreaPasto</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                        <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                        Principal métrica de eficiência biológica e econômica da pecuária intensiva por área. Expressa o "peso de carne limpa" (arrobas carcaça) produzido por hectare produtivo em 1 ano.
+                      </div>
+                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-lg p-3 border border-emerald-100 flex flex-col gap-1.5 shadow-sm mt-auto">
+                        <div className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Cálculo em Tempo Real</div>
+                        {isRecriaTerminacao ? (
+                          <div className="text-xs font-mono text-emerald-950 space-y-1 select-all">
+                            {(() => {
+                              const pesoVendaKg = productionSystem === 'Recria e Engorda' ? recriaPesoVenda : cicloPesoAbate;
+                              const pesoEntradaKg = productionSystem === 'Recria e Engorda' ? recriaPesoCompra : maleWeaningWeight;
+                              const rendimentoCarcaca = productionSystem === 'Recria e Engorda' ? recriaRendimentoCarcaca : cicloRendimentoCarcaca;
+                              const tempoPermanenciaMeses = productionSystem === 'Recria e Engorda'
+                                ? recriaGmd > 0 ? (recriaPesoVenda - recriaPesoCompra) / recriaGmd / 30.4166666667 : 0
+                                : cicloGmdPosDesmame > 0 ? (cicloPesoAbate - maleWeaningWeight) / cicloGmdPosDesmame / 30.4166666667 : 0;
+                              
+                              const pesoVendaArroba = safeDivide(pesoVendaKg * safeDivide(rendimentoCarcaca, 100), 15);
+                              const pesoEntradaArroba = safeDivide(pesoEntradaKg, 30);
+                              const producaoAnimalMes = tempoPermanenciaMeses > 0 ? safeDivide(pesoVendaArroba - pesoEntradaArroba, tempoPermanenciaMeses) : 0;
+
+                              return (
+                                <>
+                                  <div>1. Peso Venda Carcaça: ({pesoVendaKg}kg × {rendimentoCarcaca}%) / 15 = {pesoVendaArroba.toFixed(2)} @</div>
+                                  <div>2. Peso Entrada Vivo: {pesoEntradaKg}kg / 30 = {pesoEntradaArroba.toFixed(2)} @</div>
+                                  <div>3. Prod/Mês: ({pesoVendaArroba.toFixed(2)}@ − {pesoEntradaArroba.toFixed(2)}@) ÷ {tempoPermanenciaMeses.toFixed(2)}m = {producaoAnimalMes.toFixed(3)} @/mês</div>
+                                  <div>4. Prod/ha: ({producaoAnimalMes.toFixed(3)}@ × 12m × {rebanhoMedioParaRecriaTerminacao.toFixed(1)}cab) ÷ {(selectedFarm?.pastureArea ?? 0).toFixed(1)}ha = <span className="font-bold">{producaoArrobaHa.toFixed(2)} @/ha/ano</span></div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <div className="text-sm font-bold text-emerald-950 select-all">
+                            {totalArroba.toFixed(1)} @ vendidas ÷ {(selectedFarm?.pastureArea ?? 0).toFixed(1)} ha = {producaoArrobaHa.toFixed(2)} @/ha/ano
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ABA 3: FINANÇAS E RESULTADOS */}
+              {activeCalculationsTab === 'financas' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Card 1: Receita Projetada */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-11</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <DollarSign className="w-4 h-4 text-indigo-500" />
+                      Receita Bruta Projetada
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">Revenue</span> = AverageValue × RequiredSales
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      O faturamento bruto anual total estimado da propriedade rural a partir da comercialização física de animais e do mix de preços ponderados.
+                    </div>
+                    <div className="bg-gradient-to-r from-indigo-50 to-blue-50/60 rounded-lg p-3 border border-indigo-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-indigo-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Preço Médio/Cab: <span className="font-bold text-slate-800">{formatCurrency(averageValue)}</span> | Vendas: <span className="font-bold text-slate-800">{requiredSales} cab.</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-950 mt-1 select-all">
+                        {formatCurrency(averageValue)} × {requiredSales} Cabeças = {formatCurrency(revenue)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Desembolso Total (Orçamento Teto) */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-12</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <TrendingUp className="w-4 h-4 text-indigo-500" />
+                      Desembolso Operacional Total (Teto)
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">TotalDisbursement</span> = Revenue − CalculatedValue
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      Representa o "teto orçamentário". O limite máximo de despesas e custos operacionais que a fazenda pode incorrer no ano para que a meta financeira de lucro não seja violada.
+                    </div>
+                    <div className="bg-gradient-to-r from-indigo-50 to-blue-50/60 rounded-lg p-3 border border-indigo-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-indigo-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Receita: <span className="font-bold text-slate-800">{formatCurrency(revenue)}</span> | Lucro Alvo: <span className="font-bold text-slate-800">{formatCurrency(calculatedValue)}</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-950 mt-1 select-all">
+                        {formatCurrency(revenue)} − {formatCurrency(calculatedValue)} = {formatCurrency(totalDisbursement)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Resultado por Hectare */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-14</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <DollarSign className="w-4 h-4 text-indigo-500" />
+                      Resultado Líquido por Hectare
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">ResultPerHectare</span> = Result / pastureArea
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      Rentabilidade líquida de caixa por unidade de área pastada ao ano. Permite comparar a eficiência rentável do pasto em relação a outras culturas (soja, milho, cana).
+                    </div>
+                    <div className="bg-gradient-to-r from-indigo-50 to-blue-50/60 rounded-lg p-3 border border-indigo-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-indigo-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Lucro Esperado: <span className="font-bold text-slate-800">{formatCurrency(result)}</span> | Área Pasto: <span className="font-bold text-slate-800">{(farm?.pastureArea ?? 0).toFixed(1)} ha</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-950 mt-1 select-all">
+                        {(farm?.pastureArea ?? 0) > 0 ? (
+                          <span>{formatCurrency(result)} ÷ {(farm?.pastureArea ?? 0).toFixed(1)} ha = {formatCurrency(resultPerHectare)}/ha</span>
+                        ) : (
+                          <span className="text-red-500">Área de pasto não cadastrada na fazenda</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Margem Real sobre a Venda */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-15</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <Percent className="w-4 h-4 text-indigo-500" />
+                      Margem Real sobre a Venda
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      <span className="text-emerald-400 font-semibold">MarginOverSale</span> = (Result / Revenue) × 100
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      A eficiência econômica final de sobra. Representa a porcentagem da receita bruta operacional anual que sobra limpa e livre como resultado financeiro da fazenda após todas as contas.
+                    </div>
+                    <div className="bg-gradient-to-r from-indigo-50 to-blue-50/60 rounded-lg p-3 border border-indigo-100 flex flex-col gap-1 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-indigo-700 font-bold">Cálculo em Tempo Real</div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Lucro: <span className="font-bold text-slate-800">{formatCurrency(result)}</span> | Receita: <span className="font-bold text-slate-800">{formatCurrency(revenue)}</span>
+                      </div>
+                      <div className="text-sm font-bold text-indigo-950 mt-1 select-all">
+                        {revenue > 0 ? (
+                          <span>({formatCurrency(result)} ÷ {formatCurrency(revenue)}) × 100 = {marginOverSale.toFixed(1)}%</span>
+                        ) : (
+                          <span className="text-red-500">Receita inválida (zero)</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 5: Desembolso por Cabeça/Mês */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col gap-3 group md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-100">Todos os Sistemas</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">C-20</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 group-hover:text-blue-600 transition-colors">
+                      <Calculator className="w-4 h-4 text-indigo-500" />
+                      Desembolso por Cabeça ao Mês
+                    </h3>
+                    <div className="bg-slate-900 text-slate-100 rounded-lg p-2.5 font-mono text-xs overflow-x-auto shadow-inner select-all border border-slate-800">
+                      {productionSystem === 'Recria e Engorda' ? (
+                        <span><span className="text-emerald-400 font-semibold">DisbursementPerHeadMonth</span> = (DesembolsoProducao / RebanhoRT) / 12</span>
+                      ) : (
+                        <span><span className="text-emerald-400 font-semibold">DisbursementPerHeadMonth</span> = (TotalDisbursement / RebanhoGeral) / 12</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2.5 leading-relaxed">
+                      <strong className="text-slate-700 block mb-0.5 font-semibold">Fundamento:</strong>
+                      Custo de carregamento unitário. Representa o custo operacional mensal para manter cada animal do rebanho ativo na fazenda. É a métrica mais pura para comparar custos operacionais entre fazendas e sistemas.
+                    </div>
+                    <div className="bg-gradient-to-r from-indigo-50 to-blue-50/60 rounded-lg p-3 border border-indigo-100 flex flex-col gap-1.5 shadow-sm mt-auto">
+                      <div className="text-[9px] uppercase tracking-wider text-indigo-700 font-bold">Cálculo em Tempo Real</div>
+                      {productionSystem === 'Recria e Engorda' ? (
+                        <div className="text-sm font-bold text-indigo-950 select-all">
+                          ({formatCurrency(desembolsoProducao)} [Custos de Produção] ÷ {rebanhoMedioParaRecriaTerminacao.toFixed(1)} cab) ÷ 12 = {formatCurrency(disbursementPerHeadMonth)} por animal ao mês
+                        </div>
+                      ) : (
+                        <div className="text-sm font-bold text-indigo-950 select-all">
+                          ({formatCurrency(totalDisbursement)} [Desembolso Total] ÷ {rebanhoMedioParaRecriaTerminacao.toFixed(1) || rebanhoMedioCalculado.toFixed(1)} cab) ÷ 12 = {formatCurrency(disbursementPerHeadMonth)} por animal ao mês
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer do Modal */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-100 flex items-center justify-end">
+              <button
+                onClick={() => setShowCalculationsDetail(false)}
+                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-md transition-colors font-bold text-xs"
+              >
+                Concluir
               </button>
             </div>
           </div>
