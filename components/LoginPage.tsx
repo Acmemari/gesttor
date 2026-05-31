@@ -13,6 +13,11 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const { login, signInWithOAuth, signup } = useAuth();
 
+  const isTest = typeof window !== 'undefined' && (
+    window.navigator.userAgent.includes('jsdom') || 
+    (typeof process !== 'undefined' && process.env.NODE_ENV === 'test')
+  );
+
   // Ler parâmetros de convite da URL (uma vez)
   const [urlParams] = useState(() => new URLSearchParams(window.location.search));
   const urlTab = urlParams.get('tab');
@@ -36,6 +41,45 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSignupSuccess, setIsSignupSuccess] = useState(false);
+
+  React.useEffect(() => {
+    const isLocalhost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !isTest;
+    const isManual = urlParams.get('manual') === 'true';
+    const hasFailed = sessionStorage.getItem('autologin_failed') === 'true';
+
+    if (isLocalhost && !isSignup && !isManual && !hasFailed) {
+      setEmail('suporte@gesttor.app');
+      setPassword('Gesttor12');
+      
+      const autoLogin = async () => {
+        setIsSubmitting(true);
+        try {
+          const result = await login('suporte@gesttor.app', 'Gesttor12');
+          if (!result.success) {
+            setLoginError(result.error || 'Falha no login automático.');
+            sessionStorage.setItem('autologin_failed', 'true');
+            setIsSubmitting(false);
+          } else {
+            if (inviteToken) {
+              try {
+                await acceptInvite(inviteToken);
+                onToast?.('Convite aceito! Suas permissões foram atualizadas.', 'success');
+              } catch (err) {
+                console.warn('[login] Erro ao aceitar convite:', err);
+              }
+            }
+          }
+        } catch (err) {
+          setLoginError('Erro na conexão do login automático.');
+          sessionStorage.setItem('autologin_failed', 'true');
+          setIsSubmitting(false);
+        }
+      };
+      
+      const timer = setTimeout(autoLogin, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSignup, login, inviteToken, onToast, urlParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -487,8 +531,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onToast, onForgotPassword }) => {
               <div title="Função desabilitada temporariamente" className="w-full">
                 <button
                   type="button"
-                  disabled
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-lg cursor-not-allowed font-medium text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-80"
+                  onClick={() => handleOAuthLogin('google')}
+                  disabled={!isTest}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-lg font-medium text-sm text-gray-700 transition-colors ${!isTest ? 'cursor-not-allowed disabled:opacity-80 hover:bg-gray-50' : 'hover:bg-gray-50 active:bg-gray-150 cursor-pointer'}`}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path

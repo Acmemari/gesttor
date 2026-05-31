@@ -11,11 +11,15 @@ import * as schema from './schema.js';
 
 export * from './schema.js';
 
-let _pool: Pool | undefined;
-let _db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+const globalForDb = globalThis as unknown as {
+  _pool?: Pool;
+  _db?: ReturnType<typeof drizzle<typeof schema>>;
+};
 
 function init(): { pool: Pool; db: ReturnType<typeof drizzle<typeof schema>> } {
-  if (_pool && _db) return { pool: _pool, db: _db };
+  if (globalForDb._pool && globalForDb._db) {
+    return { pool: globalForDb._pool, db: globalForDb._db };
+  }
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -30,18 +34,22 @@ function init(): { pool: Pool; db: ReturnType<typeof drizzle<typeof schema>> } {
     connStr += (connStr.includes('?') ? '&' : '?') + 'sslmode=verify-full';
   }
 
-  _pool = new Pool({
+  const poolInstance = new Pool({
     connectionString: connStr,
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 10000,
+    max: 8, // Set max connections slightly lower for dev to prevent exhaustion
+    connectionTimeoutMillis: 15000, // Increase slightly for Neon cold starts
+    idleTimeoutMillis: 15000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });
 
-  _db = drizzle(_pool, { schema });
-  return { pool: _pool, db: _db };
+  const dbInstance = drizzle(poolInstance, { schema });
+
+  globalForDb._pool = poolInstance;
+  globalForDb._db = dbInstance;
+
+  return { pool: poolInstance, db: dbInstance };
 }
 
 export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {

@@ -50,6 +50,7 @@ interface FarmCardProps {
   onOpenPermissions: (farm: Farm) => void;
   canManagePermissions: boolean;
   perms: FarmPermissionsResult;
+  isInttegra?: boolean;
 }
 
 const FarmCard: React.FC<FarmCardProps> = ({
@@ -60,6 +61,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
   onOpenPermissions,
   canManagePermissions,
   perms,
+  isInttegra = false,
 }) => {
   const [toggling, setToggling] = React.useState(false);
   if (perms.isHidden('farms:card')) return null;
@@ -68,43 +70,49 @@ const FarmCard: React.FC<FarmCardProps> = ({
   const canDelete = perms.canEdit('farms:delete');
   const isViewOnly = canViewForm && !canEdit;
   return (
-    <div className={`bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col w-full min-h-[200px] ${farm.ativo === false ? 'border-red-200 opacity-70' : 'border-gray-200 hover:border-gray-800'}`}>
+    <div className={isInttegra ?
+      `bg-white rounded-[12px] border p-[26px] shadow-[0_1px_3px_rgba(16,24,40,.08)] hover:shadow-md transition-all duration-300 flex flex-col w-full min-h-[200px] ${farm.ativo === false ? 'border-red-200 opacity-70' : 'border-[#E5E7EB] hover:border-[#16A34A]/50'}` :
+      `bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col w-full min-h-[200px] ${farm.ativo === false ? 'border-red-200 opacity-70' : 'border-gray-200 hover:border-gray-800'}`
+    }>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold text-gray-900 truncate">{farm.name}</h3>
+          <h3 className={`text-lg font-bold truncate ${isInttegra ? 'text-[#0F172A]' : 'text-gray-900'}`}>{farm.name}</h3>
         </div>
-        <div className="space-y-1.5 text-xs text-gray-500">
+        <div className={`space-y-1.5 text-xs ${isInttegra ? 'text-[#6B7280]' : 'text-gray-500'}`}>
           <div className="flex items-center gap-1.5">
-            <MapPin size={12} className="flex-shrink-0" />
+            <MapPin size={12} className={`flex-shrink-0 ${isInttegra ? 'text-[#16A34A]' : ''}`} />
             <span className="truncate">
               {farm.city}, {farm.state}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Building2 size={12} className="flex-shrink-0" />
+            <Building2 size={12} className={`flex-shrink-0 ${isInttegra ? 'text-[#16A34A]' : ''}`} />
             <span className="truncate">{farm.propertyType}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Factory size={12} className="flex-shrink-0" />
+            <Factory size={12} className={`flex-shrink-0 ${isInttegra ? 'text-[#16A34A]' : ''}`} />
             <span className="truncate">{farm.productionSystem}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Scale size={12} className="flex-shrink-0" />
+            <Scale size={12} className={`flex-shrink-0 ${isInttegra ? 'text-[#16A34A]' : ''}`} />
             <span className="truncate">{farm.weightMetric}</span>
           </div>
           {farm.commercializesGenetics && (
-            <div className="flex items-center gap-1.5 text-ai-accent">
+            <div className={`flex items-center gap-1.5 ${isInttegra ? 'text-[#16A34A] font-semibold' : 'text-ai-accent'}`}>
               <Dna size={12} className="flex-shrink-0" />
               <span className="truncate">Comercializa genética</span>
             </div>
           )}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 pt-4 mt-4 border-t border-gray-200">
+      <div className={`flex flex-wrap gap-2 pt-4 mt-4 border-t ${isInttegra ? 'border-[#E5E7EB]' : 'border-gray-200'}`}>
         <button
           onClick={() => onEdit(farm)}
           disabled={!canViewForm}
-          className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={isInttegra ?
+            "flex-1 min-w-0 px-3 py-2 text-sm border border-[#16A34A] text-[#16A34A] rounded-[10px] hover:bg-[#E7F6EC] transition-all duration-300 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed font-semibold" :
+            "flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          }
         >
           {isViewOnly ? <Eye size={14} /> : <Edit2 size={14} />}
           {isViewOnly ? 'Visualizar' : 'Editar'}
@@ -120,7 +128,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
               setToggling(false);
             }}
             className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              farm.ativo === false ? 'bg-gray-300' : 'bg-green-500'
+              farm.ativo === false ? 'bg-gray-300' : (isInttegra ? 'bg-[#16A34A]' : 'bg-green-500')
             } ${toggling ? 'opacity-60 cursor-wait' : ''}`}
             role="switch"
             aria-checked={farm.ativo !== false}
@@ -140,6 +148,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
 
 interface FarmManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  isInttegra?: boolean;
 }
 
 // Estados brasileiros
@@ -173,7 +182,7 @@ const BRAZILIAN_STATES = [
   'Tocantins',
 ];
 
-const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
+const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = false }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
   const {
@@ -1014,10 +1023,21 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
   if (view === 'list') {
     return (
       <>
-        <div className="h-full flex flex-col p-4 md:p-6">
+        <div className={`h-full flex flex-col p-4 md:p-6 ${isInttegra ? 'bg-[#F7F8FA] min-h-screen' : ''}`}>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-ai-text">Cadastro de Fazendas</h1>
+              {isInttegra ? (
+                <div className="space-y-0.5 animate-in fade-in duration-300">
+                  <span className="text-[13px] font-bold text-[#22C55E] tracking-[0.08em] uppercase">
+                    CADASTRO DE
+                  </span>
+                  <h1 className="text-2xl md:text-3xl font-bold text-[#0F172A]">
+                    Fazendas
+                  </h1>
+                </div>
+              ) : (
+                <h1 className="text-2xl font-bold text-ai-text">Cadastro de Fazendas</h1>
+              )}
             </div>
             {effectiveFormPerms.canEdit('farms:form') && (
               <button
@@ -1026,9 +1046,12 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                   setIsCreatingNew(true);
                   setView('form');
                 }}
-                className="px-4 py-2 bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center gap-2"
+                className={isInttegra ?
+                  "px-6 py-2.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-[10px] font-bold uppercase tracking-wider text-xs transition-all duration-300 flex items-center gap-2 shadow-[0_1px_3px_rgba(16,24,40,.08)] border-0" :
+                  "px-4 py-2 bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center gap-2"
+                }
               >
-                <Plus size={18} />
+                <Plus size={isInttegra ? 14 : 18} />
                 Nova Fazenda
               </button>
             )}
@@ -1045,6 +1068,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 onOpenPermissions={setPermissionsModalFarm}
                 canManagePermissions={effectiveBatchPerms[farm.id]?.isResponsible ?? false}
                 perms={effectiveBatchPerms[farm.id] ?? (isCliente ? CLIENTE_ACCESS : NO_ACCESS)}
+                isInttegra={isInttegra}
               />
             ))}
           </div>
@@ -1097,6 +1121,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onOpenPermissions={setPermissionsModalFarm}
                     canManagePermissions={effectiveBatchPerms[farm.id]?.isResponsible ?? false}
                     perms={effectiveBatchPerms[farm.id] ?? (isCliente ? CLIENTE_ACCESS : NO_ACCESS)}
+                    isInttegra={isInttegra}
                   />
                 ))}
               </div>
@@ -1109,7 +1134,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
 
   // Form View
   return (
-    <div className="h-full flex flex-col p-4 md:p-6 min-h-0 overflow-y-auto">
+    <div className={`h-full flex flex-col p-4 md:p-6 min-h-0 overflow-y-auto ${isInttegra ? 'bg-[#F7F8FA]' : ''}`}>
       <style>{`
         /* Estilos customizados para barras de rolagem dos selects */
         select::-webkit-scrollbar {
@@ -1136,16 +1161,16 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
 
       <form
         onSubmit={handleSubmit}
-        className="max-w-7xl w-full bg-white rounded-lg border border-ai-border p-4 flex flex-col"
+        className={`max-w-7xl w-full bg-white flex flex-col ${isInttegra ? 'rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)] p-[26px]' : 'rounded-lg border border-ai-border p-4'}`}
       >
         {/* Abas: Dados Gerais | Mapa */}
-        <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
+        <div className={`flex gap-1 mb-4 p-1 rounded-[10px] ${isInttegra ? 'bg-[#F3F4F6]' : 'bg-gray-100'}`}>
           <button
             type="button"
             onClick={() => setFarmActiveTab('dados')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-sm font-semibold transition-all ${
               farmActiveTab === 'dados'
-                ? 'bg-white text-emerald-700 shadow-sm'
+                ? (isInttegra ? 'bg-white text-[#16A34A] shadow-[0_1px_3px_rgba(16,24,40,0.05)]' : 'bg-white text-emerald-700 shadow-sm')
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -1161,9 +1186,9 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
               }
               setFarmActiveTab('locais');
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-sm font-semibold transition-all ${
               farmActiveTab === 'locais'
-                ? 'bg-white text-emerald-700 shadow-sm'
+                ? (isInttegra ? 'bg-white text-[#16A34A] shadow-[0_1px_3px_rgba(16,24,40,0.05)]' : 'bg-white text-emerald-700 shadow-sm')
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -1179,9 +1204,9 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
               }
               setFarmActiveTab('mapa');
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-sm font-semibold transition-all ${
               farmActiveTab === 'mapa'
-                ? 'bg-white text-emerald-700 shadow-sm'
+                ? (isInttegra ? 'bg-white text-[#16A34A] shadow-[0_1px_3px_rgba(16,24,40,0.05)]' : 'bg-white text-emerald-700 shadow-sm')
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -1196,39 +1221,51 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
           <div className="flex flex-col min-h-0">
             {/* Alerta se não houver cliente/organização para criação (cliente usa user.clientId quando não há selectedClient) */}
             {needsOrgForCreate && (
-              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-start gap-2">
+              <div className={isInttegra ?
+                "mb-4 p-4 rounded-[12px] bg-[#FEF3C7] border border-[#FDE68A] flex items-start gap-2.5 text-[#92400E]" :
+                "mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2"
+              }>
+                {isInttegra ? (
+                  <AlertTriangle size={18} className="shrink-0 text-[#92400E] mt-0.5" />
+                ) : (
                   <span className="text-yellow-600 font-semibold">⚠️ Atenção:</span>
-                  <div className="flex-1">
-                    {loadingClientsAvailability ? (
-                      <p className="text-sm text-yellow-800">Verificando organizações cadastradas...</p>
-                    ) : (availableClientsCount ?? 0) === 0 ? (
-                      <p className="text-sm text-yellow-800">
-                        Aguardando cadastro de organizações. Cadastre uma organização em Cadastro de Organizações para liberar o
-                        cadastro de fazendas.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-yellow-800">
-                        É necessário selecionar uma organização antes de cadastrar uma fazenda. Por favor, selecione uma
-                        organização no cabeçalho da aplicação.
-                      </p>
-                    )}
-                    {errors.client && <p className="text-red-600 text-sm mt-1 font-medium">{errors.client}</p>}
-                  </div>
+                )}
+                <div className="flex-1">
+                  {loadingClientsAvailability ? (
+                    <p className="text-sm text-yellow-800">Verificando organizações cadastradas...</p>
+                  ) : (availableClientsCount ?? 0) === 0 ? (
+                    <p className="text-sm text-yellow-800">
+                      Aguardando cadastro de organizações. Cadastre uma organização em Cadastro de Organizações para liberar o
+                      cadastro de fazendas.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-yellow-800">
+                      É necessário selecionar uma organização antes de cadastrar uma fazenda. Por favor, selecione uma
+                      organização no cabeçalho da aplicação.
+                    </p>
+                  )}
+                  {errors.client && <p className="text-red-600 text-sm mt-1 font-medium">{errors.client}</p>}
                 </div>
               </div>
             )}
             {/* Aviso de soma de áreas (não bloqueante) */}
             {areaWarning && (
-              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-                <span className="text-amber-600 text-sm font-semibold flex-shrink-0">⚠</span>
+              <div className={isInttegra ?
+                "mb-3 p-3 rounded-[12px] bg-[#FEF3C7] border border-[#FDE68A] flex items-start gap-2.5 text-[#92400E]" :
+                "mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2"
+              }>
+                {isInttegra ? (
+                  <AlertTriangle size={16} className="shrink-0 text-[#92400E] mt-0.5" />
+                ) : (
+                  <span className="text-amber-600 text-sm font-semibold flex-shrink-0">⚠</span>
+                )}
                 <p className="text-sm text-amber-800">{areaWarning}</p>
               </div>
             )}
             {/* Nome da Fazenda, Tipo, Sistema de Produção, País, Estado e Cidade - Todos na mesma linha */}
             <div className="mb-4 grid grid-cols-6 gap-2">
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   Nome da fazenda <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1242,20 +1279,26 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     }
                   }}
                   placeholder="Ex: Fazenda Santa Maria"
-                  className={`w-full px-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                    errors.name ? 'border-red-500' : 'border-ai-border'
+                  className={`w-full px-2 py-2 text-sm border focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] bg-white focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.name ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                      : `rounded-lg focus:ring-ai-accent ${errors.name ? 'border-red-500' : 'border-ai-border'}`
                   }`}
                 />
                 {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   Tipo de propriedade
                 </label>
                 <select
                   value={formData.propertyType}
                   onChange={e => setFormData({ ...formData, propertyType: e.target.value as Farm['propertyType'] })}
-                  className="w-full px-2 py-2 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                  className={`w-full px-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                      : `border-ai-border rounded-lg focus:ring-ai-accent`
+                  }`}
                 >
                   <option value="Própria">Própria</option>
                   <option value="Arrendada">Arrendada</option>
@@ -1265,7 +1308,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   Sistema de produção <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -1277,9 +1320,11 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       setErrors({ ...errors, productionSystem: '' });
                     }
                   }}
-                  className={`w-full px-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                    errors.productionSystem ? 'border-red-500' : 'border-ai-border'
-                  } bg-white`}
+                  className={`w-full px-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.productionSystem ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                      : `rounded-lg focus:ring-ai-accent ${errors.productionSystem ? 'border-red-500' : 'border-ai-border'}`
+                  }`}
                 >
                   <option value="">Selecione um sistema</option>
                   <option value="Cria">Cria</option>
@@ -1289,13 +1334,17 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 {errors.productionSystem && <p className="text-red-500 text-xs mt-1">{errors.productionSystem}</p>}
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   País
                 </label>
                 <select
                   value={formData.country}
                   onChange={e => handleCountryChange(e.target.value)}
-                  className="w-full px-2 py-2 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                  className={`w-full px-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                      : `border-ai-border rounded-lg focus:ring-ai-accent`
+                  }`}
                 >
                   {COUNTRIES.map(country => (
                     <option key={country} value={country}>
@@ -1305,7 +1354,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   Estado {isStateRequired && <span className="text-red-500">*</span>}
                 </label>
                 <select
@@ -1318,9 +1367,11 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     }
                   }}
                   disabled={!isStateRequired}
-                  className={`w-full px-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                    errors.state ? 'border-red-500' : 'border-ai-border'
-                  } ${!isStateRequired ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                  className={`w-full px-2 py-2 text-sm border focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${!isStateRequired ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'} ${errors.state ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                      : `rounded-lg focus:ring-ai-accent ${errors.state ? 'border-red-500' : 'border-ai-border'} ${!isStateRequired ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`
+                  }`}
                 >
                   <option value="">{isStateRequired ? 'Selecione o estado' : 'N/A'}</option>
                   {isStateRequired &&
@@ -1333,7 +1384,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                 {errors.state && <p className="text-red-500 text-xs mt-1">{errors.state}</p>}
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                   Cidade <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1347,8 +1398,10 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     }
                   }}
                   placeholder="Digite a cidade"
-                  className={`w-full px-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent ${
-                    errors.city ? 'border-red-500' : 'border-ai-border'
+                  className={`w-full px-2 py-2 text-sm border focus:outline-none focus:ring-2 ${
+                    isInttegra
+                      ? `rounded-[8px] text-[#0F172A] bg-white focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.city ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                      : `rounded-lg focus:ring-ai-accent ${errors.city ? 'border-red-500' : 'border-ai-border'}`
                   }`}
                 />
                 {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
@@ -1357,15 +1410,18 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
 
 
             {/* Dimensões da Fazenda - Seção com fundo cinza claro */}
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+            <div className={isInttegra ?
+              "mb-4 p-5 bg-white rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)]" :
+              "mb-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500"
+            }>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold text-ai-text uppercase tracking-wide">
+                <h3 className={`text-xs font-bold uppercase tracking-wider ${isInttegra ? 'text-[#16A34A]' : 'text-ai-text'}`}>
                   Dimensões da Fazenda (Hectares)
                 </h3>
                 <div className="flex flex-col items-end gap-0.5">
                   <p
                     className={`text-xs font-semibold ${
-                      isTotalAreaValid() && formData.totalArea ? 'text-green-600' : 'text-ai-subtext'
+                      isTotalAreaValid() && formData.totalArea ? (isInttegra ? 'text-[#16A34A]' : 'text-green-600') : (isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext')
                     }`}
                   >
                     SOMA TOTAL: {formatNumberForDisplay(calculateTotalAreaSum())} ha
@@ -1374,7 +1430,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     const balance = getAreaBalance();
                     if (!balance) return null;
                     if (balance.closed) return (
-                      <p className="text-[10px] font-medium text-green-600">Conta fechada</p>
+                      <p className={`text-[10px] font-semibold ${isInttegra ? 'text-[#16A34A]' : 'text-green-600'}`}>Conta fechada</p>
                     );
                     return (
                       <p className={`text-[10px] font-medium ${balance.diff > 0 ? 'text-amber-600' : 'text-red-600'}`}>
@@ -1388,7 +1444,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
               </div>
               <div className="grid grid-cols-5 gap-2 mb-2">
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Área Total <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1398,18 +1454,28 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('totalArea')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className={`w-full px-2 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                      errors.totalArea
-                        ? 'border-red-500'
-                        : isTotalAreaValid() && formData.totalArea
-                          ? 'border-green-500'
-                          : 'border-ai-border'
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${
+                            errors.totalArea
+                              ? 'border-red-500'
+                              : isTotalAreaValid() && formData.totalArea
+                                ? 'border-[#16A34A] text-[#16A34A] font-semibold'
+                                : 'border-[#E5E7EB]'
+                          }`
+                        : `rounded-lg focus:ring-ai-accent ${
+                            errors.totalArea
+                              ? 'border-red-500'
+                              : isTotalAreaValid() && formData.totalArea
+                                ? 'border-green-500'
+                                : 'border-ai-border'
+                          }`
                     }`}
                   />
                   {errors.totalArea && <p className="text-red-500 text-xs mt-1">{errors.totalArea}</p>}
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Área Pastagem <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1419,14 +1485,16 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('pastureArea')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className={`w-full px-2 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                      errors.pastureArea ? 'border-red-500' : 'border-ai-border'
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.pastureArea ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                        : `rounded-lg focus:ring-ai-accent ${errors.pastureArea ? 'border-red-500' : 'border-ai-border'}`
                     }`}
                   />
                   {errors.pastureArea && <p className="text-red-500 text-xs mt-1">{errors.pastureArea}</p>}
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide flex items-center gap-1">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide flex items-center gap-1 ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Prod. Volumoso
                     <span title="Área perene de produção de volumoso">
                       <Info size={12} className="text-ai-subtext cursor-help" />
@@ -1439,11 +1507,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('forageProductionArea')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Agric. Própria
                   </label>
                   <input
@@ -1453,11 +1525,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('agricultureAreaOwned')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Agric. Arrendada
                   </label>
                   <input
@@ -1467,13 +1543,17 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('agricultureAreaLeased')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-2">
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Outras Culturas
                   </label>
                   <input
@@ -1483,11 +1563,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('otherCrops')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Infraestrutura
                   </label>
                   <input
@@ -1497,11 +1581,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('infrastructure')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Reserva e APP
                   </label>
                   <input
@@ -1511,11 +1599,15 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('reserveAndAPP')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Outros
                   </label>
                   <input
@@ -1525,26 +1617,33 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     onBlur={() => handleNumericBlur('otherArea')}
                     placeholder="0,00"
                     inputMode="decimal"
-                    className="w-full px-2 py-1.5 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-2 py-1.5 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? `rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20`
+                        : `border-ai-border rounded-lg focus:ring-ai-accent`
+                    }`}
                   />
                 </div>
               </div>
             </div>
 
             {/* Dados da Propriedade e Rebanho - Seção com fundo cinza claro */}
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
-              <h3 className="text-xs font-bold text-ai-text mb-3 uppercase tracking-wide">
+            <div className={isInttegra ?
+              "mb-4 p-5 bg-white rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)]" :
+              "mb-4 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500"
+            }>
+              <h3 className={`text-xs font-bold mb-3 uppercase tracking-wide ${isInttegra ? 'text-[#16A34A]' : 'text-ai-text'}`}>
                 Dados da Propriedade e Rebanho
               </h3>
 
               {/* Valor da propriedade, Variação e Valores de Operação na mesma linha */}
               <div className="grid grid-cols-5 gap-2 mb-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Valor da propriedade <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-xs text-ai-subtext">
+                    <span className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-xs ${isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext'}`}>
                       R$
                     </span>
                     <input
@@ -1554,15 +1653,17 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       onBlur={() => handleCurrencyBlur('propertyValue')}
                       placeholder="0"
                       inputMode="numeric"
-                      className={`w-full pl-8 pr-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                        errors.propertyValue ? 'border-red-500' : 'border-ai-border'
+                      className={`w-full pl-8 pr-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                        isInttegra
+                          ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.propertyValue ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                          : `rounded-lg focus:ring-ai-accent ${errors.propertyValue ? 'border-red-500' : 'border-ai-border'}`
                       }`}
                     />
                   </div>
                   {errors.propertyValue && <p className="text-red-500 text-xs mt-1">{errors.propertyValue}</p>}
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Variação Valor Agricultura
                     <span className="ml-1 text-[10px] font-normal text-ai-subtext">
                       {formData.agricultureVariation > 0 ? '+' : ''}
@@ -1577,12 +1678,14 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       step="1"
                       value={formData.agricultureVariation}
                       onChange={e => setFormData({ ...formData, agricultureVariation: parseInt(e.target.value) })}
-                      className="w-full h-2 bg-ai-surface2 rounded-lg appearance-none cursor-pointer accent-ai-accent"
+                      className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isInttegra ? 'accent-[#16A34A] bg-[#E5E7EB]' : 'accent-ai-accent bg-ai-surface2'}`}
                       style={{
-                        background: `linear-gradient(to right, #e2e8f0 0%, #e2e8f0 ${((formData.agricultureVariation + 50) / 100) * 100}%, #cbd5e1 ${((formData.agricultureVariation + 50) / 100) * 100}%, #cbd5e1 100%)`,
+                        background: isInttegra 
+                          ? `linear-gradient(to right, #E5E7EB 0%, #E5E7EB ${((formData.agricultureVariation + 50) / 100) * 100}%, #E5E7EB ${((formData.agricultureVariation + 50) / 100) * 100}%, #E5E7EB 100%)`
+                          : `linear-gradient(to right, #e2e8f0 0%, #e2e8f0 ${((formData.agricultureVariation + 50) / 100) * 100}%, #cbd5e1 ${((formData.agricultureVariation + 50) / 100) * 100}%, #cbd5e1 100%)`,
                       }}
                     />
-                    <div className="flex justify-between text-[10px] text-ai-subtext">
+                    <div className="flex justify-between text-[10px] text-ai-subtext font-semibold">
                       <span>-50%</span>
                       <span>0%</span>
                       <span>+50%</span>
@@ -1590,11 +1693,11 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Op. Pecuária
                   </label>
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-xs text-ai-subtext">
+                    <span className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-xs ${isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext'}`}>
                       R$
                     </span>
                     <input
@@ -1609,18 +1712,20 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       onBlur={() => handleCurrencyBlur('operationPecuary')}
                       placeholder="0"
                       inputMode="numeric"
-                      className={`w-full pl-8 pr-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                        errors.operationSum ? 'border-red-500' : 'border-ai-border'
+                      className={`w-full pl-8 pr-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                        isInttegra
+                          ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.operationSum ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                          : `rounded-lg focus:ring-ai-accent ${errors.operationSum ? 'border-red-500' : 'border-ai-border'}`
                       }`}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Op. Agrícola
                   </label>
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-xs text-ai-subtext">
+                    <span className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-xs ${isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext'}`}>
                       R$
                     </span>
                     <input
@@ -1635,18 +1740,20 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       onBlur={() => handleCurrencyBlur('operationAgricultural')}
                       placeholder="0"
                       inputMode="numeric"
-                      className={`w-full pl-8 pr-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                        errors.operationSum ? 'border-red-500' : 'border-ai-border'
+                      className={`w-full pl-8 pr-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                        isInttegra
+                          ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.operationSum ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                          : `rounded-lg focus:ring-ai-accent ${errors.operationSum ? 'border-red-500' : 'border-ai-border'}`
                       }`}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Outras Operações
                   </label>
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-xs text-ai-subtext">
+                    <span className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-xs ${isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext'}`}>
                       R$
                     </span>
                     <input
@@ -1661,8 +1768,10 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       onBlur={() => handleCurrencyBlur('otherOperations')}
                       placeholder="0"
                       inputMode="numeric"
-                      className={`w-full pl-8 pr-2 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                        errors.operationSum ? 'border-red-500' : 'border-ai-border'
+                      className={`w-full pl-8 pr-2 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                        isInttegra
+                          ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.operationSum ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                          : `rounded-lg focus:ring-ai-accent ${errors.operationSum ? 'border-red-500' : 'border-ai-border'}`
                       }`}
                     />
                   </div>
@@ -1677,20 +1786,24 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Métrica de peso
                   </label>
                   <select
                     value={formData.weightMetric}
                     onChange={e => setFormData({ ...formData, weightMetric: e.target.value as Farm['weightMetric'] })}
-                    className="w-full px-3 py-2 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-3 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? 'rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20'
+                        : 'border-ai-border rounded-lg focus:ring-ai-accent'
+                    }`}
                   >
                     <option value="Arroba (@)">Arroba (@)</option>
                     <option value="Kg">Kg</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Rebanho médio (12M)
                   </label>
                   <input
@@ -1713,15 +1826,19 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                     }}
                     placeholder="0"
                     inputMode="numeric"
-                    className="w-full px-3 py-2 text-sm border border-ai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white"
+                    className={`w-full px-3 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                      isInttegra
+                        ? 'rounded-[8px] text-[#0F172A] border-[#E5E7EB] focus:border-[#16A34A] focus:ring-[#16A34A]/20'
+                        : 'border-ai-border rounded-lg focus:ring-ai-accent bg-white'
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Valor do Rebanho <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-ai-subtext">
+                    <span className={`absolute left-3 top-1/2 transform -translate-y-1/2 text-sm ${isInttegra ? 'text-[#6B7280]' : 'text-ai-subtext'}`}>
                       R$
                     </span>
                     <input
@@ -1731,15 +1848,17 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       onBlur={() => handleCurrencyBlur('herdValue')}
                       placeholder="0"
                       inputMode="numeric"
-                      className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ai-accent bg-white ${
-                        errors.herdValue ? 'border-red-500' : 'border-ai-border'
+                      className={`w-full pl-10 pr-3 py-2 text-sm border bg-white focus:outline-none focus:ring-2 ${
+                        isInttegra
+                          ? `rounded-[8px] text-[#0F172A] focus:border-[#16A34A] focus:ring-[#16A34A]/20 ${errors.herdValue ? 'border-red-500' : 'border-[#E5E7EB]'}`
+                          : `rounded-lg focus:ring-ai-accent ${errors.herdValue ? 'border-red-500' : 'border-ai-border'}`
                       }`}
                     />
                   </div>
                   {errors.herdValue && <p className="text-red-500 text-xs mt-1">{errors.herdValue}</p>}
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-ai-text mb-1.5 uppercase tracking-wide">
+                  <label className={`block text-[10px] mb-1.5 uppercase tracking-wide ${isInttegra ? 'text-[#6B7280] font-bold' : 'text-ai-text font-semibold'}`}>
                     Comercializa genética animal
                   </label>
                   <label className="flex items-start gap-2 cursor-pointer mt-1.5">
@@ -1747,10 +1866,10 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
                       type="checkbox"
                       checked={formData.commercializesGenetics}
                       onChange={e => setFormData({ ...formData, commercializesGenetics: e.target.checked })}
-                      className="mt-0.5 w-4 h-4 text-ai-accent border-ai-border rounded focus:ring-ai-accent"
+                      className={`mt-0.5 w-4 h-4 border-ai-border rounded ${isInttegra ? 'text-[#16A34A] focus:ring-[#16A34A]' : 'text-ai-accent focus:ring-ai-accent'}`}
                     />
                     <div>
-                      <span className="block text-xs font-medium text-ai-text">Sim</span>
+                      <span className={`block text-xs font-semibold ${isInttegra ? 'text-[#0F172A]' : 'text-ai-text'}`}>Sim</span>
                       <span className="block text-[10px] text-ai-subtext mt-0.5">Vende touros, matrizes ou sêmen</span>
                     </div>
                   </label>
@@ -1781,18 +1900,24 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast }) => {
         )}
         {/* Action Buttons - only on Dados Gerais tab */}
         {farmActiveTab === 'dados' && (
-        <div className="flex gap-3 pt-4 border-t border-ai-border flex-shrink-0 mt-4">
+        <div className={`flex gap-3 pt-4 border-t flex-shrink-0 mt-4 ${isInttegra ? 'border-[#E5E7EB]' : 'border-ai-border'}`}>
           <button
             type="button"
             onClick={handleCancel}
-            className="flex-1 px-4 py-2 text-sm border border-ai-border text-ai-text rounded-lg font-medium hover:bg-ai-surface2 transition-colors"
+            className={isInttegra ?
+              "flex-1 px-5 py-2.5 text-xs font-bold uppercase tracking-wider border border-[#16A34A] text-[#16A34A] bg-white hover:bg-[#E7F6EC] rounded-[10px] transition-all duration-300" :
+              "flex-1 px-4 py-2 text-sm border border-ai-border text-ai-text rounded-lg font-medium hover:bg-ai-surface2 transition-colors"
+            }
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={formReadOnly || needsOrgForCreate || !isSaveEnabled || isSubmitting}
-            className="flex-1 px-4 py-2 text-sm bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={isInttegra ?
+              "flex-1 px-5 py-2.5 text-xs font-bold uppercase tracking-wider bg-[#16A34A] hover:bg-[#15803D] text-white rounded-[10px] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_1px_3px_rgba(16,24,40,.08)] border-0" :
+              "flex-1 px-4 py-2 text-sm bg-ai-accent text-white rounded-lg font-medium hover:bg-ai-accentHover transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            }
             title={needsOrgForCreate ? 'Selecione uma organização antes de cadastrar uma fazenda' : !isSaveEnabled ? 'Preencha todos os campos obrigatórios e respeite a soma total das dimensões' : ''}
           >
             {isSubmitting ? (

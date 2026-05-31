@@ -57,9 +57,7 @@ const expandableSections: ExpandableItem[] = [
     subItems: [
       { label: 'Cadastros', icon: 'chevron' },
       { label: 'Movimentações', icon: 'chevron' },
-      { label: 'Efetivo Pecuário', icon: 'chevron' },
-      { label: 'Reprodução', icon: 'chevron' },
-      { label: 'Aprovações', icon: 'chevron' },
+      { label: 'Relatórios' },
     ],
   },
   {
@@ -381,17 +379,21 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                         className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
                         style={{ color: INTEGRA_TEXT }}
                         onClick={() => {
-                          if (sub.label === 'Smart Start' && onViewChange) {
+                          if (id === 'pecuaria' && sub.label === 'Cadastros' && onViewChange) {
+                            onViewChange('pecuario-cadastros');
+                          } else if (sub.label === 'Smart Start' && onViewChange) {
                             onViewChange('smart-start');
+                          } else if (id === 'cadastros-gerais' && sub.label === 'Propriedades' && onViewChange) {
+                            onViewChange('propriedades');
                           }
                         }}
                       >
                         <span className="text-[13px] truncate">{sub.label}</span>
                         {sub.icon === 'star' ? (
                           <Star size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
-                        ) : (
+                        ) : sub.icon === 'chevron' ? (
                           <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>

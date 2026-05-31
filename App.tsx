@@ -64,10 +64,6 @@ const GestaoSemanal = lazy(() => import('./agents/GestaoSemanal'));
 const TranscreverReuniao = lazy(() => import('./agents/TranscreverReuniao'));
 const AgentUsageDashboard = lazy(() => import('./agents/AgentUsageDashboard'));
 const OrcamentoWorkspace = lazy(() => import('./agents/orcamento/OrcamentoWorkspace'));
-const PecuarioCadastrosDesktop = lazy(() => import('./agents/pecuario/PecuarioCadastrosDesktop'));
-const PecuarioMovimentos = lazy(() => import('./agents/pecuario/PecuarioMovimentos'));
-const PecuarioRelatorios = lazy(() => import('./agents/pecuario/PecuarioRelatorios'));
-const EstoquePartida = lazy(() => import('./agents/pecuario/EstoquePartida'));
 const NoticiasPecuaria = lazy(() => import('./agents/NoticiasPecuaria'));
 const VendoOuEngordo = lazy(() => import('./agents/VendoOuEngordo'));
 
@@ -132,7 +128,7 @@ const AppContent: React.FC = () => {
   const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'locais' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
     'desktop',
   );
-  const [pecuarioCadastroView, setPecuarioCadastroView] = useState<'desktop' | 'estoque-partida' | 'animal-categories'>('desktop');
+
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [gestaoView, setGestaoView] = useState<'rotina' | 'historico' | 'desempenho' | 'transcricoes' | 'atas'>('rotina');
   const [calculatorInputs, setCalculatorInputs] = useState<any>(null);
@@ -624,9 +620,6 @@ const AppContent: React.FC = () => {
   const isProjectStructure = activeAgentId === 'project-structure';
   const isCalendar = activeAgentId === 'calendar';
   const isRotinasFazenda = activeAgentId === 'rotinas-fazenda';
-  const isPecuarioCadastros = activeAgentId === 'pecuario-cadastros';
-  const isPecuarioMovimentos = activeAgentId === 'pecuario-movimentos';
-  const isPecuarioRelatorios = activeAgentId === 'pecuario-relatorios';
   const isGestaoSemanal = activeAgentId === 'gestao-semanal';
   const isTranscreverReuniao = activeAgentId === 'transcrever-reuniao';
   const isAreaCertificados = activeAgentId === 'area-certificados';
@@ -640,12 +633,6 @@ const AppContent: React.FC = () => {
     ? 'Notícias da Pecuária'
     : isAvaliacaoProtocolo
     ? 'Avaliação Protocolo 5-3-9'
-    : isPecuarioCadastros
-      ? 'Pecuário · Cadastros'
-    : isPecuarioMovimentos
-      ? 'Pecuário · Movimentos'
-    : isPecuarioRelatorios
-      ? 'Pecuário · Relatórios'
     : isProjeto
       ? 'Projeto'
       : isIniciativasOverview
@@ -1098,44 +1085,7 @@ const AppContent: React.FC = () => {
             <AreaCertificadosDesktop />
           </Suspense>
         );
-      case 'pecuario-cadastros':
-        if (pecuarioCadastroView === 'estoque-partida') {
-          return (
-            <Suspense fallback={<LoadingFallback />}>
-              <EstoquePartida onToast={handleToast} onBack={() => setPecuarioCadastroView('desktop')} />
-            </Suspense>
-          );
-        }
-        if (pecuarioCadastroView === 'animal-categories') {
-          return (
-            <Suspense fallback={<LoadingFallback />}>
-              <AnimalCategoriesManagement
-                onToast={handleToast}
-                onBack={() => setPecuarioCadastroView('desktop')}
-              />
-            </Suspense>
-          );
-        }
-        return (
-          <Suspense fallback={<LoadingFallback />}>
-            <PecuarioCadastrosDesktop
-              onSelectEstoquePartida={() => setPecuarioCadastroView('estoque-partida')}
-              onSelectAnimalCategories={() => setPecuarioCadastroView('animal-categories')}
-            />
-          </Suspense>
-        );
-      case 'pecuario-movimentos':
-        return (
-          <Suspense fallback={<LoadingFallback />}>
-            <PecuarioMovimentos />
-          </Suspense>
-        );
-      case 'pecuario-relatorios':
-        return (
-          <Suspense fallback={<LoadingFallback />}>
-            <PecuarioRelatorios />
-          </Suspense>
-        );
+
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-ai-subtext">
@@ -1232,7 +1182,7 @@ const AppContent: React.FC = () => {
           <main className="flex-1 min-h-0 bg-ai-bg overflow-hidden">
             <div className="h-full w-full max-w-[1600px] mx-auto flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <InttegraDashboard view={inttegraActiveView} />
+                <InttegraDashboard view={inttegraActiveView} onToast={handleToast} />
               </div>
             </div>
           </main>
@@ -1326,18 +1276,7 @@ const AppContent: React.FC = () => {
                   return items;
                 })()}
               />
-            ) : activeAgentId === 'pecuario-cadastros' && pecuarioCadastroView !== 'desktop' ? (
-              <Breadcrumb
-                items={[
-                  { label: 'Pecuário · Cadastros', onClick: () => setPecuarioCadastroView('desktop') },
-                  {
-                    label:
-                      pecuarioCadastroView === 'estoque-partida' ? 'Estoque de Partida'
-                      : pecuarioCadastroView === 'animal-categories' ? 'Categoria Animal'
-                      : 'Cadastro',
-                  },
-                ]}
-              />
+
             ) : activeAgentId === 'cattle-profit' && viewMode !== 'desktop' ? (
               <Breadcrumb
                 items={[

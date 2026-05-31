@@ -124,9 +124,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'dataReferencia deve estar no formato AAAA-MM-DD', { status: 400 });
         return;
       }
-      const existing = await getHeaderByFarmDate(farmId, dataReferencia);
-      if (existing) {
-        jsonError(res, 'Já existe um mapa para esta fazenda nesta data', { status: 409 });
+      const existingHeaders = await listHeadersByFarm(farmId);
+      if (existingHeaders && existingHeaders.length > 0) {
+        jsonError(res, 'Esta fazenda já possui um Estoque de Partida cadastrado', { status: 409 });
         return;
       }
       const row = await createHeader({

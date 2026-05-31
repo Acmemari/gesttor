@@ -53,12 +53,12 @@ describe('LoginPage', () => {
     await user.click(screen.getByText('Cadastrar'));
 
     const nameInput = screen.getByPlaceholderText(/Seu nome completo/i);
-    const emailInput = screen.getByPlaceholderText(/exemplo@pecuaria.com/i);
-    const passwordInput = screen.getByPlaceholderText(/Mínimo 6 caracteres/i);
+    const emailInput = screen.getByPlaceholderText(/exemplo@gesttor.app/i);
+    const passwordInput = screen.getByPlaceholderText(/Mínimo 8 caracteres/i);
 
     await user.type(nameInput, 'Test User');
     await user.type(emailInput, 'test@example.com');
-    await user.type(passwordInput, '12345'); // Less than 6 chars
+    await user.type(passwordInput, '12345'); // Less than 8 chars
 
     const submitButtons = screen.getAllByRole('button', { name: /Cadastrar/i });
     const submitButton = submitButtons[submitButtons.length - 1];
@@ -73,7 +73,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage />);
 
-    const emailInput = screen.getByPlaceholderText(/exemplo@pecuaria.com/i);
+    const emailInput = screen.getByPlaceholderText(/exemplo@gesttor.app/i);
     const passwordInput = screen.getByPlaceholderText(/••••••••/i);
 
     await user.type(emailInput, 'test@example.com');

@@ -79,6 +79,7 @@ function getAutoSexo(grupo: string): 'macho' | 'femea' {
 interface Props {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 interface FormState {
@@ -101,11 +102,15 @@ const EMPTY_FORM: FormState = {
 
 // ── Sortable Row ──────────────────────────────────────────────────────────────
 
-const SortableRow: React.FC<{
+interface SortableRowProps {
   category: AnimalCategory;
   onEdit: (c: AnimalCategory) => void;
   onDelete: (id: string) => void;
-}> = ({ category, onEdit, onDelete }) => {
+  theme?: 'light' | 'dark';
+}
+
+const SortableRow: React.FC<SortableRowProps> = ({ category, onEdit, onDelete, theme = 'light' }) => {
+  const isDark = false; // Forçado claro conforme diretrizes visuais do Gesttor
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
@@ -116,46 +121,52 @@ const SortableRow: React.FC<{
   };
 
   return (
-    <tr ref={setNodeRef} style={style} className="border-b border-gray-100 hover:bg-gray-50">
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className="border-b border-[#E5E7EB] transition-colors duration-150 hover:bg-[#F9FAFB]"
+    >
       <td className="px-3 py-3 w-8">
         <button
           type="button"
-          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+          className="cursor-grab active:cursor-grabbing transition-colors text-gray-400 hover:text-[#16A34A]"
           {...attributes}
           {...listeners}
         >
           <GripVertical size={16} />
         </button>
       </td>
-      <td className="px-4 py-3 font-medium text-gray-900">{category.nome}</td>
+      <td className="px-4 py-3 font-bold text-[#0F172A]">{category.nome}</td>
       <td className="px-4 py-3">
         <span
-          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
             category.sexo === 'femea'
-              ? 'bg-pink-100 text-pink-700'
-              : 'bg-blue-100 text-blue-700'
+              ? 'bg-[#FCE7F3] text-[#9D174D]'
+              : 'bg-[#DBEAFE] text-[#1E40AF]'
           }`}
         >
           {category.sexo === 'femea' ? 'Fêmea' : 'Macho'}
         </span>
       </td>
-      <td className="px-4 py-3 text-gray-600">{GRUPO_LABELS[category.grupo] ?? category.grupo}</td>
-      <td className="px-4 py-3 text-right text-gray-600">
+      <td className="px-4 py-3 text-gray-600 font-medium">
+        {GRUPO_LABELS[category.grupo] ?? category.grupo}
+      </td>
+      <td className="px-4 py-3 text-right font-semibold text-gray-600">
         {category.pesoKg ? `${parseFloat(category.pesoKg).toFixed(1)} kg` : '—'}
       </td>
       <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => onEdit(category)}
-            className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100"
+            className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#16A34A] hover:bg-[#E7F6EC]"
           >
             <Edit2 size={15} />
           </button>
           <button
             type="button"
             onClick={() => onDelete(category.id)}
-            className="p-1.5 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50"
+            className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#DC2626] hover:bg-red-50"
           >
             <Trash2 size={15} />
           </button>
@@ -167,7 +178,8 @@ const SortableRow: React.FC<{
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
+const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 'light' }) => {
+  const isDark = false; // Forçado claro conforme diretrizes visuais do Gesttor
   const { user } = useAuth();
   const { selectedClient } = useClient();
 
@@ -324,29 +336,32 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
 
   if (!organizationId) {
     return (
-      <div className="p-8 text-gray-500">
+      <div className="p-8 text-sm font-semibold text-gray-500">
         Selecione uma organização para gerenciar categorias de animais.
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-6 md:p-8 max-w-6xl mx-auto">
+    <div className="h-full flex flex-col p-6 md:p-8 max-w-6xl mx-auto w-full min-h-screen animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-8">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+            className="p-2.5 rounded-xl transition-all text-gray-500 hover:text-[#16A34A] hover:bg-[#E7F6EC]"
           >
             <ArrowLeft size={20} />
           </button>
         )}
         <div className="flex items-center gap-3">
-          <CattleHeadIcon size={24} className="text-gray-400" />
+          <CattleHeadIcon size={24} className="text-[#16A34A]" />
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Categorias de Animais</h2>
+            <span className="text-[11px] font-bold text-[#22C55E] tracking-widest uppercase block mb-0.5">
+              CADASTRO DE
+            </span>
+            <h2 className="text-2xl font-black tracking-tight text-[#0F172A]">Categorias de Animais</h2>
             <p className="text-sm text-gray-500">
               Defina as categorias do seu rebanho com pesos e valores de mercado
             </p>
@@ -356,7 +371,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
           <button
             type="button"
             onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-300 bg-[#16A34A] hover:bg-[#15803D] text-white shadow-[0_1px_3px_rgba(16,24,40,0.08)]"
           >
             <Plus size={16} />
             Nova Categoria
@@ -370,22 +385,22 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
           <Loader2 size={24} className="animate-spin text-gray-400" />
         </div>
       ) : categories.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <CattleHeadIcon size={48} className="mx-auto mb-4 opacity-30" />
-          <p className="text-sm">Nenhuma categoria cadastrada.</p>
-          <p className="text-xs mt-1">Clique em "+ Nova Categoria" para começar.</p>
+        <div className="text-center py-16 border border-dashed rounded-2xl p-12 shadow-md text-gray-400 border-gray-200 bg-white">
+          <CattleHeadIcon size={48} className="mx-auto mb-4 opacity-30 text-[#16A34A]" />
+          <p className="text-sm font-semibold text-[#0F172A]">Nenhuma categoria cadastrada.</p>
+          <p className="text-xs mt-1 opacity-70">Clique em "+ Nova Categoria" para começar.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="rounded-xl border border-[#E5E7EB] bg-white overflow-hidden shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="w-8" />
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Categoria</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Sexo</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Grupo</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">Peso (kg)</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">Ações</th>
+              <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[#6B7280] text-[11px] uppercase tracking-wider font-bold">
+                <th className="w-10" />
+                <th className="px-4 py-3.5 text-left">Categoria</th>
+                <th className="px-4 py-3.5 text-left">Sexo</th>
+                <th className="px-4 py-3.5 text-left">Grupo</th>
+                <th className="px-4 py-3.5 text-right">Peso Padrão (kg)</th>
+                <th className="px-4 py-3.5 text-right">Ações</th>
               </tr>
             </thead>
             <DndContext
@@ -402,34 +417,35 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                       category={cat}
                       onEdit={openEditModal}
                       onDelete={(id) => setDeleteConfirmId(id)}
+                      theme={theme}
                     />
                   ))}
                 </tbody>
               </SortableContext>
               <DragOverlay dropAnimation={null}>
                 {activeDragCategory ? (
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm bg-white">
                     <tbody>
-                      <tr className="bg-white shadow-lg rounded border border-gray-200">
-                        <td className="px-3 py-3 w-8">
-                          <GripVertical size={16} className="text-gray-400" />
+                      <tr className="shadow-2xl rounded border border-[#E5E7EB] text-[#0F172A] bg-white">
+                        <td className="px-3 py-3 w-10">
+                          <GripVertical size={16} className="text-[#16A34A]" />
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{activeDragCategory.nome}</td>
+                        <td className="px-4 py-3 font-bold">{activeDragCategory.nome}</td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                               activeDragCategory.sexo === 'femea'
-                                ? 'bg-pink-100 text-pink-700'
-                                : 'bg-blue-100 text-blue-700'
+                                ? 'bg-[#FCE7F3] text-[#9D174D]'
+                                : 'bg-[#DBEAFE] text-[#1E40AF]'
                             }`}
                           >
                             {activeDragCategory.sexo === 'femea' ? 'Fêmea' : 'Macho'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 font-medium">
                           {GRUPO_LABELS[activeDragCategory.grupo] ?? activeDragCategory.grupo}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
+                        <td className="px-4 py-3 text-right font-semibold">
                           {activeDragCategory.pesoKg
                             ? `${parseFloat(activeDragCategory.pesoKg).toFixed(1)} kg`
                             : '—'}
@@ -442,9 +458,9 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
               </DragOverlay>
             </DndContext>
             <tfoot>
-              <tr className="border-t border-gray-200 bg-gray-50">
-                <td colSpan={6} className="px-4 py-2 text-xs text-gray-500 font-medium">
-                  Total: {categories.length} {categories.length === 1 ? 'categoria' : 'categorias'}
+              <tr className="border-t border-[#E5E7EB] bg-[#F9FAFB] text-[#6B7280]">
+                <td colSpan={6} className="px-4 py-3 text-xs font-semibold leading-relaxed">
+                  Total: {categories.length} {categories.length === 1 ? 'categoria cadastrada' : 'categorias cadastradas'}
                 </td>
               </tr>
             </tfoot>
@@ -454,38 +470,43 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
 
       {/* ── Create/Edit Modal ──────────────────────────────────────────────── */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">
-                {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="rounded-xl shadow-2xl w-full max-w-3xl border border-[#E5E7EB] bg-white text-[#0F172A] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB]">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-[#22C55E] tracking-widest uppercase block">
+                  REGISTRO
+                </span>
+                <h3 className="text-lg font-black tracking-tight text-[#0F172A]">
+                  {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+                className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 text-gray-400 hover:text-[#0F172A]"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-5">
               {/* Descrição + Complemento lado a lado */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Descrição <span className="text-red-500">*</span>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">
+                    Descrição <span className="text-[#DC2626]">*</span>
                   </label>
                   <input
                     type="text"
                     value={form.nome}
                     onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
                     placeholder="Ex: Bezerro Desmamado, Novilha..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                    className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all placeholder-gray-400"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">
                     Complemento
                   </label>
                   <input
@@ -493,24 +514,24 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                     value={form.complemento}
                     onChange={(e) => setForm((f) => ({ ...f, complemento: e.target.value }))}
                     placeholder="Informações adicionais sobre a categoria"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                    className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all placeholder-gray-400"
                   />
                 </div>
               </div>
 
               {/* Grupo */}
-              <div className="border border-gray-200 rounded-xl p-3">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Grupo</label>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="border border-[#E5E7EB] bg-[#F9FAFB]/50 rounded-xl p-4">
+                <label className="block text-[10px] font-bold uppercase tracking-wider mb-3.5 text-[#6B7280]">Grupo</label>
+                <div className="flex flex-wrap gap-2">
                   {GRUPO_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => handleGrupoChange(opt.value)}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors duration-200 border ${
                         form.grupo === opt.value
-                          ? 'bg-gray-900 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-[#16A34A] border-[#16A34A] text-white shadow-sm'
+                          : 'bg-[#F3F4F6] border-transparent text-[#6B7280] hover:bg-[#E5E7EB]'
                       }`}
                     >
                       {opt.label}
@@ -520,10 +541,10 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
               </div>
 
               {/* Peso Médio + Sexo + Idade em linha */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* Peso */}
-                <div className="border border-gray-200 rounded-xl p-3">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <div className="border border-[#E5E7EB] bg-[#F9FAFB]/50 rounded-xl p-4">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-3 text-[#6B7280]">
                     Peso Médio (kg)
                   </label>
                   <div className="flex items-center gap-2">
@@ -534,31 +555,31 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                       value={form.pesoKg}
                       onChange={(e) => setForm((f) => ({ ...f, pesoKg: e.target.value }))}
                       placeholder="Ex: 450"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                      className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all"
                     />
-                    <span className="text-sm text-gray-500">kg</span>
+                    <span className="text-sm font-bold text-gray-500">kg</span>
                   </div>
                 </div>
 
                 {/* Sexo */}
-                <div className="border border-gray-200 rounded-xl p-3">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Sexo</label>
+                <div className="border border-[#E5E7EB] bg-[#F9FAFB]/50 rounded-xl p-4">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-3.5 text-[#6B7280]">Sexo</label>
                   {isSexoLocked(form.grupo) ? (
-                    <p className="text-sm text-gray-500">
-                      ✓ {getAutoSexo(form.grupo) === 'femea' ? 'Fêmea' : 'Macho'} (automático)
+                    <p className="text-sm font-bold uppercase tracking-wider flex items-center gap-1.5 text-[#16A34A]">
+                      ✓ {getAutoSexo(form.grupo) === 'femea' ? 'Fêmea' : 'Macho'}
                     </p>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {(['macho', 'femea'] as const).map((s) => (
-                        <label key={s} className="flex items-center gap-2 cursor-pointer">
+                        <label key={s} className="flex items-center gap-2.5 cursor-pointer">
                           <input
                             type="radio"
                             name="sexo"
                             checked={form.sexo === s}
                             onChange={() => setForm((f) => ({ ...f, sexo: s }))}
-                            className="w-4 h-4 text-gray-900 focus:ring-gray-900"
+                            className="w-4 h-4 text-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20"
                           />
-                          <span className="text-sm text-gray-700">
+                          <span className="text-sm font-semibold text-[#0F172A]">
                             {s === 'femea' ? 'Fêmea' : 'Macho'}
                           </span>
                         </label>
@@ -568,19 +589,19 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 </div>
 
                 {/* Idade */}
-                <div className="border border-gray-200 rounded-xl p-3">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Idade</label>
-                  <div className="space-y-1.5">
+                <div className="border border-[#E5E7EB] bg-[#F9FAFB]/50 rounded-xl p-4">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-3.5 text-[#6B7280]">Idade</label>
+                  <div className="space-y-2">
                     {IDADE_OPTIONS.map((opt) => (
-                      <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                      <label key={opt.value} className="flex items-center gap-2.5 cursor-pointer">
                         <input
                           type="radio"
                           name="idadeFaixa"
                           checked={form.idadeFaixa === opt.value}
                           onChange={() => setForm((f) => ({ ...f, idadeFaixa: opt.value }))}
-                          className="w-4 h-4 text-gray-900 focus:ring-gray-900"
+                          className="w-4 h-4 text-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20"
                         />
-                        <span className="text-sm text-gray-700">{opt.label}</span>
+                        <span className="text-sm font-semibold text-[#0F172A]">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -589,11 +610,11 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-gray-100">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#E5E7EB] bg-gray-50">
               <button
                 type="button"
                 onClick={closeModal}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
+                className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 text-gray-500 hover:text-[#0F172A] hover:bg-gray-100"
               >
                 Cancelar
               </button>
@@ -601,7 +622,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 type="button"
                 onClick={handleSave}
                 disabled={!form.nome.trim() || saving}
-                className="px-5 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-300 flex items-center gap-2 bg-[#16A34A] hover:bg-[#15803D] text-white shadow-[0_1px_3px_rgba(16,24,40,0.08)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {editingCategory ? 'Salvar Alterações' : 'Criar Categoria'}
@@ -613,24 +634,24 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
 
       {/* ── Delete Confirmation Dialog ─────────────────────────────────────── */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Exclusão</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Tem certeza que deseja remover esta categoria? Esta ação não pode ser desfeita.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-6 max-w-sm w-full shadow-2xl transition-all duration-300">
+            <h3 className="text-lg font-black tracking-tight mb-2 text-[#0F172A]">Confirmar Exclusão</h3>
+            <p className="text-sm leading-relaxed mb-6 text-[#6B7280]">
+              Tem certeza que deseja remover esta categoria? Esta ação não poderá ser desfeita.
             </p>
             <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
+                className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:bg-[#F9FAFB] transition-all duration-300"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
-                className="px-5 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+                className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-[#DC2626] rounded-xl hover:bg-[#B91C1C] transition-all duration-300 shadow-md shadow-red-950/10"
               >
                 Excluir
               </button>

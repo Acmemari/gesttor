@@ -46,7 +46,19 @@ export async function getLocais(retiroId: string) {
 }
 
 export async function getLocaisByFarm(farmId: string) {
-  return db.select().from(farmLocais).where(eq(farmLocais.farmId, farmId));
+  return db.select({
+    id: farmLocais.id,
+    retiroId: farmLocais.retiroId,
+    farmId: farmLocais.farmId,
+    name: farmLocais.name,
+    area: farmLocais.area,
+    createdAt: farmLocais.createdAt,
+    updatedAt: farmLocais.updatedAt,
+    retiroName: farmRetiros.name,
+  })
+  .from(farmLocais)
+  .leftJoin(farmRetiros, eq(farmLocais.retiroId, farmRetiros.id))
+  .where(eq(farmLocais.farmId, farmId));
 }
 
 export async function createLocal(data: {
