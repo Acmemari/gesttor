@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import {
   Plus,
   ChevronRight,
@@ -48,7 +49,7 @@ import { EvidenciaEntregaModal } from '../components/EvidenciaEntregaModal';
 import DateInputBR from '../components/DateInputBR';
 import ErrorBoundary from '../components/ErrorBoundary';
 
-const InitiativesGantt = lazy(() => import('../components/InitiativesGantt'));
+const InitiativesGantt = lazyWithRetry(() => import('../components/InitiativesGantt'));
 import type { ZoomLevel } from '../components/InitiativesGantt';
 
 type PeriodPreset = 'next-month' | 'next-quarter' | 'next-year' | 'custom' | null;

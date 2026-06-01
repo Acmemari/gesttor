@@ -1,15 +1,16 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Layers, Loader2 } from 'lucide-react';
 import SmartStart from './SmartStart';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 
 // Lazy-loaded components for Pecuária modules
-const PecuarioCadastrosDesktop = lazy(() => import('../agents/pecuario/PecuarioCadastrosDesktop'));
-const EstoquePartida = lazy(() => import('../agents/pecuario/EstoquePartida'));
-const PecuarioMovimentos = lazy(() => import('../agents/pecuario/PecuarioMovimentos'));
-const AnimalCategoriesManagement = lazy(() => import('../agents/AnimalCategoriesManagement'));
-const AnimalBreedsManagement = lazy(() => import('../agents/AnimalBreedsManagement'));
-const FarmManagement = lazy(() => import('../agents/FarmManagement'));
-const PeopleManagement = lazy(() => import('../agents/PeopleManagement'));
+const PecuarioCadastrosDesktop = lazyWithRetry(() => import('../agents/pecuario/PecuarioCadastrosDesktop'));
+const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
+const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
+const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
+const AnimalBreedsManagement = lazyWithRetry(() => import('../agents/AnimalBreedsManagement'));
+const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
+const PeopleManagement = lazyWithRetry(() => import('../agents/PeopleManagement'));
 
 interface InttegraDashboardProps {
   view?: string;
