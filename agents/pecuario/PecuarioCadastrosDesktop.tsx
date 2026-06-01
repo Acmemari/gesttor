@@ -208,12 +208,14 @@ const CadastroTitle: React.FC<{ entity: string; theme?: 'light' | 'dark' }> = ({
 interface PecuarioCadastrosDesktopProps {
   onSelectEstoquePartida: () => void;
   onSelectAnimalCategories?: () => void;
+  onSelectAnimalBreeds?: () => void;
   theme?: 'light' | 'dark';
 }
 
 const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectEstoquePartida,
   onSelectAnimalCategories,
+  onSelectAnimalBreeds,
   theme = 'light',
 }) => {
   const isDark = theme === 'dark';
@@ -221,6 +223,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   const cards = [
     {
       id: 'estoque-partida',
+      label: 'Estoque de Partida',
       title: <CadastroTitle entity="Estoque de Partida" theme={theme} />,
       description: 'Registre o inventário inicial do rebanho por fazenda e categoria animal, base para movimentações e relatórios.',
       onClick: onSelectEstoquePartida,
@@ -259,6 +262,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
       ? [
           {
             id: 'animal-categories',
+            label: 'Categoria Animal',
             title: <CadastroTitle entity="Categoria Animal" theme={theme} />,
             description: 'Defina as categorias do seu rebanho com pesos e valores de mercado.',
             onClick: onSelectAnimalCategories,
@@ -287,6 +291,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'Todas as categorias de animais cadastradas possuem peso padrão e preço de mercado atualizados no período atual.',
               impact: 'O cálculo do valor patrimonial do rebanho está sendo gerado com 100% de acurácia com base nos preços configurados.',
               actionLabel: 'Gerenciar Categorias',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectAnimalBreeds
+      ? [
+          {
+            id: 'animal-breeds',
+            label: 'Raças',
+            title: <CadastroTitle entity="Raças" theme={theme} />,
+            description: 'Cadastre as raças do rebanho para usar nos lançamentos de nascimento e nas categorias de animais.',
+            onClick: onSelectAnimalBreeds,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Raças centraliza a lista de raças utilizadas no rebanho. As raças aqui cadastradas ficam disponíveis para seleção na tela de Nascimentos e no Cadastro de Categoria de Animais, garantindo padronização da informação em todo o sistema.',
+              steps: [
+                {
+                  title: 'Cadastrar Raça',
+                  desc: 'Clique em "Nova Raça" e informe o nome da raça (ex: Nelore, Angus, Brangus).',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste as raças para definir a ordem em que aparecem nas listas de seleção do sistema.',
+                },
+                {
+                  title: 'Ativar ou Inativar',
+                  desc: 'Mantenha ativas apenas as raças em uso. Raças inativas deixam de aparecer nas telas de lançamento sem perder o histórico.',
+                },
+              ],
+              proTip: 'Padronize a grafia das raças (ex: sempre "Nelore", não "nelore") para manter relatórios e filtros consistentes.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As raças cadastradas estão disponíveis para seleção nas telas de Nascimento e Categoria de Animais.',
+              impact: 'A padronização das raças garante consistência nos lançamentos e relatórios do rebanho.',
+              actionLabel: 'Gerenciar Raças',
             }
           },
         ]
@@ -365,7 +406,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               <div className="flex items-center space-x-2.5 text-white">
                 <Tv size={20} className="text-[#65C04A]" />
                 <h3 className="text-sm font-black tracking-tight uppercase">
-                  Vídeo Instrução · {selectedCard.id === 'estoque-partida' ? 'Estoque de Partida' : 'Categoria Animal'}
+                  Vídeo Instrução · {selectedCard.label}
                 </h3>
               </div>
               <button 
@@ -503,7 +544,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
                     {activeDrawer === 'instructions' ? 'Instruções de Uso' : 'Avisos e Status'}
                   </span>
                   <h3 className="text-base font-black tracking-tight leading-none text-white">
-                    {selectedCard.id === 'estoque-partida' ? 'Estoque de Partida' : 'Categoria Animal'}
+                    {selectedCard.label}
                   </h3>
                 </div>
               </div>

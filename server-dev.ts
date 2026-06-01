@@ -273,6 +273,7 @@ app.all('/api/cattle-scenarios', (req, res) => handleApiRoute('./api/cattle-scen
 app.all('/api/engorda-simulations', (req, res) => handleApiRoute('./api/engorda-simulations.ts', req, res));
 app.all('/api/herd-evolution', (req, res) => handleApiRoute('./api/herd-evolution.ts', req, res));
 app.all('/api/saved-questionnaires', (req, res) => handleApiRoute('./api/saved-questionnaires.ts', req, res));
+app.all('/api/questionnaire-insights', (req, res) => handleApiRoute('./api/questionnaire-insights.ts', req, res));
 app.all('/api/saved-feedbacks', (req, res) => handleApiRoute('./api/saved-feedbacks.ts', req, res));
 
 // Empresas assessoras
@@ -280,6 +281,9 @@ app.all('/api/emp-ass', (req, res) => handleApiRoute('./api/emp-ass.ts', req, re
 
 // Categorias de animais
 app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-categories.ts', req, res));
+
+// Raças de animais
+app.all('/api/animal-breeds', (req, res) => handleApiRoute('./api/animal-breeds.ts', req, res));
 
 // Mapa de Rebanho (Estoque de Partida)
 app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));

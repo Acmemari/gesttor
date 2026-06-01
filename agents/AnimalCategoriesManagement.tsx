@@ -34,8 +34,12 @@ import {
   reorderAnimalCategories,
   type AnimalCategory,
 } from '../lib/api/animalCategoriesClient';
+import { listAnimalBreeds } from '../lib/api/animalBreedsClient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+/** Raças padrão exibidas quando ainda não há nenhuma cadastrada. */
+const RACAS_FALLBACK = ['Nelore', 'Anelorado', 'Brangus', 'Angus', 'Senepol', 'Cruzado'];
 
 const GRUPO_OPTIONS = [
   { value: 'matrizes_reproducao', label: 'Matrizes em Reprodução' },
@@ -200,6 +204,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
   const organizationId = selectedClient?.id ?? user?.organizationId ?? '';
 
   const [categories, setCategories] = useState<AnimalCategory[]>([]);
+  const [breeds, setBreeds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -230,6 +235,29 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
   useEffect(() => {
     loadCategories();
   }, [loadCategories]);
+
+  // Carrega raças cadastradas (ativas) para o seletor de Raça
+  useEffect(() => {
+    if (!organizationId) return;
+    let cancelled = false;
+    listAnimalBreeds(organizationId)
+      .then((rows) => {
+        if (!cancelled) setBreeds(rows.filter((b) => b.ativo).map((b) => b.nome));
+      })
+      .catch(() => {
+        if (!cancelled) setBreeds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  // Lista final de raças: cadastradas (ou fallback) + raça atual da categoria em edição
+  const racaOptions = React.useMemo(() => {
+    const base = breeds.length > 0 ? breeds : RACAS_FALLBACK;
+    const current = form.raca?.trim();
+    return current && !base.includes(current) ? [current, ...base] : base;
+  }, [breeds, form.raca]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
 
@@ -543,12 +571,9 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
                     className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all"
                   >
                     <option value="">Selecione...</option>
-                    <option value="Nelore">Nelore</option>
-                    <option value="Anelorado">Anelorado</option>
-                    <option value="Brangus">Brangus</option>
-                    <option value="Angus">Angus</option>
-                    <option value="Senepol">Senepol</option>
-                    <option value="Cruzado">Cruzado</option>
+                    {racaOptions.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

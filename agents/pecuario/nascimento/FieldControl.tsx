@@ -7,6 +7,8 @@ interface FieldControlProps {
   onChange: (value: string) => void;
   categories: LookupItem[];
   lotes: LookupItem[];
+  /** Sobrescreve as opções estáticas de campos 'select' por id (ex.: raças cadastradas). */
+  optionsOverride?: Record<string, string[]>;
   /** linha de lançamento (por animal) usa controles menores. */
   compact?: boolean;
   /** grid de Dados Adicionais. */
@@ -22,6 +24,7 @@ const FieldControl: React.FC<FieldControlProps> = ({
   onChange,
   categories,
   lotes,
+  optionsOverride,
   compact = false,
   grid = false,
 }) => {
@@ -102,17 +105,19 @@ const FieldControl: React.FC<FieldControlProps> = ({
             ))}
           </select>
         );
-      case 'select':
+      case 'select': {
+        const opts = optionsOverride?.[field.id] ?? field.options ?? [];
         return (
           <select className={inputCls} value={value} onChange={(e) => onChange(e.target.value)}>
             {field.placeholder ? <option value="">{field.placeholder}</option> : null}
-            {(field.options || []).map((o) => (
+            {opts.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
             ))}
           </select>
         );
+      }
       default:
         return null;
     }

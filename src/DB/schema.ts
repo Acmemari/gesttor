@@ -857,6 +857,21 @@ export const animalCategories = pgTable('animal_categories', {
   index('idx_animal_categories_org_id').on(t.organizationId),
 ]);
 
+// ── Animal Breeds (Raças) ───────────────────────────────────────────────────────
+
+export const animalBreeds = pgTable('animal_breeds', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  ordem: integer('ordem').notNull().default(0),
+  ativo: boolean('ativo').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_animal_breeds_org_id').on(t.organizationId),
+]);
+
 // ── Other ──────────────────────────────────────────────────────────────────────
 
 export const empAss = pgTable('consulting_firms', {

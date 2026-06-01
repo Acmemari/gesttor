@@ -10,6 +10,7 @@ interface LancamentoRapidoProps {
   places: FieldPlaces;
   categories: LookupItem[];
   lotes: LookupItem[];
+  optionsOverride?: Record<string, string[]>;
   values: Record<string, string>;
   onValueChange: (fieldId: string, value: string) => void;
   detalhe: NascDetalhe[];
@@ -30,6 +31,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
   places,
   categories,
   lotes,
+  optionsOverride,
   values,
   onValueChange,
   detalhe,
@@ -78,6 +80,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
               onChange={(v) => onValueChange(f.id, v)}
               categories={categories}
               lotes={lotes}
+              optionsOverride={optionsOverride}
             />
           </div>
         ))}
@@ -114,6 +117,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
               onChange={(v) => onValueChange(f.id, v)}
               categories={categories}
               lotes={lotes}
+              optionsOverride={optionsOverride}
               compact
             />
           </div>
@@ -148,6 +152,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
                     onChange={(v) => onValueChange(f.id, v)}
                     categories={categories}
                     lotes={lotes}
+                    optionsOverride={optionsOverride}
                     grid
                   />
                 </div>
