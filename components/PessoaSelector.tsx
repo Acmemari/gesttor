@@ -59,7 +59,7 @@ const PessoaSelector: React.FC<PessoaSelectorProps> = ({
       <option value="">{loading ? 'Carregando...' : placeholder}</option>
       {pessoas.map(p => (
         <option key={p.id} value={p.id}>
-          {p.preferred_name || p.full_name}
+          {p.preferredName || p.fullName}
         </option>
       ))}
     </select>

@@ -593,6 +593,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         data_contratacao: data.data_contratacao ?? null,
         endereco: data.endereco ?? null,
         observacoes: data.observacoes ?? null,
+        // Novos campos
+        tipo: Array.isArray(data.tipo) ? data.tipo : undefined,
+        razao_social: typeof data.razao_social === 'string' ? data.razao_social.trim() : undefined,
+        inscricao_estadual: typeof data.inscricao_estadual === 'string' ? data.inscricao_estadual.trim() : undefined,
+        tipo_documento: typeof data.tipo_documento === 'string' ? data.tipo_documento : undefined,
+        numero_documento: typeof data.numero_documento === 'string' ? data.numero_documento.replace(/\D/g, '') : undefined,
+        cep: typeof data.cep === 'string' ? data.cep.replace(/\D/g, '') : undefined,
+        logradouro: typeof data.logradouro === 'string' ? data.logradouro.trim() : undefined,
+        endereco_numero: typeof data.endereco_numero === 'string' ? data.endereco_numero.trim() : undefined,
+        complemento: typeof data.complemento === 'string' ? data.complemento.trim() : undefined,
+        bairro: typeof data.bairro === 'string' ? data.bairro.trim() : undefined,
+        cidade: typeof data.cidade === 'string' ? data.cidade.trim() : undefined,
+        estado: typeof data.estado === 'string' ? data.estado.trim() : undefined,
+        banco: typeof data.banco === 'string' ? data.banco.trim() : undefined,
+        agencia: typeof data.agencia === 'string' ? data.agencia.trim() : undefined,
+        conta: typeof data.conta === 'string' ? data.conta.trim() : undefined,
+        tipo_conta: typeof data.tipo_conta === 'string' ? data.tipo_conta : undefined,
+        titular_conta: typeof data.titular_conta === 'string' ? data.titular_conta.trim() : undefined,
+        cpf_cnpj_conta: typeof data.cpf_cnpj_conta === 'string' ? data.cpf_cnpj_conta.replace(/\D/g, '') : undefined,
       };
       const pessoa = await createPessoa(input);
       jsonSuccess(res, pessoa);

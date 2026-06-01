@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, ArrowLeft, ArrowRight, Search, Trash2, Edit2, Loader2, User, Camera, X,
-  Move, ZoomIn, Building2, Star, HelpCircle, Check, Mail,
+  Move, ZoomIn, Building2, Star, HelpCircle, Check, Mail, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useHierarchy } from '../contexts/HierarchyContext';
@@ -22,6 +22,8 @@ import {
   sendInvite,
   formatCPF,
   formatPhone,
+  formatCNPJ,
+  formatCEP,
   validateCPF,
   type Pessoa,
   type PessoaCompleta,
@@ -38,11 +40,38 @@ interface PeopleManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-type TabId = 'nome' | 'detalhes';
+type TabId = 'dados' | 'detalhes';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; editingOnly?: boolean }[] = [
-  { id: 'nome', label: 'Nome, Cargo e Fazenda', icon: <User size={14} /> },
+  { id: 'dados', label: 'Dados das Pessoas', icon: <User size={14} /> },
   { id: 'detalhes', label: 'Permissões e Informações', icon: <HelpCircle size={14} /> },
+];
+
+const TIPO_OPTIONS = [
+  { value: 'cliente', label: 'Cliente' },
+  { value: 'fornecedor', label: 'Fornecedor' },
+  { value: 'transportadora', label: 'Transportadora' },
+  { value: 'proprietario', label: 'Proprietário' },
+  { value: 'funcionario', label: 'Funcionário' },
+] as const;
+
+const TIPO_DOC_OPTIONS = [
+  { value: 'cpf', label: 'CPF' },
+  { value: 'cnpj', label: 'CNPJ' },
+  { value: 'rg', label: 'RG' },
+  { value: 'cnh', label: 'CNH' },
+  { value: 'passaporte', label: 'Passaporte' },
+] as const;
+
+const TIPO_CONTA_OPTIONS = [
+  { value: 'corrente', label: 'Conta Corrente' },
+  { value: 'poupanca', label: 'Poupança' },
+] as const;
+
+const UF_OPTIONS = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+  'SP', 'SE', 'TO',
 ];
 
 const STORAGE_PREFIX = 'people-photos';
@@ -63,7 +92,72 @@ const initialDados = {
   observacoes: '',
   photo_url: '',
   ativo: true,
+  // Novos campos
+  tipo: [] as string[],
+  razao_social: '',
+  inscricao_estadual: '',
+  tipo_documento: '',
+  numero_documento: '',
+  cep: '',
+  logradouro: '',
+  endereco_numero: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
+  banco: '',
+  agencia: '',
+  conta: '',
+  tipo_conta: '',
+  titular_conta: '',
+  cpf_cnpj_conta: '',
 };
+
+// ── Collapsible Section ─────────────────────────────────────────────────────
+const CollapsibleSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}> = ({ title, children, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-2 px-5 py-3.5 bg-[#F0FDF4] hover:bg-[#DCFCE7] transition-colors text-left"
+      >
+        {isOpen ? (
+          <ChevronUp size={16} className="text-emerald-600" />
+        ) : (
+          <ChevronDown size={16} className="text-emerald-600" />
+        )}
+        <span className="text-sm font-bold text-emerald-700">{title}</span>
+      </button>
+      {isOpen && <div className="p-5 bg-white space-y-4">{children}</div>}
+    </div>
+  );
+};
+
+// ── Input Field Component ───────────────────────────────────────────────────
+const Field: React.FC<{
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}> = ({ label, required, children, className = '' }) => (
+  <div className={className}>
+    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const inputClass =
+  'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all placeholder-gray-400';
+const selectClass =
+  'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-gray-700';
 
 const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   const { user } = useAuth();
@@ -71,7 +165,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   // ─── View State ──────────────────────────────────────────────────────────────
   const [view, setView] = useState<'list' | 'form'>('list');
-  const [activeTab, setActiveTab] = useState<TabId>('nome');
+  const [activeTab, setActiveTab] = useState<TabId>('dados');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isNewPerson, setIsNewPerson] = useState(false);
 
@@ -175,7 +269,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     return () => { cancelled = true; };
   }, [pessoas]);
 
-  // ─── Carregar perfis e cargos (necessários para filtro na lista e formulário) ──
+  // ─── Carregar perfis e cargos ────────────────────────────────────────────────
   useEffect(() => {
     if (!organizationId) return;
     Promise.all([listPerfis(), listCargosFuncoes()]).then(([p, c]) => {
@@ -196,7 +290,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     setNewPerfilId('');
     setNewCargoId('');
     setNewFarmId('');
-    setActiveTab('nome');
+    setActiveTab('dados');
     setIsNewPerson(true);
     setView('form');
   };
@@ -217,24 +311,40 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       observacoes: p.observacoes ?? '',
       photo_url: p.photoUrl ?? '',
       ativo: p.ativo,
+      // Novos campos
+      tipo: Array.isArray(p.tipo) ? p.tipo : [],
+      razao_social: p.razaoSocial ?? '',
+      inscricao_estadual: p.inscricaoEstadual ?? '',
+      tipo_documento: p.tipoDocumento ?? '',
+      numero_documento: p.numeroDocumento ?? '',
+      cep: formatCEP(p.cep ?? ''),
+      logradouro: p.logradouro ?? '',
+      endereco_numero: p.enderecoNumero ?? '',
+      complemento: p.complemento ?? '',
+      bairro: p.bairro ?? '',
+      cidade: p.cidade ?? '',
+      estado: p.estado ?? '',
+      banco: p.banco ?? '',
+      agencia: p.agencia ?? '',
+      conta: p.conta ?? '',
+      tipo_conta: p.tipoConta ?? '',
+      titular_conta: p.titularConta ?? '',
+      cpf_cnpj_conta: p.cpfCnpjConta ?? '',
     });
     setPhotoPreview(signedUrls[p.id] ?? p.photoUrl ?? null);
     setPhotoFile(null);
     setNewPerfilId('');
     setNewCargoId('');
     setNewFarmId('');
-    setActiveTab('nome');
+    setActiveTab('dados');
     setIsNewPerson(false);
     setView('form');
 
-    // Carregar sub-recursos
     const completa = await getPessoa(p.id);
     if (completa) {
       setPessoaPerfis(completa.perfis);
       setPessoaFazendas(completa.fazendas);
       setPermissoes(completa.permissoes);
-      
-      // Inicializar seleção com o perfil atual (se houver)
       if (completa.perfis.length > 0) {
         const p0 = completa.perfis[0];
         setNewPerfilId(p0.perfilId);
@@ -300,13 +410,9 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     const img = cropImageRef.current;
     const { w, h } = cropImageSize;
 
-    // Fundo branco (JPEG não tem transparência — sem isso fica preto)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, CROP_SIZE, CROP_SIZE);
 
-    // Espelha exatamente o transform CSS do modal:
-    //   translate(-50% + cropPosition.x, -50% + cropPosition.y) scale(cropZoom)
-    // com a imagem centrada no círculo (centro = CROP_SIZE/2)
     const renderedW = w * cropZoom;
     const renderedH = h * cropZoom;
     const imgX = CROP_SIZE / 2 + cropPosition.x - renderedW / 2;
@@ -343,6 +449,26 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
 
   const onCropMouseUp = () => { cropDragRef.current = null; };
 
+  // ─── Tipo toggle ──────────────────────────────────────────────────────────────
+  const toggleTipo = (value: string) => {
+    setDados(prev => ({
+      ...prev,
+      tipo: prev.tipo.includes(value)
+        ? prev.tipo.filter(t => t !== value)
+        : [...prev.tipo, value],
+    }));
+  };
+
+  // ─── Document mask ────────────────────────────────────────────────────────────
+  const formatDocumento = (value: string, tipo: string): string => {
+    const digits = value.replace(/\D/g, '');
+    switch (tipo) {
+      case 'cpf': return formatCPF(digits);
+      case 'cnpj': return formatCNPJ(digits);
+      default: return value;
+    }
+  };
+
   // ─── Troca de aba com auto-criação ────────────────────────────────────────────
   const handleTabChange = async (tab: TabId) => {
     if (!editingId && dados.full_name.trim() && tab !== activeTab) {
@@ -352,19 +478,13 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
   };
 
   // ─── Salvar dados da pessoa ────────────────────────────────────────────────────
-  // Retorna o id da pessoa (criada ou existente), ou null em caso de erro.
   const handleSaveDados = async (): Promise<string | null> => {
     if (!dados.full_name.trim()) {
       onToast?.('Nome completo é obrigatório', 'error');
       return null;
     }
-    const phoneDigits = dados.phone_whatsapp.replace(/\D/g, '');
-    if (!phoneDigits) {
-      onToast?.('Telefone (WhatsApp) é obrigatório', 'error');
-      return null;
-    }
-    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
-      onToast?.('Telefone inválido. Informe DDD + número', 'error');
+    if (dados.tipo.length === 0) {
+      onToast?.('Selecione ao menos um tipo', 'error');
       return null;
     }
     if (dados.cpf && !validateCPF(dados.cpf)) {
@@ -402,6 +522,25 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
         observacoes: dados.observacoes.trim() || null,
         photo_url: photoUrl || null,
         ativo: dados.ativo,
+        // Novos campos
+        tipo: dados.tipo,
+        razao_social: dados.razao_social.trim() || null,
+        inscricao_estadual: dados.inscricao_estadual.trim() || null,
+        tipo_documento: dados.tipo_documento || null,
+        numero_documento: dados.numero_documento.replace(/\D/g, '') || null,
+        cep: dados.cep.replace(/\D/g, '') || null,
+        logradouro: dados.logradouro.trim() || null,
+        endereco_numero: dados.endereco_numero.trim() || null,
+        complemento: dados.complemento.trim() || null,
+        bairro: dados.bairro.trim() || null,
+        cidade: dados.cidade.trim() || null,
+        estado: dados.estado || null,
+        banco: dados.banco.trim() || null,
+        agencia: dados.agencia.trim() || null,
+        conta: dados.conta.trim() || null,
+        tipo_conta: dados.tipo_conta || null,
+        titular_conta: dados.titular_conta.trim() || null,
+        cpf_cnpj_conta: dados.cpf_cnpj_conta.replace(/\D/g, '') || null,
       };
 
       if (editingId) {
@@ -577,13 +716,12 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     }
   };
 
-  // ─── Fazendas disponíveis para vincular (da organização) ──────────────────────
+  // ─── Fazendas disponíveis ─────────────────────────────────────────────────────
   const farmsDisponiveis = useMemo(
     () => farms.filter(f => f.ativo && !pessoaFazendas.some(pf => pf.farmId === f.id)),
     [farms, pessoaFazendas],
   );
 
-  // ─── Fazendas vinculadas com nome (deduplicadas por farmId) ──────────────────
   const fazendasComNome = useMemo(
     () => {
       const seen = new Set<string>();
@@ -601,14 +739,22 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     [pessoaFazendas, farms],
   );
 
-  // ─── Render: Lista ────────────────────────────────────────────────────────────
+  // ─── TIPO label helper ────────────────────────────────────────────────────────
+  const getTipoLabels = (tipos: string[] | null): string => {
+    if (!tipos || tipos.length === 0) return '—';
+    return tipos.map(t => TIPO_OPTIONS.find(o => o.value === t)?.label ?? t).join(', ');
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // RENDER: LIST
+  // ═════════════════════════════════════════════════════════════════════════════
   if (view === 'list') {
     return (
       <div className="p-6 max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Pessoas</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Cadastro de Pessoas</h1>
             {organizationId && (
               <p className="text-sm text-gray-500 mt-0.5">{selectedClient?.name}</p>
             )}
@@ -690,6 +836,7 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Nome</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Telefone</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
@@ -715,6 +862,9 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
                               )}
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">
+                          {getTipoLabels(p.tipo)}
                         </td>
                         <td className="px-4 py-3 text-gray-600">{p.phoneWhatsapp ? formatPhone(p.phoneWhatsapp) : '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{p.email ?? '—'}</td>
@@ -802,521 +952,509 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
     );
   }
 
-  // ─── Render: Formulário ───────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════════
+  // RENDER: FORM
+  // ═════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ─── Header ─── */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-6">
-          {/* Linha superior: voltar + identidade */}
-          <div className="flex items-center gap-3 py-4">
-            <button
-              onClick={backToList}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <ArrowLeft size={18} />
-            </button>
-
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {photoPreview ? (
-                <img src={photoPreview} className="w-9 h-9 rounded-full object-cover border border-gray-200 shrink-0" />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                  <User size={16} className="text-emerald-600" />
-                </div>
-              )}
-              <div className="min-w-0">
-                <h1 className="text-base font-bold text-gray-900 leading-tight truncate">
-                  {dados.full_name || (editingId ? 'Editar Pessoa' : 'Nova Pessoa')}
-                </h1>
-                {(dados.preferred_name || pessoaPerfis[0]?.perfilNome) && (
-                  <p className="text-xs text-gray-400 truncate">
-                    {[dados.preferred_name, pessoaPerfis[0]?.perfilNome].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {!dados.ativo && (
-              <span className="shrink-0 text-xs font-medium text-gray-400 bg-gray-100 rounded-full px-2.5 py-1">
-                Inativo
-              </span>
-            )}
-          </div>
-
-          {/* Abas */}
-          <div className="flex gap-0 -mb-px">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-emerald-600 text-emerald-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+    <div className="p-6 max-w-4xl mx-auto">
+      {/* Modal Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold text-gray-900">Cadastro de Pessoas</h2>
+        <button
+          onClick={backToList}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      {/* ─── Conteúdo ─── */}
-      <div className="max-w-3xl mx-auto px-6 pt-6 pb-6">
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => handleTabChange(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        {/* ══ Aba 1: Nome, Cargo e Fazenda ══ */}
-        {activeTab === 'nome' && (
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-
-            {/* ── Dados Pessoais ── */}
-            <div className="p-6">
-              <div className="flex gap-5 items-start">
-                {/* Foto */}
-                <div className="shrink-0 flex flex-col items-center gap-2">
-                  <div className="relative">
-                    {photoPreview ? (
-                      <img src={photoPreview} className="w-24 h-24 rounded-xl object-cover border border-gray-200" />
-                    ) : (
-                      <div className="w-24 h-24 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300">
-                        <User size={30} className="text-gray-300" />
-                      </div>
-                    )}
-                    <label className="absolute -bottom-2 -right-2 p-1.5 bg-emerald-600 rounded-full cursor-pointer hover:bg-emerald-700 transition-colors shadow-md">
-                      <Camera size={12} className="text-white" />
-                      <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-                    </label>
-                  </div>
-                  {photoPreview && (
-                    <button
-                      onClick={handleAdjustPhoto}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
-                    >
-                      <Move size={11} />
-                      Ajustar
-                    </button>
-                  )}
-                </div>
-
-                {/* Campos de nome */}
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Nome Completo *</label>
-                    <input
-                      value={dados.full_name}
-                      onChange={e => setDados(d => ({ ...d, full_name: e.target.value }))}
-                      placeholder="Nome completo da pessoa"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Apelido / Nome Preferido</label>
-                    <input
-                      value={dados.preferred_name}
-                      onChange={e => setDados(d => ({ ...d, preferred_name: e.target.value }))}
-                      placeholder="Como é chamado"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Contato */}
-              <div className="grid grid-cols-2 gap-4 mt-5">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">WhatsApp <span className="text-red-500">*</span></label>
+      {/* ═══ TAB: Dados das Pessoas ═══ */}
+      {activeTab === 'dados' && (
+        <div className="space-y-6">
+          {/* Tipo */}
+          <Field label="Tipo" required>
+            <div className="flex flex-wrap gap-3 mt-1">
+              {TIPO_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                   <input
-                    value={dados.phone_whatsapp}
-                    onChange={e => setDados(d => ({ ...d, phone_whatsapp: formatPhone(e.target.value) }))}
-                    placeholder="(00) 00000-0000"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    type="checkbox"
+                    checked={dados.tipo.includes(opt.value)}
+                    onChange={() => toggleTipo(opt.value)}
+                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    value={dados.email}
-                    onChange={e => setDados(d => ({ ...d, email: e.target.value }))}
-                    placeholder="email@exemplo.com"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-
+                  <span className="text-sm text-gray-700">{opt.label}</span>
+                </label>
+              ))}
             </div>
+          </Field>
 
-            {/* ── Perfil e Cargo ── */}
-            <div className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Building2 size={14} className="text-gray-400" />
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Perfil e Cargo</span>
-              </div>
+          {/* Nome Completo */}
+          <Field label="Nome Completo" required>
+            <input
+              type="text"
+              value={dados.full_name}
+              onChange={e => setDados(d => ({ ...d, full_name: e.target.value }))}
+              placeholder="Digite o nome da pessoa"
+              className={inputClass}
+            />
+          </Field>
 
-              {!dados.full_name.trim() ? (
-                <p className="text-sm text-gray-400">Preencha o nome para ativar este campo.</p>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <select
-                      value={newPerfilId}
-                      onChange={e => { setNewPerfilId(e.target.value); setNewCargoId(''); }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                    >
-                      <option value="">Selecionar perfil...</option>
-                      {perfisDisponiveis.map(p => (
-                        <option key={p.id} value={p.id}>{p.nome}</option>
-                      ))}
-                    </select>
-
-                    {newPerfilId && perfisDisponiveis.find(p => p.id === newPerfilId)?.nome === 'Colaborador Fazenda' && (
-                      <select
-                        value={newCargoId}
-                        onChange={e => setNewCargoId(e.target.value)}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                      >
-                        <option value="">Cargo (opcional)...</option>
-                        {cargosDisponiveis.map(c => (
-                          <option key={c.id} value={c.id}>{c.nome}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    <button
-                      onClick={handleAddPerfil}
-                      disabled={!newPerfilId || addingPerfil}
-                      className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
-                    >
-                      {addingPerfil ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                      {pessoaPerfis.length > 0 ? 'Atualizar' : 'Vincular'}
-                    </button>
-                  </div>
-
-                  {pessoaPerfis.length > 0 && (
-                    <div className="flex items-center gap-2 mt-3">
-                      <span className="text-xs text-gray-400">Perfil atual:</span>
-                      <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-medium rounded-full px-3 py-1">
-                        {pessoaPerfis[0].perfilNome}
-                        {pessoaPerfis[0].cargoFuncaoNome && (
-                          <span className="text-emerald-400">· {pessoaPerfis[0].cargoFuncaoNome}</span>
-                        )}
-                        <button
-                          onClick={() => handleRemovePerfil(pessoaPerfis[0].id)}
-                          className="text-emerald-300 hover:text-red-400 transition-colors ml-0.5"
-                          title="Remover vínculo"
-                        >
-                          <X size={11} />
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* ── Fazendas ── */}
-            <div className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Star size={14} className="text-gray-400" />
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Fazendas</span>
-              </div>
-
-              {!dados.full_name.trim() ? (
-                <p className="text-sm text-gray-400">Preencha o nome para ativar este campo.</p>
-              ) : (
-                <>
-                  {fazendasComNome.length > 0 && (
-                    <div className="space-y-1.5 mb-4">
-                      {fazendasComNome.map(pf => (
-                        <div
-                          key={pf.id}
-                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
-                            pf.isPrimary
-                              ? 'border-emerald-200 bg-emerald-50/60'
-                              : 'border-gray-100 bg-gray-50/60 hover:bg-gray-50'
-                          }`}
-                        >
-                          <button
-                            onClick={() => handleSetPrimary(pf.id)}
-                            className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                              pf.isPrimary
-                                ? 'border-emerald-500 bg-emerald-500'
-                                : 'border-gray-300 hover:border-emerald-400'
-                            }`}
-                            title={pf.isPrimary ? 'Fazenda principal' : 'Definir como principal'}
-                          >
-                            {pf.isPrimary && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
-                          </button>
-                          <span className="flex-1 text-sm text-gray-800 font-medium">{pf.farmName}</span>
-                          {pf.isPrimary && (
-                            <span className="text-xs font-medium text-emerald-600 bg-emerald-100 rounded-md px-2 py-0.5">
-                              Principal
-                            </span>
-                          )}
-                          <button
-                            onClick={() => handleRemoveFazenda(pf.id)}
-                            className="p-1 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-                            title="Desvincular"
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {farmsDisponiveis.length > 0 ? (
-                    <div className="flex gap-2">
-                      <select
-                        value={newFarmId}
-                        onChange={e => setNewFarmId(e.target.value)}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                      >
-                        <option value="">Selecionar fazenda para vincular...</option>
-                        {farmsDisponiveis.map(f => (
-                          <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={handleAddFazenda}
-                        disabled={!newFarmId || addingFazenda}
-                        className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
-                      >
-                        {addingFazenda ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                        Vincular
-                      </button>
-                    </div>
-                  ) : fazendasComNome.length === 0 && (
-                    <p className="text-sm text-gray-400">Nenhuma fazenda disponível para vincular.</p>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* ── Ações ── */}
-            <div className="p-6 flex items-center justify-between">
-              <button
-                onClick={() => setDados(d => ({ ...d, ativo: !d.ativo }))}
-                className="flex items-center gap-2.5 group"
-              >
-                <span className={`relative inline-block w-10 h-[22px] rounded-full transition-colors ${dados.ativo ? 'bg-emerald-500' : 'bg-gray-200'}`}>
-                  <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform ${dados.ativo ? 'translate-x-[18px]' : 'translate-x-0'}`} />
-                </span>
-                <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors">Pessoa ativa</span>
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSaveDados}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
-                >
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                  {editingId ? 'Salvar Alterações' : 'Adicionar Pessoa'}
-                </button>
-                <button
-                  onClick={() => handleTabChange('detalhes')}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm font-medium"
-                >
-                  Próximo
-                  <ArrowRight size={15} />
-                </button>
-              </div>
-            </div>
-
+          {/* Razão Social + Inscrição Estadual */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Razão Social">
+              <input
+                type="text"
+                value={dados.razao_social}
+                onChange={e => setDados(d => ({ ...d, razao_social: e.target.value }))}
+                placeholder="Informe a razão social da pessoa"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Inscrição Estadual">
+              <input
+                type="text"
+                value={dados.inscricao_estadual}
+                onChange={e => setDados(d => ({ ...d, inscricao_estadual: e.target.value }))}
+                placeholder="Informe a Inscrição Estadual"
+                className={inputClass}
+              />
+            </Field>
           </div>
-        )}
 
-        {/* ══ Aba 2: Permissões e Informações ══ */}
-        {activeTab === 'detalhes' && (
-          <div className="space-y-4">
+          {/* Tipo de Documento + Número */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Tipo de Documento" required>
+              <select
+                value={dados.tipo_documento}
+                onChange={e => setDados(d => ({ ...d, tipo_documento: e.target.value, numero_documento: '' }))}
+                className={selectClass}
+              >
+                <option value="">Selecione um item</option>
+                {TIPO_DOC_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Número do documento">
+              <input
+                type="text"
+                value={dados.numero_documento}
+                onChange={e => setDados(d => ({
+                  ...d,
+                  numero_documento: formatDocumento(e.target.value, d.tipo_documento),
+                }))}
+                placeholder={dados.tipo_documento === 'cnpj' ? '00.000.000/0000-00' : '000.000.000-00'}
+                className={inputClass}
+                disabled={!dados.tipo_documento}
+              />
+            </Field>
+          </div>
 
-            {/* Permissões */}
-            {editingId && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h2 className="text-sm font-semibold text-gray-700">Permissões por Fazenda</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Configure o que esta pessoa pode fazer em cada fazenda.</p>
-                </div>
+          {/* E-mail + Telefone */}
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+            <Field label="E-mail">
+              <input
+                type="email"
+                value={dados.email}
+                onChange={e => setDados(d => ({ ...d, email: e.target.value }))}
+                placeholder="Informe o e-mail do cadastrado"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Telefone" className="min-w-[200px]">
+              <input
+                type="text"
+                value={dados.phone_whatsapp}
+                onChange={e => setDados(d => ({ ...d, phone_whatsapp: formatPhone(e.target.value) }))}
+                placeholder="(00) 00000-0000"
+                className={inputClass}
+                maxLength={15}
+              />
+            </Field>
+          </div>
 
-                {fazendasComNome.length === 0 ? (
-                  <div className="py-14 text-center">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                      <Star size={20} className="text-gray-300" />
+          {/* Dados de Endereço */}
+          <CollapsibleSection title="Dados de Endereço">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Field label="CEP">
+                <input
+                  type="text"
+                  value={dados.cep}
+                  onChange={e => setDados(d => ({ ...d, cep: formatCEP(e.target.value) }))}
+                  placeholder="00000-000"
+                  className={inputClass}
+                  maxLength={9}
+                />
+              </Field>
+              <Field label="Logradouro" className="md:col-span-2">
+                <input
+                  type="text"
+                  value={dados.logradouro}
+                  onChange={e => setDados(d => ({ ...d, logradouro: e.target.value }))}
+                  placeholder="Rua, Avenida, Rodovia..."
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Field label="Número">
+                <input
+                  type="text"
+                  value={dados.endereco_numero}
+                  onChange={e => setDados(d => ({ ...d, endereco_numero: e.target.value }))}
+                  placeholder="Nº"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Complemento">
+                <input
+                  type="text"
+                  value={dados.complemento}
+                  onChange={e => setDados(d => ({ ...d, complemento: e.target.value }))}
+                  placeholder="Sala, Andar, Bloco..."
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Bairro">
+                <input
+                  type="text"
+                  value={dados.bairro}
+                  onChange={e => setDados(d => ({ ...d, bairro: e.target.value }))}
+                  placeholder="Bairro"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Cidade">
+                <input
+                  type="text"
+                  value={dados.cidade}
+                  onChange={e => setDados(d => ({ ...d, cidade: e.target.value }))}
+                  placeholder="Cidade"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Estado">
+                <select
+                  value={dados.estado}
+                  onChange={e => setDados(d => ({ ...d, estado: e.target.value }))}
+                  className={selectClass}
+                >
+                  <option value="">Selecione o estado</option>
+                  {UF_OPTIONS.map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </CollapsibleSection>
+
+          {/* Dados Bancários */}
+          <CollapsibleSection title="Dados Bancários">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Field label="Banco">
+                <input
+                  type="text"
+                  value={dados.banco}
+                  onChange={e => setDados(d => ({ ...d, banco: e.target.value }))}
+                  placeholder="Nome do banco"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Agência">
+                <input
+                  type="text"
+                  value={dados.agencia}
+                  onChange={e => setDados(d => ({ ...d, agencia: e.target.value }))}
+                  placeholder="0000"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Conta">
+                <input
+                  type="text"
+                  value={dados.conta}
+                  onChange={e => setDados(d => ({ ...d, conta: e.target.value }))}
+                  placeholder="00000-0"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Field label="Tipo de Conta">
+                <select
+                  value={dados.tipo_conta}
+                  onChange={e => setDados(d => ({ ...d, tipo_conta: e.target.value }))}
+                  className={selectClass}
+                >
+                  <option value="">Selecione</option>
+                  {TIPO_CONTA_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Titular da Conta">
+                <input
+                  type="text"
+                  value={dados.titular_conta}
+                  onChange={e => setDados(d => ({ ...d, titular_conta: e.target.value }))}
+                  placeholder="Nome do titular"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="CPF/CNPJ do Titular">
+                <input
+                  type="text"
+                  value={dados.cpf_cnpj_conta}
+                  onChange={e => setDados(d => ({ ...d, cpf_cnpj_conta: e.target.value }))}
+                  placeholder="000.000.000-00"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          </CollapsibleSection>
+
+          {/* Botões */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={backToList}
+              className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDados}
+              disabled={!dados.full_name.trim() || dados.tipo.length === 0 || saving}
+              className="px-6 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB: Permissões e Informações ═══ */}
+      {activeTab === 'detalhes' && (
+        <div className="space-y-6">
+          {/* Perfil e Cargo */}
+          <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-gray-800">Perfil e Cargo</h3>
+            <div className="flex gap-3 flex-wrap">
+              <select value={newPerfilId} onChange={e => setNewPerfilId(e.target.value)} className={selectClass + ' max-w-xs'}>
+                <option value="">Selecione o perfil</option>
+                {perfisDisponiveis.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+              <select value={newCargoId} onChange={e => setNewCargoId(e.target.value)} className={selectClass + ' max-w-xs'}>
+                <option value="">Cargo (opcional)</option>
+                {cargosDisponiveis.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleAddPerfil}
+                disabled={!newPerfilId || addingPerfil}
+                className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+              >
+                {addingPerfil && <Loader2 size={12} className="animate-spin" />}
+                Vincular
+              </button>
+            </div>
+            {pessoaPerfis.length > 0 && (
+              <div className="space-y-2">
+                {pessoaPerfis.map(pp => (
+                  <div key={pp.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
+                    <div>
+                      <span className="font-medium text-sm text-gray-800">{pp.perfilNome}</span>
+                      {pp.cargoFuncaoNome && (
+                        <span className="text-xs text-gray-500 ml-2">· {pp.cargoFuncaoNome}</span>
+                      )}
                     </div>
-                    <p className="text-sm font-medium text-gray-400">Nenhuma fazenda vinculada</p>
-                    <p className="text-xs text-gray-300 mt-1">Vincule fazendas na aba anterior para configurar permissões.</p>
+                    <button
+                      onClick={() => handleRemovePerfil(pp.id)}
+                      className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {fazendasComNome.map(pf => {
-                      const farmId = pf.farmId;
-                      const perm = getPermissao(farmId);
-                      const isSaving = savingPerm === farmId;
-                      return (
-                        <div key={farmId}>
-                          <div className="flex items-center gap-2 px-6 py-3 bg-gray-50/70">
-                            <span className="text-sm font-semibold text-gray-700 flex-1">{pf.farmName}</span>
-                            {pf.isPrimary && (
-                              <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                                Principal
-                              </span>
-                            )}
-                            {isSaving && <Loader2 size={13} className="animate-spin text-gray-400" />}
-                          </div>
-                          <div className="divide-y divide-gray-50">
-                            {([
-                              { key: 'assumeTarefasFazenda' as const, internalKey: 'assume_tarefas_fazenda' as const, label: 'Pode assumir tarefas da fazenda' },
-                              { key: 'podeAlterarSemanaFechada' as const, internalKey: 'pode_alterar_semana_fechada' as const, label: 'Pode alterar semana fechada' },
-                              { key: 'podeApagarSemana' as const, internalKey: 'pode_apagar_semana' as const, label: 'Pode apagar semana' },
-                            ]).map(({ key, internalKey, label }) => (
-                              <div key={key} className="flex items-center justify-between px-6 py-3">
-                                <span className="text-sm text-gray-600">{label}</span>
-                                <button
-                                  onClick={() => handleTogglePerm(farmId, key, internalKey)}
-                                  disabled={isSaving}
-                                  className={`relative w-10 h-[22px] rounded-full transition-colors disabled:opacity-50 shrink-0 ${
-                                    perm?.[key] ? 'bg-emerald-500' : 'bg-gray-200'
-                                  }`}
-                                >
-                                  <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform ${
-                                    perm?.[key] ? 'translate-x-[18px]' : 'translate-x-0'
-                                  }`} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                ))}
               </div>
             )}
-
-            {/* Outras Informações */}
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-
-              {/* Documentos */}
-              <div className="px-6 py-5 space-y-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Documentos</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">CPF</label>
-                    <input
-                      value={dados.cpf}
-                      onChange={e => setDados(d => ({ ...d, cpf: formatCPF(e.target.value) }))}
-                      placeholder="000.000.000-00"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">RG</label>
-                    <input
-                      value={dados.rg}
-                      onChange={e => setDados(d => ({ ...d, rg: e.target.value }))}
-                      placeholder="Documento de identidade"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Datas */}
-              <div className="px-6 py-5 space-y-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Datas</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Nascimento</label>
-                    <DateInputBR
-                      value={dados.data_nascimento}
-                      onChange={v => setDados(d => ({ ...d, data_nascimento: v }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Contratação</label>
-                    <DateInputBR
-                      value={dados.data_contratacao}
-                      onChange={v => setDados(d => ({ ...d, data_contratacao: v }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Localização */}
-              <div className="px-6 py-5 space-y-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Localização</p>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Cidade / UF</label>
-                  <input
-                    value={dados.location_city_uf}
-                    onChange={e => setDados(d => ({ ...d, location_city_uf: e.target.value }))}
-                    placeholder="Ex: Goiânia / GO"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Endereço</label>
-                  <textarea
-                    value={dados.endereco}
-                    onChange={e => setDados(d => ({ ...d, endereco: e.target.value }))}
-                    rows={2}
-                    placeholder="Endereço completo"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Observações */}
-              <div className="px-6 py-5 space-y-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Observações</p>
-                <textarea
-                  value={dados.observacoes}
-                  onChange={e => setDados(d => ({ ...d, observacoes: e.target.value }))}
-                  rows={4}
-                  placeholder="Anotações livres sobre esta pessoa..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                />
-              </div>
-
-              {/* Salvar Tab 2 */}
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
-                <button
-                  onClick={handleSaveDados}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
-                >
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                  Salvar Alterações
-                </button>
-              </div>
-
-            </div>
-
           </div>
-        )}
 
-      </div>{/* /content */}
+          {/* Fazendas */}
+          <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-gray-800">Fazendas Vinculadas</h3>
+            <div className="flex gap-3 flex-wrap">
+              <select value={newFarmId} onChange={e => setNewFarmId(e.target.value)} className={selectClass + ' max-w-xs'}>
+                <option value="">Selecione a fazenda</option>
+                {farmsDisponiveis.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleAddFazenda}
+                disabled={!newFarmId || addingFazenda}
+                className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+              >
+                {addingFazenda && <Loader2 size={12} className="animate-spin" />}
+                Vincular
+              </button>
+            </div>
+            {fazendasComNome.length > 0 && (
+              <div className="space-y-2">
+                {fazendasComNome.map(pf => (
+                  <div key={pf.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-gray-800">{pf.farm_name}</span>
+                      {pf.isPrimary && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">
+                          <Star size={10} /> Principal
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {!pf.isPrimary && (
+                        <button
+                          onClick={() => handleSetPrimary(pf.id)}
+                          className="text-xs text-emerald-600 hover:text-emerald-800 font-medium transition-colors"
+                        >
+                          Definir principal
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveFazenda(pf.id)}
+                        className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
+          {/* Permissões por Fazenda */}
+          {fazendasComNome.length > 0 && (
+            <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+              <h3 className="text-sm font-bold text-gray-800">Permissões por Fazenda</h3>
+              {fazendasComNome.map(pf => {
+                const perm = getPermissao(pf.farmId);
+                const isSaving = savingPerm === pf.farmId;
+                return (
+                  <div key={pf.farmId} className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-semibold text-gray-700">{pf.farm_name}</p>
+                    <div className="flex flex-wrap gap-4">
+                      {([
+                        { key: 'assumeTarefasFazenda' as const, internalKey: 'assume_tarefas_fazenda' as const, label: 'Assume tarefas' },
+                        { key: 'podeAlterarSemanaFechada' as const, internalKey: 'pode_alterar_semana_fechada' as const, label: 'Alterar semana fechada' },
+                        { key: 'podeApagarSemana' as const, internalKey: 'pode_apagar_semana' as const, label: 'Apagar semana' },
+                      ]).map(({ key, internalKey, label }) => (
+                        <label key={key} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={perm?.[key] ?? false}
+                            onChange={() => handleTogglePerm(pf.farmId, key, internalKey)}
+                            disabled={isSaving}
+                            className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                          />
+                          <span className="text-sm text-gray-700">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      {/* ─── Modal de Crop ──────────────────────────────────────────────────────── */}
+          {/* Informações adicionais: Data nascimento, contratação, observações */}
+          <div className="border border-gray-200 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-gray-800">Informações Adicionais</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Data de Nascimento">
+                <DateInputBR
+                  value={dados.data_nascimento}
+                  onChange={v => setDados(d => ({ ...d, data_nascimento: v }))}
+                />
+              </Field>
+              <Field label="Data de Contratação">
+                <DateInputBR
+                  value={dados.data_contratacao}
+                  onChange={v => setDados(d => ({ ...d, data_contratacao: v }))}
+                />
+              </Field>
+            </div>
+            <Field label="Observações">
+              <textarea
+                value={dados.observacoes}
+                onChange={e => setDados(d => ({ ...d, observacoes: e.target.value }))}
+                placeholder="Observações sobre esta pessoa..."
+                rows={3}
+                className={inputClass + ' resize-none'}
+              />
+            </Field>
+          </div>
+
+          {/* Botões */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={backToList}
+              className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDados}
+              disabled={!dados.full_name.trim() || dados.tipo.length === 0 || saving}
+              className="px-6 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Crop Modal ─────────────────────────────────────────────────────────── */}
       {showCropModal && cropSourceUrl && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-800">Ajustar Foto</h3>
-              <button onClick={() => setShowCropModal(false)} className="text-gray-400 hover:text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Ajustar Foto</h3>
+              <button onClick={() => setShowCropModal(false)} className="p-1 rounded hover:bg-gray-100 text-gray-400">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Canvas de crop */}
             <div
-              className="relative overflow-hidden rounded-full border-4 border-emerald-200 mx-auto cursor-move"
-              style={{ width: CROP_SIZE, height: CROP_SIZE }}
+              className="relative w-[280px] h-[280px] mx-auto rounded-full overflow-hidden bg-gray-100 cursor-move"
               onMouseDown={onCropMouseDown}
               onMouseMove={onCropMouseMove}
               onMouseUp={onCropMouseUp}
@@ -1325,55 +1463,49 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
               <img
                 ref={cropImageRef}
                 src={cropSourceUrl}
-                alt="Crop"
-                draggable={false}
-                onLoad={e => {
+                onLoad={(e) => {
                   const img = e.currentTarget;
-                  const w = img.naturalWidth;
-                  const h = img.naturalHeight;
-                  setCropImageSize({ w, h });
-                  // fitZoom: menor escala para que a imagem inteira caiba no círculo
-                  const fitZoom = CROP_SIZE / Math.max(w, h);
-                  const minZoom = Math.min(fitZoom, 1);
-                  setCropMinZoom(minZoom);
-                  setCropZoom(minZoom);
-                  setCropPosition({ x: 0, y: 0 });
+                  setCropImageSize({ w: img.naturalWidth, h: img.naturalHeight });
+                  const minScale = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight);
+                  setCropMinZoom(minScale);
+                  setCropZoom(minScale);
                 }}
                 style={{
                   position: 'absolute',
                   left: '50%',
                   top: '50%',
-                  transform: `translate(calc(-50% + ${cropPosition.x}px), calc(-50% + ${cropPosition.y}px)) scale(${cropZoom})`,
+                  transform: `translate(-50%, -50%) translate(${cropPosition.x}px, ${cropPosition.y}px) scale(${cropZoom})`,
+                  transformOrigin: 'center center',
+                  pointerEvents: 'none',
                   maxWidth: 'none',
-                  userSelect: 'none',
                 }}
+                draggable={false}
               />
             </div>
 
-            {/* Zoom */}
-            <div className="flex items-center gap-3 mt-4">
-              <ZoomIn size={14} className="text-gray-400" />
+            <div className="flex items-center gap-3">
+              <ZoomIn size={16} className="text-gray-500" />
               <input
                 type="range"
                 min={cropMinZoom}
-                max={4}
+                max={cropMinZoom * 4}
                 step={0.01}
                 value={cropZoom}
                 onChange={e => setCropZoom(Number(e.target.value))}
-                className="flex-1"
+                className="flex-1 accent-emerald-600"
               />
             </div>
 
-            <div className="flex gap-3 mt-4">
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowCropModal(false)}
-                className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={applyCrop}
-                className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
               >
                 Aplicar
               </button>

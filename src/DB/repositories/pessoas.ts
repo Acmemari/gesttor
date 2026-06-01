@@ -48,6 +48,25 @@ export type CreatePessoaInput = {
   endereco?: string;
   observacoes?: string;
   created_by?: string;
+  // Novos campos
+  tipo?: string[];
+  razao_social?: string;
+  inscricao_estadual?: string;
+  tipo_documento?: string;
+  numero_documento?: string;
+  cep?: string;
+  logradouro?: string;
+  endereco_numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  banco?: string;
+  agencia?: string;
+  conta?: string;
+  tipo_conta?: string;
+  titular_conta?: string;
+  cpf_cnpj_conta?: string;
 };
 
 export type UpdatePessoaInput = Partial<CreatePessoaInput> & {
@@ -170,6 +189,25 @@ export async function createPessoa(data: CreatePessoaInput) {
     observacoes: data.observacoes ?? null,
     createdBy: data.created_by ?? null,
     ativo: true,
+    // Novos campos
+    tipo: data.tipo ?? [],
+    razaoSocial: data.razao_social ?? null,
+    inscricaoEstadual: data.inscricao_estadual ?? null,
+    tipoDocumento: data.tipo_documento ?? null,
+    numeroDocumento: data.numero_documento ?? null,
+    cep: data.cep ?? null,
+    logradouro: data.logradouro ?? null,
+    enderecoNumero: data.endereco_numero ?? null,
+    complemento: data.complemento ?? null,
+    bairro: data.bairro ?? null,
+    cidade: data.cidade ?? null,
+    estado: data.estado ?? null,
+    banco: data.banco ?? null,
+    agencia: data.agencia ?? null,
+    conta: data.conta ?? null,
+    tipoConta: data.tipo_conta ?? null,
+    titularConta: data.titular_conta ?? null,
+    cpfCnpjConta: data.cpf_cnpj_conta ?? null,
   }).returning();
   return row;
 }
@@ -193,6 +231,25 @@ export async function updatePessoa(id: string, data: UpdatePessoaInput) {
   if (data.data_contratacao !== undefined) mapped.dataContratacao = data.data_contratacao;
   if (data.endereco !== undefined) mapped.endereco = data.endereco;
   if (data.observacoes !== undefined) mapped.observacoes = data.observacoes;
+  // Novos campos
+  if (data.tipo !== undefined) mapped.tipo = data.tipo;
+  if (data.razao_social !== undefined) mapped.razaoSocial = data.razao_social;
+  if (data.inscricao_estadual !== undefined) mapped.inscricaoEstadual = data.inscricao_estadual;
+  if (data.tipo_documento !== undefined) mapped.tipoDocumento = data.tipo_documento;
+  if (data.numero_documento !== undefined) mapped.numeroDocumento = data.numero_documento;
+  if (data.cep !== undefined) mapped.cep = data.cep;
+  if (data.logradouro !== undefined) mapped.logradouro = data.logradouro;
+  if (data.endereco_numero !== undefined) mapped.enderecoNumero = data.endereco_numero;
+  if (data.complemento !== undefined) mapped.complemento = data.complemento;
+  if (data.bairro !== undefined) mapped.bairro = data.bairro;
+  if (data.cidade !== undefined) mapped.cidade = data.cidade;
+  if (data.estado !== undefined) mapped.estado = data.estado;
+  if (data.banco !== undefined) mapped.banco = data.banco;
+  if (data.agencia !== undefined) mapped.agencia = data.agencia;
+  if (data.conta !== undefined) mapped.conta = data.conta;
+  if (data.tipo_conta !== undefined) mapped.tipoConta = data.tipo_conta;
+  if (data.titular_conta !== undefined) mapped.titularConta = data.titular_conta;
+  if (data.cpf_cnpj_conta !== undefined) mapped.cpfCnpjConta = data.cpf_cnpj_conta;
   const [row] = await db.update(people).set(mapped).where(eq(people.id, id as any)).returning();
   return row;
 }

@@ -24,6 +24,25 @@ export interface Pessoa {
   dataContratacao: string | null;
   endereco: string | null;
   observacoes: string | null;
+  // Novos campos
+  tipo: string[] | null;
+  razaoSocial: string | null;
+  inscricaoEstadual: string | null;
+  tipoDocumento: string | null;
+  numeroDocumento: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  enderecoNumero: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  estado: string | null;
+  banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  tipoConta: string | null;
+  titularConta: string | null;
+  cpfCnpjConta: string | null;
   ativo: boolean;
   inviteStatus: string | null;
   inviteRole: string | null;
@@ -100,6 +119,25 @@ export interface CreatePessoaData {
   data_contratacao?: string | null;
   endereco?: string | null;
   observacoes?: string | null;
+  // Novos campos
+  tipo?: string[];
+  razao_social?: string | null;
+  inscricao_estadual?: string | null;
+  tipo_documento?: string | null;
+  numero_documento?: string | null;
+  cep?: string | null;
+  logradouro?: string | null;
+  endereco_numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  banco?: string | null;
+  agencia?: string | null;
+  conta?: string | null;
+  tipo_conta?: string | null;
+  titular_conta?: string | null;
+  cpf_cnpj_conta?: string | null;
 }
 
 export type UpdatePessoaData = Partial<Omit<CreatePessoaData, 'organization_id'> & { ativo?: boolean }>;
@@ -138,6 +176,20 @@ export function validateCPF(cpf: string): boolean {
   rem = (sum * 10) % 11;
   if (rem === 10 || rem === 11) rem = 0;
   return rem === parseInt(digits[10]);
+}
+
+export function formatCNPJ(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+
+export function formatCEP(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  return digits.replace(/(\d{5})(\d)/, '$1-$2');
 }
 
 // ─── Helper HTTP ───────────────────────────────────────────────────────────────

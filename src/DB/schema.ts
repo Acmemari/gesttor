@@ -224,6 +224,28 @@ export const people = pgTable('people', {
   dataContratacao: date('data_contratacao'),
   endereco: text('endereco'),
   observacoes: text('observacoes'),
+  // Tipo da pessoa (array: cliente, fornecedor, transportadora, proprietario, funcionario)
+  tipo: jsonb('tipo').default('[]'),
+  // Dados empresariais
+  razaoSocial: text('razao_social'),
+  inscricaoEstadual: text('inscricao_estadual'),
+  tipoDocumento: text('tipo_documento'),       // 'cpf' | 'cnpj' | 'rg' | 'cnh' | 'passaporte'
+  numeroDocumento: text('numero_documento'),
+  // Endereço estruturado
+  cep: text('cep'),
+  logradouro: text('logradouro'),
+  enderecoNumero: text('endereco_numero'),
+  complemento: text('complemento'),
+  bairro: text('bairro'),
+  cidade: text('cidade'),
+  estado: text('estado'),
+  // Dados bancários
+  banco: text('banco'),
+  agencia: text('agencia'),
+  conta: text('conta'),
+  tipoConta: text('tipo_conta'),               // 'corrente' | 'poupanca'
+  titularConta: text('titular_conta'),
+  cpfCnpjConta: text('cpf_cnpj_conta'),
   ativo: boolean('ativo').default(true),
   createdBy: text('created_by'),
   podeAlterarSemanaFechada: boolean('pode_alterar_semana_fechada').default(false),
