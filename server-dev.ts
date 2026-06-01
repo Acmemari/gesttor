@@ -327,4 +327,18 @@ app.get('/', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 API dev rodando em http://localhost:${PORT}`);
   console.log(`📝 Vite faz proxy de /api/* para este servidor\n`);
+
+  // Warm-up: resolve o DNS do Neon e abre a primeira conexão ANTES da primeira
+  // requisição real (ex.: auto-login). Sem isso, a primeira query a frio podia
+  // falhar com getaddrinfo ENOTFOUND e devolver 500 "Internal Server Error".
+  // O retry em src/DB/index.ts já cobre o caso; o warm-up evita até a latência.
+  void (async () => {
+    try {
+      const { pool } = await import('./src/DB/index.js');
+      await pool.query('SELECT 1');
+      console.log('🔥 Conexão com o banco aquecida.');
+    } catch (err) {
+      console.warn('⚠️  Falha ao aquecer conexão com o banco:', err instanceof Error ? err.message : err);
+    }
+  })();
 });

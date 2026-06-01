@@ -840,6 +840,7 @@ export const animalCategories = pgTable('animal_categories', {
     .references(() => organizations.id, { onDelete: 'cascade' }),
   nome: text('nome').notNull(),
   complemento: text('complemento'),
+  raca: text('raca'),
   sexo: text('sexo').notNull(),
   grupo: text('grupo').notNull(),
   idadeFaixa: text('idade_faixa'),

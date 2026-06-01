@@ -12,6 +12,7 @@ export async function create(data: {
   organizationId: string;
   nome: string;
   complemento?: string | null;
+  raca?: string | null;
   sexo: string;
   grupo: string;
   idadeFaixa?: string | null;
@@ -26,6 +27,7 @@ export async function create(data: {
     organizationId: data.organizationId,
     nome: data.nome,
     complemento: data.complemento ?? null,
+    raca: data.raca ?? null,
     sexo: data.sexo,
     grupo: data.grupo,
     idadeFaixa: data.idadeFaixa ?? null,
@@ -38,6 +40,7 @@ export async function create(data: {
 export async function update(id: string, data: {
   nome?: string;
   complemento?: string | null;
+  raca?: string | null;
   sexo?: string;
   grupo?: string;
   idadeFaixa?: string | null;

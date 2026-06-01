@@ -84,6 +84,7 @@ interface Props {
 
 interface FormState {
   nome: string;
+  raca: string;
   complemento: string;
   grupo: string;
   sexo: string;
@@ -93,6 +94,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   nome: '',
+  raca: '',
   complemento: '',
   grupo: 'outros',
   sexo: 'macho',
@@ -136,7 +138,19 @@ const SortableRow: React.FC<SortableRowProps> = ({ category, onEdit, onDelete, t
           <GripVertical size={16} />
         </button>
       </td>
-      <td className="px-4 py-3 font-bold text-[#0F172A]">{category.nome}</td>
+      <td className="px-4 py-3 text-[#0F172A]">
+        <div className="font-bold">{category.nome}</div>
+        {category.raca && (
+          <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+            {category.raca} {category.complemento ? `· ${category.complemento}` : ''}
+          </div>
+        )}
+        {!category.raca && category.complemento && (
+          <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+            {category.complemento}
+          </div>
+        )}
+      </td>
       <td className="px-4 py-3">
         <span
           className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
@@ -229,6 +243,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
     setEditingCategory(cat);
     setForm({
       nome: cat.nome,
+      raca: cat.raca ?? '',
       complemento: cat.complemento ?? '',
       grupo: cat.grupo,
       sexo: cat.sexo,
@@ -260,6 +275,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
     try {
       const payload = {
         nome: form.nome.trim(),
+        raca: form.raca || undefined,
         complemento: form.complemento.trim() || undefined,
         sexo: form.sexo,
         grupo: form.grupo,
@@ -430,7 +446,19 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
                         <td className="px-3 py-3 w-10">
                           <GripVertical size={16} className="text-[#16A34A]" />
                         </td>
-                        <td className="px-4 py-3 font-bold">{activeDragCategory.nome}</td>
+                        <td className="px-4 py-3 text-[#0F172A]">
+                          <div className="font-bold">{activeDragCategory.nome}</div>
+                          {activeDragCategory.raca && (
+                            <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                              {activeDragCategory.raca} {activeDragCategory.complemento ? `· ${activeDragCategory.complemento}` : ''}
+                            </div>
+                          )}
+                          {!activeDragCategory.raca && activeDragCategory.complemento && (
+                            <div className="text-[10px] text-gray-500 font-medium mt-0.5">
+                              {activeDragCategory.complemento}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
@@ -491,8 +519,8 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Descrição + Complemento lado a lado */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Descrição + Raça + Complemento lado a lado */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">
                     Descrição <span className="text-[#DC2626]">*</span>
@@ -504,6 +532,24 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack, theme = 
                     placeholder="Ex: Bezerro Desmamado, Novilha..."
                     className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all placeholder-gray-400"
                   />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">
+                    Raça
+                  </label>
+                  <select
+                    value={form.raca}
+                    onChange={(e) => setForm((f) => ({ ...f, raca: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all"
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="Nelore">Nelore</option>
+                    <option value="Anelorado">Anelorado</option>
+                    <option value="Brangus">Brangus</option>
+                    <option value="Angus">Angus</option>
+                    <option value="Senepol">Senepol</option>
+                    <option value="Cruzado">Cruzado</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">

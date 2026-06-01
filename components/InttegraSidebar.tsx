@@ -46,7 +46,8 @@ const INTEGRA_BORDER = '#5E6D82';
 
 const LOGO_SRC = '/inttegra-logo.png';
 
-type SubItem = { label: string; icon?: 'chevron' | 'star' };
+type SubItemChild = { label: string; view?: string };
+type SubItem = { label: string; icon?: 'chevron' | 'star'; children?: SubItemChild[] };
 type ExpandableItem = { id: string; label: string; icon: React.ElementType; subItems: SubItem[] };
 
 const expandableSections: ExpandableItem[] = [
@@ -56,7 +57,11 @@ const expandableSections: ExpandableItem[] = [
     icon: CattleHeadIcon,
     subItems: [
       { label: 'Cadastros', icon: 'chevron' },
-      { label: 'Movimentações', icon: 'chevron' },
+      {
+        label: 'Movimentações',
+        icon: 'chevron',
+        children: [{ label: 'Nascimentos', view: 'pecuario-movimentacao' }],
+      },
       { label: 'Relatórios' },
     ],
   },
@@ -201,6 +206,12 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Expansão de subitens que possuem filhos (3º nível), ex.: Movimentações › Nascimentos
+  const [openSubSections, setOpenSubSections] = useState<Record<string, boolean>>({});
+  const toggleSubSection = (key: string) => {
+    setOpenSubSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const toggleFinanceiroSub = (id: string) => {
@@ -373,29 +384,59 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                 </button>
                 {!isCollapsed && isOpen && (
                   <div className="ml-[16px] mr-0 mt-1 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
-                    {subItems.map(sub => (
-                      <div
-                        key={sub.label}
-                        className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
-                        style={{ color: INTEGRA_TEXT }}
-                        onClick={() => {
-                          if (id === 'pecuaria' && sub.label === 'Cadastros' && onViewChange) {
-                            onViewChange('pecuario-cadastros');
-                          } else if (sub.label === 'Smart Start' && onViewChange) {
-                            onViewChange('smart-start');
-                          } else if (id === 'cadastros-gerais' && sub.label === 'Propriedades' && onViewChange) {
-                            onViewChange('propriedades');
-                          }
-                        }}
-                      >
-                        <span className="text-[13px] truncate">{sub.label}</span>
-                        {sub.icon === 'star' ? (
-                          <Star size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
-                        ) : sub.icon === 'chevron' ? (
-                          <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
-                        ) : null}
-                      </div>
-                    ))}
+                    {subItems.map(sub => {
+                      const hasChildren = !!sub.children?.length;
+                      const subKey = `${id}:${sub.label}`;
+                      const subOpen = openSubSections[subKey] ?? false;
+                      return (
+                        <div key={sub.label}>
+                          <div
+                            className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                            style={{ color: INTEGRA_TEXT }}
+                            onClick={() => {
+                              if (hasChildren) {
+                                toggleSubSection(subKey);
+                              } else if (id === 'pecuaria' && sub.label === 'Cadastros' && onViewChange) {
+                                onViewChange('pecuario-cadastros');
+                              } else if (sub.label === 'Smart Start' && onViewChange) {
+                                onViewChange('smart-start');
+                              } else if (id === 'cadastros-gerais' && sub.label === 'Propriedades' && onViewChange) {
+                                onViewChange('propriedades');
+                              }
+                            }}
+                          >
+                            <span className="text-[13px] truncate">{sub.label}</span>
+                            {hasChildren ? (
+                              subOpen ? (
+                                <ChevronUp size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-60" />
+                              ) : (
+                                <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-60" />
+                              )
+                            ) : sub.icon === 'star' ? (
+                              <Star size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
+                            ) : sub.icon === 'chevron' ? (
+                              <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-50" />
+                            ) : null}
+                          </div>
+                          {hasChildren && subOpen && (
+                            <div className="ml-[16px] mt-0.5 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
+                              {sub.children!.map(child => (
+                                <div
+                                  key={child.label}
+                                  className="flex items-center gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                                  style={{ color: INTEGRA_TEXT }}
+                                  onClick={() => {
+                                    if (child.view && onViewChange) onViewChange(child.view);
+                                  }}
+                                >
+                                  <span className="text-[13px] truncate">{child.label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

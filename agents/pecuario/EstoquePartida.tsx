@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, List } from 'lucide-react';
 import { useHierarchy } from '../../contexts/HierarchyContext';
 import { listAnimalCategories, type AnimalCategory } from '../../lib/api/animalCategoriesClient';
 import {
@@ -85,6 +85,17 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   const [editingCell, setEditingCell] = useState<{ key: string; field: 'qtd' | 'peso' } | null>(null);
   const [editingValue, setEditingValue] = useState<string>('');
   const editInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ── Summary cards collapsed state ──────────────────────────────────────────
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+
+  // ── View mode: 'pasto' (Mapa de Pasto) or 'categoria' (Distribuição por Categoria)
+  const [viewMode, setViewMode] = useState<'pasto' | 'categoria'>('pasto');
+
+  // ── Category mode editing state ────────────────────────────────────────────
+  const [catEditingCell, setCatEditingCell] = useState<{ catId: string; field: 'qtd' | 'peso' } | null>(null);
+  const [catEditingValue, setCatEditingValue] = useState<string>('');  
+  const catEditInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Keyboard navigation state ────────────────────────────────────────────
   const [focusedCell, setFocusedCell] = useState<{ key: string; field: 'qtd' | 'peso' } | null>(null);
@@ -513,6 +524,96 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     return groups;
   }, [locais]);
 
+  // ── Area total for lotação ────────────────────────────────────────────────
+  const areaTotal = useMemo(() => {
+    let total = 0;
+    for (const loc of locais) {
+      total += parseFloat(loc.area ?? '0') || 0;
+    }
+    return total;
+  }, [locais]);
+
+  // ── Category mode: totals per category ────────────────────────────────────
+  const catTotals = useMemo(() => {
+    return categorias.map(cat => {
+      const t = totaisPorCategoria[cat.id] ?? { qtd: 0, pesoTotal: 0 };
+      const pesoMedio = t.qtd > 0 ? t.pesoTotal / t.qtd : 0;
+      const lotacao = areaTotal > 0 && t.qtd > 0 ? t.qtd / areaTotal : 0;
+      return {
+        catId: cat.id,
+        nome: cat.nome,
+        qtd: t.qtd,
+        pesoMedio,
+        pesoTotal: t.pesoTotal,
+        lotacao,
+      };
+    });
+  }, [categorias, totaisPorCategoria, areaTotal]);
+
+  // ── Category mode: editing ────────────────────────────────────────────────
+  const startCatEdit = useCallback((catId: string, field: 'qtd' | 'peso') => {
+    if (!openMapa || openMapa.status === 'salvo') return;
+    const t = totaisPorCategoria[catId] ?? { qtd: 0, pesoTotal: 0 };
+    const pesoMedio = t.qtd > 0 ? t.pesoTotal / t.qtd : 0;
+    const value = field === 'qtd' ? (t.qtd ? String(t.qtd) : '') : (pesoMedio ? String(pesoMedio).replace('.', ',') : '');
+    setCatEditingCell({ catId, field });
+    setCatEditingValue(value);
+    setTimeout(() => catEditInputRef.current?.select(), 0);
+  }, [openMapa, totaisPorCategoria]);
+
+  const commitCatEdit = useCallback(async () => {
+    if (!catEditingCell || !openMapa || locais.length === 0) return;
+    const { catId, field } = catEditingCell;
+    const raw = catEditingValue.trim().replace(',', '.');
+    let numeric = parseFloat(raw);
+    if (!Number.isFinite(numeric) || numeric < 0) numeric = 0;
+    if (field === 'qtd') numeric = Math.trunc(numeric);
+
+    // Use first local as storage target for category-level entries
+    const targetLocal = locais[0];
+    const key = cellKey(targetLocal.id, catId);
+    const existing = lancamentos[key] ?? { quantidade: 0, pesoKgCabeca: 0 };
+    const payload = {
+      quantidade: field === 'qtd' ? numeric : existing.quantidade,
+      pesoKgCabeca: field === 'peso' ? numeric : existing.pesoKgCabeca,
+    };
+
+    // Optimistic update
+    setLancamentos(prev => ({ ...prev, [key]: payload }));
+    setCatEditingCell(null);
+    setCatEditingValue('');
+
+    try {
+      await upsertLancamento({
+        mapaHeaderId: openMapa.id,
+        localId: targetLocal.id,
+        categoriaId: catId,
+        ...payload,
+      });
+    } catch (err: any) {
+      onToast?.(err?.message || 'Erro ao salvar', 'error');
+      void loadEditor(openMapa);
+    }
+  }, [catEditingCell, catEditingValue, openMapa, locais, lancamentos, onToast, loadEditor]);
+
+  const cancelCatEdit = useCallback(() => {
+    setCatEditingCell(null);
+    setCatEditingValue('');
+  }, []);
+
+  const handleCatKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelCatEdit();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      void commitCatEdit();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      void commitCatEdit();
+    }
+  }, [commitCatEdit, cancelCatEdit]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (hierarchyLoading.farms && farms.length === 0) {
     return (
@@ -548,242 +649,379 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   if (openMapa) {
     const isLocked = openMapa.status === 'salvo';
     return (
-      <div className="h-full flex flex-col p-6 md:p-10 max-w-[1400px] mx-auto w-full animate-in fade-in duration-500">
-        <header className="mb-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-2">
+      <div className="h-full flex flex-col p-4 md:p-6 max-w-[1400px] mx-auto w-full animate-in fade-in duration-500" style={{ height: '100vh', maxHeight: '100vh' }}>
+        <header className="mb-3 shrink-0">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={handleCloseEditor}
-                className="flex items-center gap-2 text-xs font-bold transition-colors text-gray-500 hover:text-[#16A34A]"
+                className="flex items-center gap-1.5 text-xs font-bold transition-colors text-gray-500 hover:text-[#16A34A] shrink-0"
               >
-                <ArrowLeft size={14} /> Voltar para mapas
+                <ArrowLeft size={14} />
               </button>
-              <div className="space-y-0.5">
-                <span className="text-[11px] font-bold text-[#22C55E] tracking-widest uppercase">
-                  DETALHE DO ESTOQUE
-                </span>
-                <h1 className="text-2xl md:text-3xl font-black tracking-tight text-[#0F172A]">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-[#22C55E] tracking-widest uppercase">
+                    DETALHE DO ESTOQUE
+                  </span>
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded-full text-[0.6rem] font-bold uppercase tracking-wider ${
+                      isLocked
+                        ? 'bg-[#DCFCE7] text-[#166534]'
+                        : 'bg-[#FEF3C7] text-[#92400E]'
+                    }`}
+                  >
+                    {isLocked ? 'Salvo' : 'Rascunho'}
+                  </span>
+                </div>
+                <h1 className="text-lg md:text-xl font-black tracking-tight text-[#0F172A] truncate">
                   {farmOfMapa?.name ?? 'Fazenda'} · {formatDateBR(openMapa.dataReferencia)}
                 </h1>
               </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    isLocked
-                      ? 'bg-[#DCFCE7] text-[#166534]'
-                      : 'bg-[#FEF3C7] text-[#92400E]'
-                  }`}
-                >
-                  {isLocked ? 'Salvo' : 'Rascunho'}
-                </span>
-              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSummaryCollapsed(prev => !prev)}
+                className="flex items-center gap-1.5 px-3 py-2 text-[0.7rem] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F9FAFB] hover:border-[#D1D5DB]"
+                title={summaryCollapsed ? 'Expandir resumo' : 'Recolher resumo'}
+              >
+                {summaryCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {summaryCollapsed ? 'Resumo' : 'Recolher'}
+              </button>
               <button
                 type="button"
                 onClick={toggleStatus}
                 disabled={savingHeader}
-                className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold uppercase tracking-wider rounded-xl transition-all duration-300 ${
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-300 ${
                   isLocked
                     ? 'bg-white border border-[#16A34A] text-[#16A34A] hover:bg-[#E7F6EC]'
                     : 'bg-[#16A34A] text-white hover:bg-[#15803D] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
                 } disabled:opacity-50`}
               >
                 {savingHeader ? (
-                  <Loader2 size={16} className="animate-spin" />
+                  <Loader2 size={14} className="animate-spin" />
                 ) : isLocked ? (
-                  <Pencil size={16} />
+                  <Pencil size={14} />
                 ) : (
-                  <Save size={16} />
+                  <Save size={14} />
                 )}
                 {isLocked ? 'Editar' : 'Salvar mapa'}
               </button>
             </div>
           </div>
 
-          {/* Cards de resumo */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-6">
-            <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-[0_1px_3px_rgba(16,24,40,0.08)] p-6">
-              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">Total de Cabeças</p>
-              <p className="text-3xl font-black mt-1 text-[#0F172A]">{fmtNum(totals.totalCab)}</p>
+          {/* Summary cards - collapsible & compact */}
+          {!summaryCollapsed && (
+            <div className="flex items-stretch gap-3 mt-3 overflow-x-auto">
+              <div className="bg-white border border-[#E5E7EB] rounded-lg shadow-[0_1px_2px_rgba(16,24,40,0.05)] px-4 py-2.5 flex items-center gap-3 min-w-fit">
+                <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider whitespace-nowrap">Cabeças</p>
+                <p className="text-xl font-black text-[#0F172A]">{fmtNum(totals.totalCab)}</p>
+              </div>
+              <div className="bg-white border border-[#E5E7EB] rounded-lg shadow-[0_1px_2px_rgba(16,24,40,0.05)] px-4 py-2.5 flex items-center gap-3 min-w-fit">
+                <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider whitespace-nowrap">Peso Médio</p>
+                <p className="text-xl font-black text-[#0F172A]">{fmtNum(totals.pesoMedio, 1)} <span className="text-xs font-semibold text-gray-500">kg</span></p>
+              </div>
+              <div className="bg-white border border-[#E5E7EB] rounded-lg shadow-[0_1px_2px_rgba(16,24,40,0.05)] px-4 py-2.5 flex items-center gap-3 min-w-fit">
+                <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider whitespace-nowrap">Lotação</p>
+                <p className="text-xl font-black text-[#0F172A]">
+                  {fmtNum(lotacaoFazenda, 2)} <span className="text-xs font-semibold text-gray-500">cab/ha</span>
+                </p>
+              </div>
             </div>
-            <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-[0_1px_3px_rgba(16,24,40,0.08)] p-6">
-              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">Peso Médio</p>
-              <p className="text-3xl font-black mt-1 text-[#0F172A]">{fmtNum(totals.pesoMedio, 1)} <span className="text-sm font-semibold text-gray-500">kg</span></p>
-            </div>
-            <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-[0_1px_3px_rgba(16,24,40,0.08)] p-6">
-              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">Lotação Fazenda</p>
-              <p className="text-3xl font-black mt-1 text-[#0F172A]">
-                {fmtNum(lotacaoFazenda, 2)} <span className="text-sm font-semibold text-gray-500">cab/ha</span>
-              </p>
+          )}
+
+          {/* DISTRIBUIÇÃO segmented control */}
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider mr-1">Distribuição</span>
+            <div className="flex rounded-lg border border-[#E5E7EB] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
+              <button
+                type="button"
+                onClick={() => setViewMode('pasto')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold transition-all duration-200 ${
+                  viewMode === 'pasto'
+                    ? 'bg-[#16A34A] text-white shadow-sm'
+                    : 'bg-white text-[#6B7280] hover:bg-[#F9FAFB]'
+                }`}
+              >
+                <LayoutGrid size={13} />
+                Mapa de Pasto
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('categoria')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold transition-all duration-200 border-l border-[#E5E7EB] ${
+                  viewMode === 'categoria'
+                    ? 'bg-[#16A34A] text-white shadow-sm'
+                    : 'bg-white text-[#6B7280] hover:bg-[#F9FAFB]'
+                }`}
+              >
+                <List size={13} />
+                Distribuição por Categoria
+              </button>
             </div>
           </div>
         </header>
 
         {loadingEditor ? (
-          <div className="flex-1 flex items-center justify-center min-h-[250px]"><Loader2 className="animate-spin text-[#16A34A]" size={28} /></div>
+          <div className="flex-1 flex items-center justify-center min-h-[120px]"><Loader2 className="animate-spin text-[#16A34A]" size={28} /></div>
         ) : locais.length === 0 ? (
-          <div className="border border-dashed border-[#E5E7EB] bg-white rounded-xl p-10 text-center text-sm font-medium text-gray-500 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
+          <div className="border border-dashed border-[#E5E7EB] bg-white rounded-xl p-8 text-center text-sm font-medium text-gray-500 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
             Esta fazenda ainda não tem locais cadastrados. Cadastre os locais em <span className="font-bold text-[#16A34A]">Cadastros Gerais &gt; Propriedades (aba Locais)</span> antes de preencher o mapa.
           </div>
         ) : categorias.length === 0 ? (
-          <div className="border border-dashed border-[#E5E7EB] bg-white rounded-xl p-10 text-center text-sm font-medium text-gray-500 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
+          <div className="border border-dashed border-[#E5E7EB] bg-white rounded-xl p-8 text-center text-sm font-medium text-gray-500 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
             Nenhuma categoria animal cadastrada. Cadastre categorias em <span className="font-bold text-[#16A34A]">Cadastros &gt; Categoria Animal</span>.
           </div>
+        ) : viewMode === 'categoria' ? (
+          /* ═══════ Distribuição por Categoria ═══════ */
+          <div className="flex-1 min-h-0 border border-[#E5E7EB] bg-white rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(16,24,40,0.08)] flex flex-col">
+            <div className="overflow-auto flex-1">
+              <table className="min-w-full text-xs" role="grid">
+                <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] sticky top-0 z-20">
+                  <tr className="text-[#6B7280] font-bold text-[11px] uppercase tracking-wider">
+                    <th className="px-4 py-2.5 text-left min-w-[220px] border-b border-[#E5E7EB] bg-[#F9FAFB]">Categoria</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[100px] bg-[#F9FAFB]">Qtd</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[130px] bg-[#F9FAFB]">Peso Médio (kg)</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[140px] bg-[#F9FAFB]">Peso Total (kg)</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[130px] bg-[#F9FAFB]">Lotação (cab/ha)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catTotals.map(ct => {
+                    const editingQtd = catEditingCell?.catId === ct.catId && catEditingCell.field === 'qtd';
+                    const editingPeso = catEditingCell?.catId === ct.catId && catEditingCell.field === 'peso';
+                    return (
+                      <tr key={ct.catId} className="border-b border-[#E5E7EB] transition-colors duration-150 hover:bg-[#F9FAFB]">
+                        <td className="px-4 py-3 font-bold text-[#0F172A] border-r border-[#E5E7EB]">
+                          <div className="flex items-center gap-2">
+                            <List size={13} className="text-[#6B7280]" />
+                            {ct.nome}
+                          </div>
+                        </td>
+                        {/* QTD */}
+                        <td
+                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                            editingQtd
+                              ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
+                              : 'hover:bg-[#F9FAFB]'
+                          }`}
+                          onClick={() => !isLocked && startCatEdit(ct.catId, 'qtd')}
+                        >
+                          {editingQtd ? (
+                            <input
+                              ref={catEditInputRef}
+                              type="text"
+                              inputMode="numeric"
+                              value={catEditingValue}
+                              onChange={e => setCatEditingValue(e.target.value)}
+                              onKeyDown={handleCatKeyDown}
+                              onBlur={() => void commitCatEdit()}
+                              className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className={ct.qtd ? 'text-[#0F172A]' : 'text-[#9CA3AF]'}>
+                              {ct.qtd ? fmtNum(ct.qtd) : '—'}
+                            </span>
+                          )}
+                        </td>
+                        {/* PESO MÉDIO */}
+                        <td
+                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                            editingPeso
+                              ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
+                              : 'hover:bg-[#F9FAFB]'
+                          }`}
+                          onClick={() => !isLocked && startCatEdit(ct.catId, 'peso')}
+                        >
+                          {editingPeso ? (
+                            <input
+                              ref={catEditInputRef}
+                              type="text"
+                              inputMode="decimal"
+                              value={catEditingValue}
+                              onChange={e => setCatEditingValue(e.target.value)}
+                              onKeyDown={handleCatKeyDown}
+                              onBlur={() => void commitCatEdit()}
+                              className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className={ct.pesoMedio ? 'text-[#6B7280]' : 'text-[#9CA3AF]'}>
+                              {ct.pesoMedio ? fmtNum(ct.pesoMedio, 1) : '—'}
+                            </span>
+                          )}
+                        </td>
+                        {/* PESO TOTAL (derived) */}
+                        <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">
+                          {ct.pesoTotal ? fmtNum(ct.pesoTotal, 1) : '—'}
+                        </td>
+                        {/* LOTAÇÃO (derived) */}
+                        <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">
+                          {ct.lotacao ? fmtNum(ct.lotacao, 2) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="border-t-2 bg-[#F9FAFB] border-[#E5E7EB]">
+                  <tr className="font-bold text-[#0F172A]">
+                    <td className="px-4 py-3.5 border-r border-[#E5E7EB] bg-[#F9FAFB]">Total</td>
+                    <td className="px-4 py-3.5 text-right border-l border-[#E5E7EB]">{totals.totalCab ? fmtNum(totals.totalCab) : '—'}</td>
+                    <td className="px-4 py-3.5 text-right border-l border-[#E5E7EB] text-[#6B7280]">{totals.totalCab ? fmtNum(totals.pesoMedio, 1) : '—'}</td>
+                    <td className="px-4 py-3.5 text-right border-l border-[#E5E7EB] text-[#6B7280]">
+                      {totals.totalCab ? fmtNum(totals.totalCab * totals.pesoMedio, 1) : '—'}
+                    </td>
+                    <td className="px-4 py-3.5 text-right border-l border-[#E5E7EB] text-[#6B7280]">
+                      {areaTotal > 0 && totals.totalCab ? fmtNum(totals.totalCab / areaTotal, 2) : '—'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         ) : (
+          /* ═══════ Mapa de Pasto ═══════ */
           <div
             ref={tableContainerRef}
             tabIndex={0}
             onKeyDown={handleTableKeyDown}
-            className="border border-[#E5E7EB] bg-white rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(16,24,40,0.08)] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/30 focus:ring-offset-1 transition-shadow"
+            className="flex-1 min-h-0 border border-[#E5E7EB] bg-white rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(16,24,40,0.08)] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/30 focus:ring-offset-1 transition-shadow flex flex-col"
           >
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1">
               <table className="min-w-full text-xs" role="grid">
-                <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] sticky top-0 z-20">
                   <tr className="text-[#6B7280] font-bold text-[11px] uppercase tracking-wider">
-                    <th className="px-4 py-3.5 text-left sticky left-0 z-10 min-w-[200px] border-b border-[#E5E7EB] bg-[#F9FAFB]">Local</th>
+                    <th className="px-4 py-2.5 text-left sticky left-0 z-30 min-w-[200px] border-b border-[#E5E7EB] bg-[#F9FAFB]">Local</th>
                     {categorias.map(cat => (
-                      <th key={cat.id} colSpan={2} className="px-2 py-2 text-center border-l border-b border-[#E5E7EB] min-w-[140px]">
+                      <th key={cat.id} colSpan={2} className="px-2 py-2 text-center border-l border-b border-[#E5E7EB] min-w-[140px] bg-[#F9FAFB]">
                         {cat.nome}
                       </th>
                     ))}
-                    <th className="px-4 py-3.5 text-right border-l border-b border-[#E5E7EB] min-w-[90px]">Total</th>
-                    <th className="px-4 py-3.5 text-right border-l border-b border-[#E5E7EB] min-w-[100px]">Peso Médio</th>
-                    <th className="px-4 py-3.5 text-right border-l border-b border-[#E5E7EB] min-w-[100px]">Lotação</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[90px] bg-[#F9FAFB]">Total</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[100px] bg-[#F9FAFB]">Peso Médio</th>
+                    <th className="px-4 py-2.5 text-right border-l border-b border-[#E5E7EB] min-w-[100px] bg-[#F9FAFB]">Lotação</th>
                   </tr>
-                  <tr className="bg-[#F9FAFB]/50 border-b border-[#E5E7EB]">
-                    <th className="px-4 py-2 sticky left-0 z-10 border-b border-[#E5E7EB] bg-[#F9FAFB]"></th>
+                  <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                    <th className="px-4 py-1.5 sticky left-0 z-30 border-b border-[#E5E7EB] bg-[#F9FAFB]"></th>
                     {categorias.map(cat => (
                       <React.Fragment key={cat.id}>
                         <th className="px-2 py-2 text-right text-[10px] font-bold border-l border-b border-[#E5E7EB] uppercase text-[#9CA3AF] tracking-wider">Qtd</th>
                         <th className="px-2 py-2 text-right text-[10px] font-bold border-b border-[#E5E7EB] uppercase text-[#9CA3AF] tracking-wider">Peso (kg)</th>
                       </React.Fragment>
                     ))}
-                    <th colSpan={3} className="border-l border-b border-[#E5E7EB]"></th>
+                    <th colSpan={3} className="border-l border-b border-[#E5E7EB] bg-[#F9FAFB]"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(groupedLocais).map(([retiroName, localsInGroup]) => (
-                    <React.Fragment key={retiroName}>
-                      <tr className="bg-[#F3F4F6]/50 font-bold border-b border-[#E5E7EB]">
-                        <td
-                          colSpan={1 + categorias.length * 2 + 3}
-                          className="px-4 py-2 text-xs font-black text-gray-700 uppercase tracking-wider sticky left-0 z-10 bg-[#F3F4F6]/75 backdrop-blur-sm"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[#16A34A] font-black">Retiro:</span> {retiroName}
+                  {locais.map(loc => {
+                    let qtdLocal = 0;
+                    let pesoLocal = 0;
+                    for (const cat of categorias) {
+                      const v = lancamentos[cellKey(loc.id, cat.id)];
+                      if (v) { qtdLocal += v.quantidade; pesoLocal += v.quantidade * v.pesoKgCabeca; }
+                    }
+                    const pesoMedioLocal = qtdLocal > 0 ? pesoLocal / qtdLocal : 0;
+                    const areaLocal = parseFloat(loc.area ?? '0') || 0;
+                    const lotacaoLocal = areaLocal > 0 ? qtdLocal / areaLocal : 0;
+                    return (
+                      <tr key={loc.id} className="border-b border-[#E5E7EB] transition-colors duration-150 hover:bg-[#F9FAFB]" role="row">
+                        <td className="px-4 py-3 font-bold sticky left-0 z-10 bg-white text-[#0F172A] border-r border-[#E5E7EB]">
+                          <div className="flex items-center gap-2">
+                            <MapPin size={13} className="text-[#16A34A]" />
+                            {loc.name}
                           </div>
                         </td>
+                        {categorias.map(cat => {
+                          const key = cellKey(loc.id, cat.id);
+                          const v = lancamentos[key];
+                          const editingQtd = editingCell?.key === key && editingCell.field === 'qtd';
+                          const editingPeso = editingCell?.key === key && editingCell.field === 'peso';
+                          const focusedQtd = isNavigationMode && focusedCell?.key === key && focusedCell.field === 'qtd';
+                          const focusedPeso = isNavigationMode && focusedCell?.key === key && focusedCell.field === 'peso';
+                          return (
+                            <React.Fragment key={cat.id}>
+                              <td
+                                id={`cell-${key}-qtd`}
+                                role="gridcell"
+                                className={`px-3 py-2 text-right border-l font-medium transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                                  editingQtd
+                                    ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
+                                    : focusedQtd
+                                      ? 'bg-[#F0FDF4] ring-2 ring-inset ring-[#16A34A]/60 shadow-[inset_0_0_0_1px_rgba(22,163,74,0.3)]'
+                                      : 'hover:bg-[#F9FAFB]'
+                                }`}
+                                onClick={() => {
+                                  setFocusedCell({ key, field: 'qtd' });
+                                  if (!isLocked) {
+                                    startEditCell(key, 'qtd');
+                                  }
+                                }}
+                              >
+                                {editingQtd ? (
+                                  <input
+                                    ref={editInputRef}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={editingValue}
+                                    onChange={e => setEditingValue(e.target.value)}
+                                    onKeyDown={handleCellKeyDown}
+                                    onBlur={() => void commitEditCell(null)}
+                                    className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className={`inline-block w-full ${v?.quantidade ? 'text-[#0F172A]' : 'text-[#9CA3AF]'}`}>
+                                    {v?.quantidade ? fmtNum(v.quantidade) : '—'}
+                                  </span>
+                                )}
+                              </td>
+                              <td
+                                id={`cell-${key}-peso`}
+                                role="gridcell"
+                                className={`px-3 py-2 text-right border-r transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                                  editingPeso
+                                    ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
+                                    : focusedPeso
+                                      ? 'bg-[#F0FDF4] ring-2 ring-inset ring-[#16A34A]/60 shadow-[inset_0_0_0_1px_rgba(22,163,74,0.3)]'
+                                      : 'hover:bg-[#F9FAFB]'
+                                }`}
+                                onClick={() => {
+                                  setFocusedCell({ key, field: 'peso' });
+                                  if (!isLocked) {
+                                    startEditCell(key, 'peso');
+                                  }
+                                }}
+                              >
+                                {editingPeso ? (
+                                  <input
+                                    ref={editInputRef}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={editingValue}
+                                    onChange={e => setEditingValue(e.target.value)}
+                                    onKeyDown={handleCellKeyDown}
+                                    onBlur={() => void commitEditCell(null)}
+                                    className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className={`inline-block w-full ${v?.pesoKgCabeca ? 'text-[#6B7280]' : 'text-[#9CA3AF]'}`}>
+                                    {v?.pesoKgCabeca ? fmtNum(v.pesoKgCabeca, 1) : '—'}
+                                  </span>
+                                )}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                        <td className="px-4 py-3 text-right font-bold border-l border-[#E5E7EB] text-[#0F172A]">{qtdLocal ? fmtNum(qtdLocal) : '—'}</td>
+                        <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">{qtdLocal ? fmtNum(pesoMedioLocal, 1) : '—'}</td>
+                        <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">{areaLocal > 0 && qtdLocal ? fmtNum(lotacaoLocal, 2) : '—'}</td>
                       </tr>
-                      {localsInGroup.map(loc => {
-                        let qtdLocal = 0;
-                        let pesoLocal = 0;
-                        for (const cat of categorias) {
-                          const v = lancamentos[cellKey(loc.id, cat.id)];
-                          if (v) { qtdLocal += v.quantidade; pesoLocal += v.quantidade * v.pesoKgCabeca; }
-                        }
-                        const pesoMedioLocal = qtdLocal > 0 ? pesoLocal / qtdLocal : 0;
-                        const areaLocal = parseFloat(loc.area ?? '0') || 0;
-                        const lotacaoLocal = areaLocal > 0 ? qtdLocal / areaLocal : 0;
-                        return (
-                          <tr key={loc.id} className="border-b border-[#E5E7EB] transition-colors duration-150 hover:bg-[#F9FAFB]" role="row">
-                            <td className="px-4 py-3 font-bold sticky left-0 z-10 bg-white text-[#0F172A] border-r border-[#E5E7EB]">
-                              <div className="flex items-center gap-2">
-                                <MapPin size={13} className="text-[#16A34A]" />
-                                {loc.name}
-                              </div>
-                            </td>
-                            {categorias.map(cat => {
-                              const key = cellKey(loc.id, cat.id);
-                              const v = lancamentos[key];
-                              const editingQtd = editingCell?.key === key && editingCell.field === 'qtd';
-                              const editingPeso = editingCell?.key === key && editingCell.field === 'peso';
-                              const focusedQtd = isNavigationMode && focusedCell?.key === key && focusedCell.field === 'qtd';
-                              const focusedPeso = isNavigationMode && focusedCell?.key === key && focusedCell.field === 'peso';
-                              return (
-                                <React.Fragment key={cat.id}>
-                                  <td
-                                    id={`cell-${key}-qtd`}
-                                    role="gridcell"
-                                    className={`px-3 py-2 text-right border-l font-medium transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
-                                      editingQtd
-                                        ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
-                                        : focusedQtd
-                                          ? 'bg-[#F0FDF4] ring-2 ring-inset ring-[#16A34A]/60 shadow-[inset_0_0_0_1px_rgba(22,163,74,0.3)]'
-                                          : 'hover:bg-[#F9FAFB]'
-                                    }`}
-                                    onClick={() => {
-                                      setFocusedCell({ key, field: 'qtd' });
-                                      if (!isLocked) {
-                                        startEditCell(key, 'qtd');
-                                      }
-                                    }}
-                                  >
-                                    {editingQtd ? (
-                                      <input
-                                        ref={editInputRef}
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={editingValue}
-                                        onChange={e => setEditingValue(e.target.value)}
-                                        onKeyDown={handleCellKeyDown}
-                                        onBlur={() => void commitEditCell(null)}
-                                        className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
-                                        autoFocus
-                                      />
-                                    ) : (
-                                      <span className={`inline-block w-full ${v?.quantidade ? 'text-[#0F172A]' : 'text-[#9CA3AF]'}`}>
-                                        {v?.quantidade ? fmtNum(v.quantidade) : '—'}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td
-                                    id={`cell-${key}-peso`}
-                                    role="gridcell"
-                                    className={`px-3 py-2 text-right border-r transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
-                                      editingPeso
-                                        ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
-                                        : focusedPeso
-                                          ? 'bg-[#F0FDF4] ring-2 ring-inset ring-[#16A34A]/60 shadow-[inset_0_0_0_1px_rgba(22,163,74,0.3)]'
-                                          : 'hover:bg-[#F9FAFB]'
-                                    }`}
-                                    onClick={() => {
-                                      setFocusedCell({ key, field: 'peso' });
-                                      if (!isLocked) {
-                                        startEditCell(key, 'peso');
-                                      }
-                                    }}
-                                  >
-                                    {editingPeso ? (
-                                      <input
-                                        ref={editInputRef}
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={editingValue}
-                                        onChange={e => setEditingValue(e.target.value)}
-                                        onKeyDown={handleCellKeyDown}
-                                        onBlur={() => void commitEditCell(null)}
-                                        className="w-full bg-transparent text-right font-bold focus:outline-none focus:ring-0 border-0 p-0 text-[#15803D]"
-                                        autoFocus
-                                      />
-                                    ) : (
-                                      <span className={`inline-block w-full ${v?.pesoKgCabeca ? 'text-[#6B7280]' : 'text-[#9CA3AF]'}`}>
-                                        {v?.pesoKgCabeca ? fmtNum(v.pesoKgCabeca, 1) : '—'}
-                                      </span>
-                                    )}
-                                  </td>
-                                </React.Fragment>
-                              );
-                            })}
-                            <td className="px-4 py-3 text-right font-bold border-l border-[#E5E7EB] text-[#0F172A]">{qtdLocal ? fmtNum(qtdLocal) : '—'}</td>
-                            <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">{qtdLocal ? fmtNum(pesoMedioLocal, 1) : '—'}</td>
-                            <td className="px-4 py-3 text-right border-l font-semibold border-[#E5E7EB] text-[#6B7280]">{areaLocal > 0 && qtdLocal ? fmtNum(lotacaoLocal, 2) : '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot className="border-t-2 bg-[#F9FAFB] border-[#E5E7EB]">
                   <tr className="font-bold text-[#0F172A]">
@@ -810,32 +1048,22 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
               </table>
             </div>
             {!isLocked && (
-              <div className="px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]/50 text-[#6B7280] text-[0.7rem] leading-relaxed font-semibold">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold uppercase tracking-wider bg-[#DCFCE7] text-[#166534]">
-                    ⌨️ Navegação por Teclado
+              <div className="px-3 py-2 border-t border-[#E5E7EB] bg-[#F9FAFB]/50 text-[#6B7280] text-[0.65rem] leading-snug font-semibold shrink-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.6rem] font-bold uppercase tracking-wider bg-[#DCFCE7] text-[#166534]">
+                    ⌨️ Teclado
                   </span>
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
                   <span>
-                    <kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">←</kbd>
-                    <kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">↑</kbd>
-                    <kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">↓</kbd>
-                    <kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">→</kbd>
-                    navegar
+                    <kbd className="px-1 py-0.5 rounded border bg-white border-gray-200 shadow-sm text-[0.6rem]">←↑↓→</kbd> navegar
                   </span>
                   <span>·</span>
-                  <span><kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">Enter</kbd> editar célula</span>
+                  <span><kbd className="px-1 py-0.5 rounded border bg-white border-gray-200 shadow-sm text-[0.6rem]">Enter</kbd> editar</span>
                   <span>·</span>
-                  <span><kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">Enter</kbd> confirmar</span>
+                  <span><kbd className="px-1 py-0.5 rounded border bg-white border-gray-200 shadow-sm text-[0.6rem]">Tab</kbd> avançar</span>
                   <span>·</span>
-                  <span><kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">Tab</kbd> avançar</span>
+                  <span><kbd className="px-1 py-0.5 rounded border bg-white border-gray-200 shadow-sm text-[0.6rem]">Esc</kbd> cancelar</span>
                   <span>·</span>
-                  <span><kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">Esc</kbd> cancelar</span>
-                  <span>·</span>
-                  <span><kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">Home</kbd>/<kbd className="px-1.5 py-0.5 rounded border bg-white border-gray-200 shadow-sm">End</kbd> início/fim da linha</span>
-                  <span>·</span>
-                  <span>ou digite um número para editar direto</span>
+                  <span>número = editar direto</span>
                 </div>
               </div>
             )}

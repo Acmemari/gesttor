@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Create
-      const { organizationId, nome, sexo, grupo, idadeFaixa, pesoKg, complemento } = req.body ?? {};
+      const { organizationId, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca } = req.body ?? {};
       if (!organizationId || !nome || !sexo || !grupo) {
         jsonError(res, 'Campos obrigatórios: organizationId, nome, sexo, grupo', { status: 400 });
         return;
@@ -90,6 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         organizationId,
         nome: nome.trim(),
         complemento: complemento?.trim() || null,
+        raca: raca || null,
         sexo,
         grupo,
         idadeFaixa: idadeFaixa || null,
@@ -101,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, nome, sexo, grupo, idadeFaixa, pesoKg, complemento } = req.body ?? {};
+      const { id, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
@@ -122,6 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const payload: Record<string, any> = {};
       if (nome !== undefined) payload.nome = nome.trim();
       if (complemento !== undefined) payload.complemento = complemento?.trim() || null;
+      if (raca !== undefined) payload.raca = raca || null;
       if (sexo !== undefined) payload.sexo = sexo;
       if (grupo !== undefined) payload.grupo = grupo;
       if (idadeFaixa !== undefined) payload.idadeFaixa = idadeFaixa || null;

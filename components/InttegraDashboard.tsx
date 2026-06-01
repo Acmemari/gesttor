@@ -5,6 +5,7 @@ import SmartStart from './SmartStart';
 // Lazy-loaded components for Pecuária modules
 const PecuarioCadastrosDesktop = lazy(() => import('../agents/pecuario/PecuarioCadastrosDesktop'));
 const EstoquePartida = lazy(() => import('../agents/pecuario/EstoquePartida'));
+const PecuarioMovimentos = lazy(() => import('../agents/pecuario/PecuarioMovimentos'));
 const AnimalCategoriesManagement = lazy(() => import('../agents/AnimalCategoriesManagement'));
 const FarmManagement = lazy(() => import('../agents/FarmManagement'));
 
@@ -35,6 +36,14 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
     return (
       <Suspense fallback={<LoadingFallback />}>
         <FarmManagement onToast={onToast} isInttegra={true} />
+      </Suspense>
+    );
+  }
+
+  if (view === 'pecuario-movimentacao') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <PecuarioMovimentos onToast={onToast} />
       </Suspense>
     );
   }

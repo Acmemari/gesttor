@@ -5,6 +5,7 @@ export interface AnimalCategory {
   organizationId: string;
   nome: string;
   complemento: string | null;
+  raca: string | null;
   sexo: string;
   grupo: string;
   idadeFaixa: string | null;
@@ -34,6 +35,7 @@ export async function createAnimalCategory(data: {
   organizationId: string;
   nome: string;
   complemento?: string;
+  raca?: string;
   sexo: string;
   grupo: string;
   idadeFaixa?: string;
@@ -49,6 +51,7 @@ export async function createAnimalCategory(data: {
 export async function updateAnimalCategory(id: string, data: {
   nome?: string;
   complemento?: string;
+  raca?: string;
   sexo?: string;
   grupo?: string;
   idadeFaixa?: string;
