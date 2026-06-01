@@ -1,7 +1,8 @@
 /**
  * Tipos da tela de Nascimento (INTTEGRA Pecuário · Movimentação › Nascimento).
- * Conceito de camada dupla: a quantidade total é a âncora do estoque; o
- * detalhamento animal-a-animal é opcional e o que faltar vira pendência.
+ * Conceito de camada dupla aditiva: por categoria, o total = quantidade
+ * declarada sem detalhe + animais detalhados. Os dois caminhos coexistem e
+ * são somados; o que ficar só declarado (sem detalhe) vira pendência.
  */
 
 /** Onde um campo do Lançamento Rápido aparece. */
@@ -51,6 +52,21 @@ export interface NascCat {
 export interface NascDetalhe {
   id: number;
   values: Record<string, string>;
+}
+
+/**
+ * Linha consolidada por categoria: soma o declarado sem detalhe (cats[]) com
+ * os animais detalhados (detalhe[]). É derivada — não é estado persistido.
+ */
+export interface ConsolidatedRow {
+  catId: string;
+  catNome: string;
+  /** quantidade declarada sem detalhe (cats[]). */
+  declarado: number;
+  /** nº de animais detalhados nesta categoria (detalhe[]). */
+  detalhado: number;
+  /** declarado + detalhado. */
+  total: number;
 }
 
 /** Item de aplicação sanitária. */

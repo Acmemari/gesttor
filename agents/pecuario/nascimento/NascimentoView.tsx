@@ -3,6 +3,7 @@ import { Plus, Save, IdCard, Tag, Check, Info, Baby } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
+import { listAnimalBreeds } from '../../../lib/api/animalBreedsClient';
 import FieldControl from './FieldControl';
 import CategoriaGrid from './CategoriaGrid';
 import LancamentoRapido from './LancamentoRapido';
@@ -19,7 +20,7 @@ import {
   tallyPorCategoria,
   todayISO,
 } from './util';
-import type { AtribFicha, FieldPlace, FieldPlaces, LookupItem, MovimentoNasc, NascCat, NascDetalhe, SanItem } from './types';
+import type { AtribFicha, ConsolidatedRow, FieldPlace, FieldPlaces, LookupItem, MovimentoNasc, NascCat, NascDetalhe, SanItem } from './types';
 
 interface NascimentoViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -54,8 +55,16 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
 
   // ── Dados carregados ────────────────────────────────────────────────────
   const [categories, setCategories] = useState<LookupItem[]>([]);
+  const [racas, setRacas] = useState<string[]>([]);
   const [farmLocais, setFarmLocais] = useState<FarmLocal[]>([]);
   const lotes: LookupItem[] = LOTES_ESTATICOS;
+
+  // Override de opções dinâmicas para campos 'select' do Lançamento Rápido.
+  // Só sobrescreve a raça quando há raças cadastradas; senão usa a lista estática.
+  const optionsOverride = useMemo(
+    () => (racas.length > 0 ? { raca: racas } : undefined),
+    [racas],
+  );
 
   // ── Cabeçalho ───────────────────────────────────────────────────────────
   const today = todayISO();
@@ -109,10 +118,24 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
         if (!cancelled) setCategories(rows.map((c) => ({ id: c.id, nome: c.nome })));
       })
       .catch((err: any) => onToast?.(err?.message || 'Erro ao carregar categorias', 'error'));
+    listAnimalBreeds(organizationId)
+      .then((rows) => {
+        if (!cancelled) setRacas(rows.filter((b) => b.ativo).map((b) => b.nome));
+      })
+      .catch(() => {
+        if (!cancelled) setRacas([]);
+      });
     return () => {
       cancelled = true;
     };
   }, [organizationId, onToast]);
+
+  // Quando há raças cadastradas e a raça atual do formulário não está na lista,
+  // ajusta para a primeira disponível (mantém o select coerente com o estado).
+  useEffect(() => {
+    if (racas.length === 0) return;
+    setEntryValues((prev) => (racas.includes(prev.raca) ? prev : { ...prev, raca: racas[0] }));
+  }, [racas]);
 
   useEffect(() => {
     if (!fazenda && farms.length > 0) setFazenda(farms[0].id);
@@ -156,10 +179,6 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   }, []);
 
   const addDetalhe = useCallback(() => {
-    if (total < 1) {
-      onToast?.('Informe a quantidade primeiro', 'error');
-      return;
-    }
     const apelido = (entryValues.apelido || '').trim();
     const catId = entryValues.categoria || '';
     if (!apelido) {
@@ -168,10 +187,6 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     }
     if (!catId) {
       onToast?.('Selecione a categoria', 'error');
-      return;
-    }
-    if (detalhe.length >= total) {
-      onToast?.(`Limite atingido — você já identificou ${total} de ${total}.`, 'warning');
       return;
     }
     const snapshot = { ...entryValues, apelido, categoria: catId };
@@ -187,7 +202,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       reset.apelido = autonum ? next : '';
       return reset;
     });
-  }, [total, entryValues, detalhe.length, onToast, today, places, autonum]);
+  }, [entryValues, onToast, today, places, autonum]);
 
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
@@ -215,29 +230,25 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   }, [catSel, total, catName, onToast]);
 
   const editCat = useCallback(
-    (i: number) => {
-      const c = cats[i];
+    (catId: string) => {
+      const c = cats.find((x) => x.catId === catId);
       if (!c) return;
       setCatSel(c.catId);
       setTotalStr(String(c.qtd));
-      setCats((prev) => prev.filter((_, idx) => idx !== i));
+      setCats((prev) => prev.filter((x) => x.catId !== catId));
     },
     [cats],
   );
 
-  const removeCat = useCallback((i: number) => setCats((prev) => prev.filter((_, idx) => idx !== i)), []);
+  const removeCat = useCallback((catId: string) => setCats((prev) => prev.filter((x) => x.catId !== catId)), []);
 
-  // ── Toggle brinco (modo) ──────────────────────────────────────────────────
+  // ── Toggle brinco (abre/fecha o painel de detalhamento) ───────────────────
+  // Não apaga dados: declarado (cats) e detalhado (detalhe) coexistem e somam.
   const toggleFromId = useCallback(() => {
     setFromId((prev) => !prev);
-    setCats([]);
-    setCatSel('');
-    setDetalhe([]);
-    setSanItems([]);
     setSanOpen(false);
     setDadosOpen(false);
-    setEntryValues(buildEntryValues(today));
-  }, [today]);
+  }, []);
 
   // ── Configuração de campos ────────────────────────────────────────────────
   const setPlace = useCallback((id: string, val: FieldPlace) => {
@@ -256,7 +267,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   }, []);
 
   // ── Salvar ────────────────────────────────────────────────────────────────
-  const salvarHabilitado = fromId ? total > 0 && detalhe.length === total : true;
+  // Habilitado quando há algo a salvar: declarado (cats) e/ou detalhado (detalhe).
+  const salvarHabilitado = somaCategorias(cats) > 0 || detalhe.length > 0 || (!!catSel && total > 0);
 
   const novo = useCallback(() => {
     setTotalStr('');
@@ -279,77 +291,60 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       safra,
     };
 
-    if (fromId) {
-      if (total < 1) {
-        onToast?.('Informe a quantidade — a base de verificação do nascimento', 'error');
-        return;
-      }
-      if (detalhe.length !== total) {
-        onToast?.(`Identificação incompleta: ${detalhe.length} de ${total}.`, 'error');
-        return;
-      }
-      const fichas: AtribFicha[] = detalhe.map((d) => ({
-        id: fichaSeq.current++,
-        apelido: d.values.apelido,
-        catId: d.values.categoria,
-        rfid: d.values.rfid || undefined,
-        sisbov: d.values.sisbov || undefined,
-        porte: d.values.porte || undefined,
-        raca: d.values.raca || undefined,
-        peso: parseWeight(d.values.peso) || undefined,
-      }));
-      const tally = tallyPorCategoria(detalhe);
-      const catDecl = Object.keys(tally).map((catId) => ({ catId, qtd: tally[catId] }));
-      const mov: MovimentoNasc = {
-        id: `mv-${detSeq.current}-${total}`,
-        data,
-        qtd: total,
-        categoria: null,
-        catDecl,
-        fichas,
-        naoIdentificados: 0,
-        status: 'conciliado',
-        sanitario: sanItems.slice(),
-        ...header,
-      };
-      setMovimentos((prev) => [mov, ...prev]);
-      setDetalhe([]);
-      setSanItems([]);
-      setEntryValues(buildEntryValues(today));
-      setTotalStr('');
-      onToast?.(`Nascimento salvo e conciliado · ${total} cab. identificadas`, 'success');
+    // Declarado sem detalhe (cats[]) com fallback p/ seleção não adicionada via "+ mais".
+    let declaradas = cats;
+    if (!declaradas.length && catSel && total > 0) {
+      declaradas = [{ catId: catSel, catNome: catName(catSel), qtd: total }];
+    }
+    const naoIdent = somaCategorias(declaradas); // só o declarado sem detalhe é pendente
+    const qtdTotal = naoIdent + detalhe.length;
+    if (qtdTotal < 1) {
+      onToast?.('Informe ao menos uma categoria (sem detalhe) ou detalhe um animal', 'error');
       return;
     }
 
-    // Modo DESLIGADO: total = soma das categorias (fallback p/ linha não adicionada)
-    let lista = cats;
-    if (!lista.length && catSel && total > 0) {
-      lista = [{ catId: catSel, catNome: catName(catSel), qtd: total }];
-    }
-    const soma = somaCategorias(lista);
-    if (soma < 1) {
-      onToast?.('Informe ao menos uma categoria — selecione, digite a quantidade e use "+ mais"', 'error');
-      return;
-    }
-    const naoIdent = soma;
+    // Fichas individuais a partir dos detalhados.
+    const fichas: AtribFicha[] = detalhe.map((d) => ({
+      id: fichaSeq.current++,
+      apelido: d.values.apelido,
+      catId: d.values.categoria,
+      rfid: d.values.rfid || undefined,
+      sisbov: d.values.sisbov || undefined,
+      porte: d.values.porte || undefined,
+      raca: d.values.raca || undefined,
+      peso: parseWeight(d.values.peso) || undefined,
+    }));
+
+    // catDecl consolidado: detalhado (tally) + declarado (cats), somados por catId.
+    const tally: Record<string, number> = { ...tallyPorCategoria(detalhe) };
+    for (const c of declaradas) tally[c.catId] = (tally[c.catId] || 0) + c.qtd;
+    const catDecl = Object.keys(tally).map((catId) => ({ catId, qtd: tally[catId] }));
+
     const mov: MovimentoNasc = {
       id: `mv-${Date.now()}`,
       data,
-      qtd: soma,
+      qtd: qtdTotal,
       categoria: null,
-      catDecl: lista.map((c) => ({ catId: c.catId, qtd: c.qtd })),
-      fichas: [],
+      catDecl,
+      fichas,
       naoIdentificados: naoIdent,
       status: statusFrom(naoIdent),
-      sanitario: [],
+      sanitario: sanItems.slice(),
       ...header,
     };
     setMovimentos((prev) => [mov, ...prev]);
     setCats([]);
     setCatSel('');
+    setDetalhe([]);
+    setSanItems([]);
+    setEntryValues(buildEntryValues(today));
     setTotalStr('');
-    onToast?.(`Nascimento somado ao estoque · ${soma} cab. em ${lista.length} categoria(s). Identificação pendente na Mesa.`, 'warning');
-  }, [fromId, total, detalhe, cats, catSel, catName, data, sanItems, today, farms, fazenda, retiro, local, farmLocais, proprietario, safra, onToast]);
+    if (naoIdent > 0) {
+      onToast?.(`Nascimento salvo · ${detalhe.length} identificados + ${naoIdent} a detalhar · total ${qtdTotal} cab.`, 'warning');
+    } else {
+      onToast?.(`Nascimento salvo e conciliado · ${qtdTotal} cab. identificadas`, 'success');
+    }
+  }, [total, detalhe, cats, catSel, catName, data, sanItems, today, farms, fazenda, retiro, local, farmLocais, proprietario, safra, onToast]);
 
   // ── Atribuição de ID ──────────────────────────────────────────────────────
   const abrirAtribuicao = useCallback(() => {
@@ -380,19 +375,29 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
 
   // ── Derivações de exibição ────────────────────────────────────────────────
   const derivedTally = useMemo(() => tallyPorCategoria(detalhe), [detalhe]);
-  const declaredTotal = somaCategorias(cats);
+  const totalDeclarado = somaCategorias(cats);
+  const totalDetalhado = detalhe.length;
+  const totalGeral = totalDeclarado + totalDetalhado;
+
+  // Linhas consolidadas por categoria: declarado (cats) + detalhado (tally).
+  const consolidated = useMemo<ConsolidatedRow[]>(() => {
+    const ids = new Set<string>([...cats.map((c) => c.catId), ...Object.keys(derivedTally)]);
+    return [...ids].map((catId) => {
+      const declarado = cats.find((c) => c.catId === catId)?.qtd ?? 0;
+      const detalhado = derivedTally[catId] ?? 0;
+      const catNome = cats.find((c) => c.catId === catId)?.catNome || catName(catId);
+      return { catId, catNome, declarado, detalhado, total: declarado + detalhado };
+    });
+  }, [cats, derivedTally, catName]);
 
   const resumo = useMemo(() => {
-    if (fromId) {
-      if (!total) return { kind: 'muted' as const, text: 'Informe a quantidade' };
-      const done = detalhe.length;
-      return done === total
-        ? { kind: 'ok' as const, text: `${done} de ${total} identificados` }
-        : { kind: 'muted' as const, text: `${done} de ${total} identificados` };
-    }
-    if (!declaredTotal) return null;
-    return { kind: 'ok' as const, text: `Total ${declaredTotal} cab. em ${cats.length} categoria(s)` };
-  }, [fromId, total, detalhe.length, declaredTotal, cats.length]);
+    if (!totalGeral) return null;
+    const text =
+      totalDeclarado > 0
+        ? `Total ${totalGeral} cab. · ${totalDetalhado} identificados · ${totalDeclarado} a detalhar`
+        : `Total ${totalGeral} cab. · ${totalDetalhado} identificados`;
+    return { kind: totalDeclarado > 0 ? ('muted' as const) : ('ok' as const), text };
+  }, [totalGeral, totalDeclarado, totalDetalhado]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   const inputCls =
@@ -497,26 +502,21 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           >
             <Tag size={22} />
           </button>
-          <div className="min-w-[180px] flex-1" style={{ opacity: fromId ? 0.55 : 1 }}>
-            <label className={labelCls}>Categoria</label>
-            {fromId ? (
-              <input className={`${inputCls} mt-1.5 bg-gray-100 text-gray-400`} disabled value="" placeholder="Vem do detalhamento de ID" />
-            ) : (
-              <select className={`${inputCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
-                <option value="">Selecione a categoria</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            )}
+          <div className="min-w-[180px] flex-1">
+            <label className={labelCls}>Categoria <span className="font-medium text-gray-400">(sem detalhe)</span></label>
+            <select className={`${inputCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
+              <option value="">Selecione a categoria</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="button"
             onClick={addCat}
-            disabled={fromId}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#2563eb] bg-white px-3.5 text-sm font-semibold text-[#2563eb] hover:bg-[#eaf1fb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#2563eb] bg-white px-3.5 text-sm font-semibold text-[#2563eb] hover:bg-[#eaf1fb]"
           >
             <Plus size={16} /> mais
           </button>
@@ -536,37 +536,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           </div>
         ) : null}
 
-        {/* Grid de categorias: editável (OFF) ou derivado (ON) */}
-        {!fromId ? (
-          <CategoriaGrid cats={cats} onEdit={editCat} onRemove={removeCat} />
-        ) : detalhe.length ? (
-          <div className="mt-1.5 overflow-hidden rounded-xl border border-gray-200">
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="bg-[#fcfcfd] text-[11px] uppercase tracking-wide text-gray-500">
-                  <th className="p-2.5 font-bold">Categoria</th>
-                  <th className="w-[180px] p-2.5 text-right font-bold">Quantidade (do ID)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.keys(derivedTally).map((cid) => (
-                  <tr key={cid} className="border-t border-gray-100">
-                    <td className="p-2.5 font-semibold text-gray-800">{catName(cid)}</td>
-                    <td className="p-2.5 text-right">
-                      <span className="inline-flex items-center gap-1.5 font-semibold text-[#2563eb]">{derivedTally[cid]} cab.</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-gray-200 bg-[#fcfcfd]">
-                  <td className="p-2.5 font-semibold text-gray-700">Total identificado</td>
-                  <td className="p-2.5 text-right font-bold tabular-nums text-[#2563eb]">{detalhe.length} cab.</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        ) : null}
+        {/* Grid consolidado de categorias: declarado + detalhado por categoria */}
+        <CategoriaGrid rows={consolidated} onEdit={editCat} onRemove={removeCat} />
 
         {/* Lançamento Rápido (modo LIGADO) */}
         {fromId ? (
@@ -574,6 +545,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             places={places}
             categories={categories}
             lotes={lotes}
+            optionsOverride={optionsOverride}
             values={entryValues}
             onValueChange={setEntryValue}
             detalhe={detalhe}
@@ -618,14 +590,16 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             <IdCard size={16} /> Atribuir ID
           </button>
           <div className="flex-1" />
-          {fromId ? (
+          {totalGeral > 0 ? (
             <span className="text-[13px] text-gray-500">
-              {salvarHabilitado ? (
-                <span className="inline-flex items-center gap-1.5 font-semibold text-[#16a34a]">
-                  <Check size={14} /> {detalhe.length} de {total} identificados
+              {totalDeclarado > 0 ? (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#ea580c]">
+                  <Info size={14} /> {totalDetalhado} identificados · {totalDeclarado} a detalhar · total {totalGeral} cab.
                 </span>
               ) : (
-                <>Identifique {total || 'os'} animais para salvar ({detalhe.length}/{total || 0})</>
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#16a34a]">
+                  <Check size={14} /> {totalDetalhado} identificados · total {totalGeral} cab.
+                </span>
               )}
             </span>
           ) : null}
@@ -662,9 +636,9 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             <tbody>
               {movimentos.length ? (
                 movimentos.map((m) => {
+                  // catDecl já consolida declarado + detalhado; pendência vem de naoIdentificados.
                   const catCell = m.catDecl.length
-                    ? m.catDecl.map((d) => catName(d.catId)).join(', ') +
-                      (m.qtd > m.catDecl.reduce((a, d) => a + d.qtd, 0) ? ' + a detalhar' : '')
+                    ? m.catDecl.map((d) => `${catName(d.catId)} (${d.qtd})`).join(', ')
                     : 'A detalhar';
                   return (
                     <tr key={m.id} className="border-t border-gray-100">
