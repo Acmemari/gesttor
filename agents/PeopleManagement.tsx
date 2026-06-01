@@ -38,6 +38,7 @@ import DateInputBR from '../components/DateInputBR';
 
 interface PeopleManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  onBack?: () => void;
 }
 
 type TabId = 'dados' | 'detalhes';
@@ -159,7 +160,7 @@ const inputClass =
 const selectClass =
   'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all text-gray-700';
 
-const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
+const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast, onBack }) => {
   const { user } = useAuth();
   const { selectedOrganization: selectedClient, selectedFarm, farms } = useHierarchy();
 
@@ -753,11 +754,22 @@ const PeopleManagement: React.FC<PeopleManagementProps> = ({ onToast }) => {
       <div className="p-6 max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Cadastro de Pessoas</h1>
-            {organizationId && (
-              <p className="text-sm text-gray-500 mt-0.5">{selectedClient?.name}</p>
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-2 -ml-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                aria-label="Voltar"
+              >
+                <ArrowLeft size={20} />
+              </button>
             )}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Cadastro de Pessoas</h1>
+              {organizationId && (
+                <p className="text-sm text-gray-500 mt-0.5">{selectedClient?.name}</p>
+              )}
+            </div>
           </div>
           <button
             onClick={openNew}

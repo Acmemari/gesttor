@@ -209,6 +209,7 @@ interface PecuarioCadastrosDesktopProps {
   onSelectEstoquePartida: () => void;
   onSelectAnimalCategories?: () => void;
   onSelectAnimalBreeds?: () => void;
+  onSelectPessoas?: () => void;
   theme?: 'light' | 'dark';
 }
 
@@ -216,11 +217,31 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectEstoquePartida,
   onSelectAnimalCategories,
   onSelectAnimalBreeds,
+  onSelectPessoas,
   theme = 'light',
 }) => {
   const isDark = theme === 'dark';
 
-  const cards = [
+  const cards: {
+    id: string;
+    label: string;
+    title: React.ReactNode;
+    description: string;
+    onClick?: () => void;
+    active: boolean;
+    alertColor: 'green' | 'yellow' | 'red' | 'gray';
+    instructions: {
+      intro: string;
+      steps: { title: string; desc: string }[];
+      proTip: string;
+    };
+    alert: {
+      status: string;
+      message: string;
+      impact: string;
+      actionLabel?: string;
+    };
+  }[] = [
     {
       id: 'estoque-partida',
       label: 'Estoque de Partida',
@@ -328,6 +349,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'As raças cadastradas estão disponíveis para seleção nas telas de Nascimento e Categoria de Animais.',
               impact: 'A padronização das raças garante consistência nos lançamentos e relatórios do rebanho.',
               actionLabel: 'Gerenciar Raças',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectPessoas
+      ? [
+          {
+            id: 'people',
+            label: 'Cadastro de Pessoas',
+            title: <CadastroTitle entity="Pessoas" theme={theme} />,
+            description: 'Gerencie colaboradores, consultores, fornecedores, transportadoras e proprietários da fazenda.',
+            onClick: onSelectPessoas,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Pessoas centraliza todas as pessoas e entidades que interagem com o ecossistema das fazendas, incluindo colaboradores, gerentes, parceiros comerciais e consultores.',
+              steps: [
+                {
+                  title: 'Definir o Tipo de Pessoa',
+                  desc: 'Selecione as funções da pessoa (ex: Cliente, Fornecedor, Funcionário, Proprietário, Transportadora).',
+                },
+                {
+                  title: 'Preencher Dados Cadastrais',
+                  desc: 'Informe o Nome Completo, Razão Social (se houver), Documento (CPF/CNPJ), E-mail e Telefone.',
+                },
+                {
+                  title: 'Vincular Fazendas e Perfis',
+                  desc: 'Defina a qual fazenda a pessoa pertence, associe seu perfil de acesso e defina suas permissões operacionais.',
+                }
+              ],
+              proTip: 'Insira sempre o e-mail correto para que a pessoa possa receber convites de acesso à plataforma.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'O cadastro de pessoas está sincronizado com os perfis de acesso e fazendas do ambiente.',
+              impact: 'Garante que os colaboradores e parceiros cadastrados tenham acesso e visibilidade corretos no sistema.',
+              actionLabel: 'Gerenciar Pessoas',
             }
           },
         ]

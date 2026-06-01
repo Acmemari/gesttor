@@ -1,7 +1,7 @@
 {
   "name": "gesttor",
   "private": true,
-  "version": "1.5.99",
+  "version": "1.6.0",
   "type": "module",
   "packageManager": "npm@10",
   "engines": {

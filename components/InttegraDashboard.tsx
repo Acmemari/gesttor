@@ -9,6 +9,7 @@ const PecuarioMovimentos = lazy(() => import('../agents/pecuario/PecuarioMovimen
 const AnimalCategoriesManagement = lazy(() => import('../agents/AnimalCategoriesManagement'));
 const AnimalBreedsManagement = lazy(() => import('../agents/AnimalBreedsManagement'));
 const FarmManagement = lazy(() => import('../agents/FarmManagement'));
+const PeopleManagement = lazy(() => import('../agents/PeopleManagement'));
 
 interface InttegraDashboardProps {
   view?: string;
@@ -22,7 +23,7 @@ const LoadingFallback: React.FC = () => (
 );
 
 const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) => {
-  const [subView, setSubView] = useState<'desktop' | 'estoque-partida' | 'animal-categories' | 'animal-breeds'>('desktop');
+  const [subView, setSubView] = useState<'desktop' | 'estoque-partida' | 'animal-categories' | 'animal-breeds' | 'people'>('desktop');
 
   // Reset to desktop when view changes
   useEffect(() => {
@@ -71,6 +72,15 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
         </Suspense>
       );
     }
+    if (subView === 'people') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <PeopleManagement onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={<LoadingFallback />}>
         <PecuarioCadastrosDesktop
@@ -78,6 +88,7 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
           onSelectEstoquePartida={() => setSubView('estoque-partida')}
           onSelectAnimalCategories={() => setSubView('animal-categories')}
           onSelectAnimalBreeds={() => setSubView('animal-breeds')}
+          onSelectPessoas={() => setSubView('people')}
         />
       </Suspense>
     );
