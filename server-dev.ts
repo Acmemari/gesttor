@@ -288,6 +288,9 @@ app.all('/api/animal-breeds', (req, res) => handleApiRoute('./api/animal-breeds.
 // Mapa de Rebanho (Estoque de Partida)
 app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));
 
+// Movimentação › Nascimento
+app.all('/api/nascimentos', (req, res) => handleApiRoute('./api/nascimentos.ts', req, res));
+
 // Admin / Auxiliares
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));
 app.all('/api/permissions', (req, res) => handleApiRoute('./api/permissions.ts', req, res));

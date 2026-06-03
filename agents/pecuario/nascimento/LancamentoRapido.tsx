@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Pencil, ChevronDown, Trash2, IdCard } from 'lucide-react';
+import { Plus, Pencil, ChevronDown, Trash2, IdCard, X } from 'lucide-react';
 import FieldControl from './FieldControl';
 import SanitarioSection from './SanitarioSection';
 import { LR_REGISTRY } from './fieldRegistry';
@@ -25,6 +25,8 @@ interface LancamentoRapidoProps {
   dadosOpen: boolean;
   onToggleDados: () => void;
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  /** Fecha o painel de Lançamento Rápido (volta à visão coletiva). */
+  onClose?: () => void;
 }
 
 const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
@@ -46,6 +48,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
   dadosOpen,
   onToggleDados,
   onToast,
+  onClose,
 }) => {
   const topFields = LR_REGISTRY.filter((f) => places[f.id] === 'top' && f.id !== 'sanitario');
   const bottomFields = LR_REGISTRY.filter((f) => places[f.id] === 'bottom');
@@ -68,6 +71,16 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
         <span className="text-[11.5px] font-medium text-gray-400">
           — a linha de cima repete em todos; a de baixo lança em modo rápido
         </span>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            title="Fechar Lançamento Rápido"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-gray-600 hover:bg-gray-50"
+          >
+            <X size={14} /> Fechar
+          </button>
+        ) : null}
       </div>
 
       {/* Linha superior (repete) */}

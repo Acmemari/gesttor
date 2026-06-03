@@ -11,9 +11,8 @@ interface AtribuirIdPanelProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-const inputCls =
-  'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#2563eb] focus:ring-[3px] focus:ring-[#2563eb]/15';
-const labelCls = 'text-[12.5px] font-semibold text-gray-700';
+const cellInputCls =
+  'w-full h-9 rounded-md border border-gray-200 bg-white px-2 text-[12.5px] text-gray-800 focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15';
 
 const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories, onAdd, onClose, onToast }) => {
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome || '—';
@@ -101,66 +100,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
         ) : null}
       </div>
 
-      {/* Formulário de entrada */}
-      <div className="flex flex-wrap items-end gap-3 px-4 py-3">
-        <div className="w-[160px]">
-          <label className={labelCls}>
-            Categoria <span className="text-red-500">*</span>
-          </label>
-          <select className={`${inputCls} mt-1.5`} value={catId} onChange={(e) => setCatId(e.target.value)}>
-            <option value="">Selecione</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="w-[140px]">
-          <label className={labelCls}>
-            ID Usual <span className="text-red-500">*</span>
-          </label>
-          <input className={`${inputCls} mt-1.5`} placeholder="Apelido/ID" value={apelido} onChange={(e) => setApelido(e.target.value)} />
-        </div>
-        <div className="w-[130px]">
-          <label className={labelCls}>ID Eletrônica</label>
-          <input className={`${inputCls} mt-1.5`} placeholder="RFID" value={rfid} onChange={(e) => setRfid(e.target.value)} />
-        </div>
-        <div className="w-[120px]">
-          <label className={labelCls}>Nº SISBOV</label>
-          <input className={`${inputCls} mt-1.5`} placeholder="SISBOV" value={sisbov} onChange={(e) => setSisbov(e.target.value)} />
-        </div>
-        <div className="w-[90px]">
-          <label className={labelCls}>Porte</label>
-          <select className={`${inputCls} mt-1.5`} value={porte} onChange={(e) => setPorte(e.target.value)}>
-            <option>P</option>
-            <option>M</option>
-            <option>G</option>
-          </select>
-        </div>
-        <div className="w-[120px]">
-          <label className={labelCls}>Peso</label>
-          <div className={`${inputCls} mt-1.5 flex items-center gap-1.5`}>
-            <input
-              className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-gray-800 outline-none"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={peso}
-              onChange={(e) => setPeso(e.target.value)}
-            />
-            <span className="shrink-0 text-xs font-bold text-[#2563eb]">Kg</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#2563eb] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#1d4fd7]"
-        >
-          <Plus size={16} /> Adicionar
-        </button>
-      </div>
-
-      {/* Tabela de fichas */}
+      {/* Tabela de fichas — a inclusão acontece na linha do topo */}
       <div className="border-t border-gray-100">
         <table className="w-full text-left text-[12.5px]">
           <thead>
@@ -172,9 +112,83 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
               <th className="p-2.5 font-bold">SISBOV</th>
               <th className="p-2.5 text-right font-bold">Peso</th>
               <th className="p-2.5 font-bold">Porte</th>
+              <th className="p-2.5" />
             </tr>
           </thead>
           <tbody>
+            {/* Linha de inclusão */}
+            <tr className="border-t border-gray-100 bg-[#f7faff] align-middle">
+              <td className="p-2 text-center">
+                <Plus size={15} className="mx-auto text-[#2563eb]" />
+              </td>
+              <td className="p-2">
+                <input
+                  className={cellInputCls}
+                  placeholder="Apelido/ID *"
+                  value={apelido}
+                  onChange={(e) => setApelido(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                />
+              </td>
+              <td className="p-2">
+                <select className={cellInputCls} value={catId} onChange={(e) => setCatId(e.target.value)}>
+                  <option value="">Selecione</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td className="p-2">
+                <input
+                  className={cellInputCls}
+                  placeholder="RFID"
+                  value={rfid}
+                  onChange={(e) => setRfid(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                />
+              </td>
+              <td className="p-2">
+                <input
+                  className={cellInputCls}
+                  placeholder="SISBOV"
+                  value={sisbov}
+                  onChange={(e) => setSisbov(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                />
+              </td>
+              <td className="p-2">
+                <div className={`${cellInputCls} flex items-center gap-1`}>
+                  <input
+                    className="min-w-0 flex-1 border-0 bg-transparent text-right text-[12.5px] font-semibold text-gray-800 outline-none"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={peso}
+                    onChange={(e) => setPeso(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                  />
+                  <span className="shrink-0 text-[11px] font-bold text-[#2563eb]">Kg</span>
+                </div>
+              </td>
+              <td className="p-2">
+                <select className={cellInputCls} value={porte} onChange={(e) => setPorte(e.target.value)}>
+                  <option>P</option>
+                  <option>M</option>
+                  <option>G</option>
+                </select>
+              </td>
+              <td className="p-2 text-right">
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563eb] px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-[#1d4fd7]"
+                >
+                  <Plus size={14} /> Adicionar
+                </button>
+              </td>
+            </tr>
+
             {movimento.fichas.length ? (
               movimento.fichas.map((f) => (
                 <tr key={f.id} className="border-t border-gray-100">
@@ -185,11 +199,12 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
                   <td className="p-2.5 font-mono text-[11px] text-gray-500">{f.sisbov || '—'}</td>
                   <td className="p-2.5 text-right tabular-nums text-gray-700">{f.peso ? `${f.peso} kg` : '—'}</td>
                   <td className="p-2.5 text-gray-600">{f.porte || '—'}</td>
+                  <td className="p-2.5" />
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="p-5 text-center text-gray-400">
+                <td colSpan={8} className="p-5 text-center text-gray-400">
                   Nenhum bezerro individualizado neste lançamento ainda.
                 </td>
               </tr>

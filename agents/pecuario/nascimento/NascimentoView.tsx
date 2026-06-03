@@ -1,14 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Save, IdCard, Tag, Check, Info, Baby } from 'lucide-react';
+import { Plus, Save, Check, Info } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
+import IconCardButton from '../../../components/IconCardButton';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
 import { listAnimalBreeds } from '../../../lib/api/animalBreedsClient';
+import {
+  listMovimentos,
+  createMovimento as apiCreateMovimento,
+  updateMovimento as apiUpdateMovimento,
+  deleteMovimento as apiDeleteMovimento,
+  addFicha as apiAddFicha,
+  type NascimentoMovimentoRow,
+} from '../../../lib/api/nascimentosClient';
 import FieldControl from './FieldControl';
 import CategoriaGrid from './CategoriaGrid';
+import BrincoBovinoIcon from './BrincoBovinoIcon';
+import LoteAnimaisIcon from './LoteAnimaisIcon';
 import LancamentoRapido from './LancamentoRapido';
 import CamposConfigModal from './CamposConfigModal';
 import AtribuirIdPanel from './AtribuirIdPanel';
+import LancamentosRecentes from './LancamentosRecentes';
 import { LR_REGISTRY, LOTES_ESTATICOS, defaultPlaces, defaultValue } from './fieldRegistry';
 import {
   formatDateBR,
@@ -47,6 +59,35 @@ function buildEntryValues(today: string, sharedRaca?: string): Record<string, st
     v[f.id] = defaultValue(f.id, today, sharedRaca);
   }
   return v;
+}
+
+/** Mapeia a linha persistida (banco) para o modelo de exibição da tela. */
+function mapRowToMovimento(row: NascimentoMovimentoRow, nextFichaId: () => number): MovimentoNasc {
+  return {
+    id: row.id,
+    data: row.data,
+    qtd: row.qtd,
+    categoria: null,
+    catDecl: Array.isArray(row.catDecl) ? row.catDecl : [],
+    fichas: (row.fichas || []).map((f) => ({
+      id: nextFichaId(),
+      apelido: f.apelido,
+      catId: f.categoriaId || '',
+      rfid: f.rfid || undefined,
+      sisbov: f.sisbov || undefined,
+      porte: f.porte || undefined,
+      raca: f.raca || undefined,
+      peso: f.peso != null ? Number(f.peso) : undefined,
+    })),
+    naoIdentificados: row.naoIdentificados,
+    status: row.status,
+    fazenda: row.farmId || undefined,
+    retiro: row.retiro || undefined,
+    local: row.localId || undefined,
+    proprietario: row.proprietarioId || undefined,
+    safra: row.safra || undefined,
+    sanitario: (row.sanitario as SanItem[]) || [],
+  };
 }
 
 const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
@@ -102,6 +143,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   // ── Movimentos salvos (estado local) ──────────────────────────────────────
   const [movimentos, setMovimentos] = useState<MovimentoNasc[]>([]);
   const [atribuirTargetId, setAtribuirTargetId] = useState<string | null>(null);
+  // Id do lançamento em edição (modo Editar): Salvar atualiza em vez de criar.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const fichaSeq = useRef(1);
 
   const total = parseInt(totalStr, 10) || 0;
@@ -115,7 +158,14 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     let cancelled = false;
     listAnimalCategories(organizationId)
       .then((rows) => {
-        if (!cancelled) setCategories(rows.map((c) => ({ id: c.id, nome: c.nome })));
+        // Nascimento de bezerros: só categorias cadastradas como "Bezerros Mamando".
+        if (!cancelled) {
+          setCategories(
+            rows
+              .filter((c) => c.grupo === 'bezerros_mamando')
+              .map((c) => ({ id: c.id, nome: c.nome })),
+          );
+        }
       })
       .catch((err: any) => onToast?.(err?.message || 'Erro ao carregar categorias', 'error'));
     listAnimalBreeds(organizationId)
@@ -136,6 +186,23 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     if (racas.length === 0) return;
     setEntryValues((prev) => (racas.includes(prev.raca) ? prev : { ...prev, raca: racas[0] }));
   }, [racas]);
+
+  // Carrega os movimentos de nascimento já persistidos (Neon).
+  useEffect(() => {
+    if (!organizationId) {
+      setMovimentos([]);
+      return;
+    }
+    let cancelled = false;
+    listMovimentos(organizationId)
+      .then((rows) => {
+        if (!cancelled) setMovimentos(rows.map((r) => mapRowToMovimento(r, () => fichaSeq.current++)));
+      })
+      .catch((err: any) => onToast?.(err?.message || 'Erro ao carregar nascimentos', 'error'));
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, onToast]);
 
   useEffect(() => {
     if (!fazenda && farms.length > 0) setFazenda(farms[0].id);
@@ -164,6 +231,13 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
     return [...set];
   }, [farmLocais]);
+
+  // Fazenda com um único retiro: já vem selecionado por padrão (não pergunta toda vez).
+  useEffect(() => {
+    if (retiros.length === 1) {
+      setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
+    }
+  }, [retiros]);
 
   const locaisDisponiveis = useMemo(
     () => (retiro ? farmLocais.filter((l) => l.retiroName === retiro) : farmLocais),
@@ -250,6 +324,14 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     setDadosOpen(false);
   }, []);
 
+  // Visão coletiva (lote): recolhe o detalhamento individual e foca no
+  // lançamento por categoria/quantidade.
+  const verColetivo = useCallback(() => {
+    setFromId(false);
+    setSanOpen(false);
+    setDadosOpen(false);
+  }, []);
+
   // ── Configuração de campos ────────────────────────────────────────────────
   const setPlace = useCallback((id: string, val: FieldPlace) => {
     setPlaces((prev) => {
@@ -280,16 +362,14 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     setDadosOpen(false);
     setFromId(false);
     setEntryValues(buildEntryValues(today));
+    setEditingId(null);
   }, [today]);
 
-  const salvar = useCallback(() => {
-    const header = {
-      fazenda: farms.find((f) => f.id === fazenda)?.name,
-      retiro: retiro || undefined,
-      local: farmLocais.find((l) => l.id === local)?.name,
-      proprietario: proprietario || undefined,
-      safra,
-    };
+  const salvar = useCallback(async () => {
+    if (!organizationId) {
+      onToast?.('Selecione uma organização antes de salvar', 'error');
+      return;
+    }
 
     // Declarado sem detalhe (cats[]) com fallback p/ seleção não adicionada via "+ mais".
     let declaradas = cats;
@@ -304,15 +384,14 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     }
 
     // Fichas individuais a partir dos detalhados.
-    const fichas: AtribFicha[] = detalhe.map((d) => ({
-      id: fichaSeq.current++,
+    const fichas = detalhe.map((d) => ({
       apelido: d.values.apelido,
       catId: d.values.categoria,
-      rfid: d.values.rfid || undefined,
-      sisbov: d.values.sisbov || undefined,
-      porte: d.values.porte || undefined,
-      raca: d.values.raca || undefined,
-      peso: parseWeight(d.values.peso) || undefined,
+      rfid: d.values.rfid || null,
+      sisbov: d.values.sisbov || null,
+      porte: d.values.porte || null,
+      raca: d.values.raca || null,
+      peso: parseWeight(d.values.peso) || null,
     }));
 
     // catDecl consolidado: detalhado (tally) + declarado (cats), somados por catId.
@@ -320,55 +399,145 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     for (const c of declaradas) tally[c.catId] = (tally[c.catId] || 0) + c.qtd;
     const catDecl = Object.keys(tally).map((catId) => ({ catId, qtd: tally[catId] }));
 
-    const mov: MovimentoNasc = {
-      id: `mv-${Date.now()}`,
+    const payload = {
+      farmId: fazenda || null,
+      localId: local || null,
+      proprietarioId: proprietario || null,
       data,
+      safra: safra || null,
+      retiro: retiro || null,
       qtd: qtdTotal,
-      categoria: null,
-      catDecl,
-      fichas,
       naoIdentificados: naoIdent,
       status: statusFrom(naoIdent),
+      catDecl,
       sanitario: sanItems.slice(),
-      ...header,
+      fichas,
     };
-    setMovimentos((prev) => [mov, ...prev]);
-    setCats([]);
-    setCatSel('');
-    setDetalhe([]);
-    setSanItems([]);
-    setEntryValues(buildEntryValues(today));
-    setTotalStr('');
-    if (naoIdent > 0) {
-      onToast?.(`Nascimento salvo · ${detalhe.length} identificados + ${naoIdent} a detalhar · total ${qtdTotal} cab.`, 'warning');
-    } else {
-      onToast?.(`Nascimento salvo e conciliado · ${qtdTotal} cab. identificadas`, 'success');
+
+    try {
+      if (editingId) {
+        const row = await apiUpdateMovimento(editingId, payload);
+        setMovimentos((prev) => prev.map((m) => (m.id === editingId ? mapRowToMovimento(row, () => fichaSeq.current++) : m)));
+        onToast?.(
+          naoIdent > 0
+            ? `Lançamento atualizado · ${detalhe.length} identificados + ${naoIdent} a detalhar · total ${qtdTotal} cab.`
+            : `Lançamento atualizado e conciliado · ${qtdTotal} cab. identificadas`,
+          naoIdent > 0 ? 'warning' : 'success',
+        );
+      } else {
+        const row = await apiCreateMovimento({ organizationId, ...payload });
+        setMovimentos((prev) => [mapRowToMovimento(row, () => fichaSeq.current++), ...prev]);
+        onToast?.(
+          naoIdent > 0
+            ? `Nascimento salvo · ${detalhe.length} identificados + ${naoIdent} a detalhar · total ${qtdTotal} cab.`
+            : `Nascimento salvo e conciliado · ${qtdTotal} cab. identificadas`,
+          naoIdent > 0 ? 'warning' : 'success',
+        );
+      }
+      setCats([]);
+      setCatSel('');
+      setDetalhe([]);
+      setSanItems([]);
+      setEntryValues(buildEntryValues(today));
+      setTotalStr('');
+      setFromId(false);
+      setEditingId(null);
+    } catch (err: any) {
+      onToast?.(err?.message || (editingId ? 'Erro ao atualizar nascimento' : 'Erro ao salvar nascimento'), 'error');
     }
-  }, [total, detalhe, cats, catSel, catName, data, sanItems, today, farms, fazenda, retiro, local, farmLocais, proprietario, safra, onToast]);
+  }, [total, detalhe, cats, catSel, catName, data, sanItems, today, fazenda, retiro, local, proprietario, safra, organizationId, editingId, onToast]);
 
   // ── Atribuição de ID ──────────────────────────────────────────────────────
-  const abrirAtribuicao = useCallback(() => {
-    if (!movimentos.length) {
-      onToast?.('Nenhum nascimento lançado — salve um lançamento antes de atribuir IDs', 'warning');
-      return;
-    }
-    const alvo = movimentos.find((m) => m.naoIdentificados > 0) || movimentos[0];
-    setAtribuirTargetId(alvo.id);
-  }, [movimentos, onToast]);
-
   const addFicha = useCallback(
-    (movId: string, ficha: Omit<AtribFicha, 'id'>) => {
-      setMovimentos((prev) =>
-        prev.map((m) => {
-          if (m.id !== movId) return m;
-          const fichas = [...m.fichas, { ...ficha, id: fichaSeq.current++ }];
-          const naoIdentificados = Math.max(0, m.naoIdentificados - 1);
-          return { ...m, fichas, naoIdentificados, status: statusFrom(naoIdentificados) };
-        }),
-      );
-      onToast?.(`Bezerro identificado · ${ficha.apelido}`, 'success');
+    async (movId: string, ficha: Omit<AtribFicha, 'id'>) => {
+      try {
+        const row = await apiAddFicha({
+          movimentoId: movId,
+          apelido: ficha.apelido,
+          categoriaId: ficha.catId || null,
+          rfid: ficha.rfid || null,
+          sisbov: ficha.sisbov || null,
+          porte: ficha.porte || null,
+          raca: ficha.raca || null,
+          peso: ficha.peso ?? null,
+        });
+        setMovimentos((prev) => prev.map((m) => (m.id === movId ? mapRowToMovimento(row, () => fichaSeq.current++) : m)));
+        onToast?.(`Bezerro identificado · ${ficha.apelido}`, 'success');
+      } catch (err: any) {
+        onToast?.(err?.message || 'Erro ao identificar bezerro', 'error');
+      }
     },
     [onToast],
+  );
+
+  // Reabre um lançamento no formulário superior para edição (Salvar = atualizar).
+  const editarMovimento = useCallback(
+    (movId: string) => {
+      const m = movimentos.find((x) => x.id === movId);
+      if (!m) return;
+      // Cabeçalho
+      setData(m.data);
+      setSafra(m.safra || safraAtual());
+      setFazenda(m.fazenda || '');
+      setRetiro(m.retiro || '');
+      setLocal(m.local || '');
+      setProprietario(m.proprietario || null);
+      // Reconstrói detalhado (fichas) e declarado sem detalhe (cats[]) por categoria.
+      // catDecl é consolidado (declarado + detalhado); subtrai-se o detalhado.
+      const fichaTally: Record<string, number> = {};
+      for (const f of m.fichas) fichaTally[f.catId] = (fichaTally[f.catId] || 0) + 1;
+      const novoDetalhe: NascDetalhe[] = m.fichas.map((f) => ({
+        id: detSeq.current++,
+        values: {
+          apelido: f.apelido,
+          categoria: f.catId,
+          rfid: f.rfid || '',
+          sisbov: f.sisbov || '',
+          porte: f.porte || 'M',
+          raca: f.raca || '',
+          peso: f.peso != null ? String(f.peso) : '',
+          data: m.data,
+        },
+      }));
+      const novasCats: NascCat[] = m.catDecl
+        .map((d) => ({ catId: d.catId, catNome: catName(d.catId), qtd: d.qtd - (fichaTally[d.catId] || 0) }))
+        .filter((c) => c.qtd > 0);
+      setDetalhe(novoDetalhe);
+      setCats(novasCats);
+      setCatSel('');
+      setTotalStr('');
+      setSanItems(m.sanitario || []);
+      setSanOpen(false);
+      setDadosOpen(false);
+      setFromId(novoDetalhe.length > 0);
+      setAtribuirTargetId(null);
+      setEditingId(movId);
+      onToast?.(`Editando lançamento de ${formatDateBR(m.data)} — altere e clique em Salvar`, 'info');
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [movimentos, catName, onToast],
+  );
+
+  // Exclui um lançamento (com confirmação) e o remove da relação.
+  const excluirMovimento = useCallback(
+    async (movId: string) => {
+      const m = movimentos.find((x) => x.id === movId);
+      if (!m) return;
+      const ok =
+        typeof window === 'undefined' ||
+        window.confirm(`Excluir o lançamento de ${formatDateBR(m.data)} (${m.qtd} cab.)? Esta ação não pode ser desfeita.`);
+      if (!ok) return;
+      try {
+        await apiDeleteMovimento(movId);
+        setMovimentos((prev) => prev.filter((x) => x.id !== movId));
+        if (atribuirTargetId === movId) setAtribuirTargetId(null);
+        if (editingId === movId) novo();
+        onToast?.('Lançamento excluído', 'success');
+      } catch (err: any) {
+        onToast?.(err?.message || 'Erro ao excluir lançamento', 'error');
+      }
+    },
+    [movimentos, atribuirTargetId, editingId, novo, onToast],
   );
 
   const atribuirTarget = movimentos.find((m) => m.id === atribuirTargetId) || null;
@@ -410,32 +579,36 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
 
       <div
         className="rounded-2xl border border-gray-200 bg-white p-5"
-        style={{ maxWidth: fromId ? '100%' : 760 }}
+        style={{ maxWidth: fromId ? '100%' : 1100 }}
       >
-        {/* Cabeçalho */}
-        <div className="flex flex-wrap gap-4">
-          <div className="min-w-0 flex-1" style={{ maxWidth: 200 }}>
+        {editingId ? (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-[#fcd9b6] bg-[#fff7ed] px-3 py-2 text-[13px] font-semibold text-[#ea580c]">
+            <Info size={15} /> Editando um lançamento existente — altere os dados e clique em “Salvar alterações”.
+          </div>
+        ) : null}
+
+        {/* Cabeçalho — Safra, Data, Proprietário, Fazenda, Retiro e Local na mesma linha */}
+        <div className="flex flex-wrap items-end gap-3.5">
+          <div className="min-w-0" style={{ flex: '0 0 120px' }}>
             <label className={labelCls}>Safra</label>
             <input className={`${inputCls} mt-1.5`} value={safra} onChange={(e) => setSafra(e.target.value)} />
           </div>
-          <div className="min-w-0 flex-1" style={{ maxWidth: 200 }}>
+          <div className="min-w-0" style={{ flex: '0 0 150px' }}>
             <label className={labelCls}>Data</label>
             <input type="date" className={`${inputCls} mt-1.5`} value={data} onChange={(e) => setData(e.target.value)} />
           </div>
-          <div className="min-w-0 flex-1" style={{ minWidth: 220 }}>
+          <div className="min-w-0" style={{ flex: '1 1 190px' }}>
             <label className={labelCls}>Proprietário</label>
             <PessoaSelector
               organizationId={organizationId}
               value={proprietario}
               onChange={setProprietario}
+              filterTipo="proprietario"
               placeholder="Selecionar proprietário..."
               className="mt-1.5 h-10 w-full"
             />
           </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-4">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0" style={{ flex: '1 1 150px' }}>
             <label className={labelCls}>Fazenda</label>
             <select className={`${inputCls} mt-1.5`} value={fazenda} onChange={(e) => setFazenda(e.target.value)}>
               <option value="">—</option>
@@ -446,7 +619,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               ))}
             </select>
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0" style={{ flex: '1 1 150px' }}>
             <label className={labelCls}>Retiro</label>
             <select
               className={`${inputCls} mt-1.5`}
@@ -464,7 +637,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               ))}
             </select>
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0" style={{ flex: '1 1 150px' }}>
             <label className={labelCls}>Local</label>
             <select className={`${inputCls} mt-1.5`} value={local} onChange={(e) => setLocal(e.target.value)}>
               <option value="">—</option>
@@ -477,34 +650,44 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           </div>
         </div>
 
-        {/* Quantidade (âncora) + toggle brinco + categoria/+mais */}
+        {/* toggle brinco/lote + Quantidade (âncora) + categoria/+mais */}
         <div className="mt-4 flex flex-wrap items-end gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <IconCardButton
+              active={fromId}
+              onClick={toggleFromId}
+              title="Detalhamento individual (vem do ID)"
+              icon={<BrincoBovinoIcon size={22} />}
+            />
+            <IconCardButton
+              active={!fromId}
+              onClick={verColetivo}
+              title="Lote de animais (visão coletiva)"
+              icon={<LoteAnimaisIcon size={28} />}
+            />
+          </div>
           <div style={{ flex: '0 0 150px', maxWidth: 150 }}>
-            <label className={labelCls}>
+            <label className={`${labelCls} ${fromId ? 'opacity-40' : ''}`}>
               Quantidade <span className="text-red-500">*</span> <span className="font-medium text-gray-400">(cab.)</span>
             </label>
             <input
               type="number"
               min={1}
-              className={`${inputCls} mt-1.5`}
+              disabled={fromId}
+              className={`${inputCls} mt-1.5 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400`}
               placeholder="Ex.: 18"
               value={totalStr}
               onChange={(e) => setTotalStr(e.target.value)}
             />
           </div>
-          <button
-            type="button"
-            onClick={toggleFromId}
-            title="Distribuição vem do ID"
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg border ${
-              fromId ? 'border-[#cfe0fb] bg-[#eaf1fb] text-[#2563eb]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            <Tag size={22} />
-          </button>
           <div className="min-w-[180px] flex-1">
-            <label className={labelCls}>Categoria <span className="font-medium text-gray-400">(sem detalhe)</span></label>
-            <select className={`${inputCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
+            <label className={`${labelCls} ${fromId ? 'opacity-40' : ''}`}>Categoria <span className="font-medium text-gray-400">(sem detalhe)</span></label>
+            <select
+              disabled={fromId}
+              className={`${inputCls} mt-1.5 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400`}
+              value={catSel}
+              onChange={(e) => setCatSel(e.target.value)}
+            >
               <option value="">Selecione a categoria</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -516,7 +699,12 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           <button
             type="button"
             onClick={addCat}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#2563eb] bg-white px-3.5 text-sm font-semibold text-[#2563eb] hover:bg-[#eaf1fb]"
+            disabled={fromId}
+            className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-semibold ${
+              fromId
+                ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300'
+                : 'border-[#2563eb] bg-white text-[#2563eb] hover:bg-[#eaf1fb]'
+            }`}
           >
             <Plus size={16} /> mais
           </button>
@@ -560,6 +748,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             dadosOpen={dadosOpen}
             onToggleDados={() => setDadosOpen((p) => !p)}
             onToast={onToast}
+            onClose={verColetivo}
           />
         ) : null}
 
@@ -570,7 +759,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             onClick={novo}
             className="inline-flex items-center gap-2 rounded-lg border border-[#2563eb] bg-white px-4 py-2 text-sm font-semibold text-[#2563eb] hover:bg-[#eaf1fb]"
           >
-            <Plus size={16} /> Novo
+            <Plus size={16} /> {editingId ? 'Cancelar' : 'Novo'}
           </button>
           <button
             type="button"
@@ -580,14 +769,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               salvarHabilitado ? 'bg-[#2563eb] hover:bg-[#1d4fd7]' : 'cursor-not-allowed bg-[#9db8f0]'
             }`}
           >
-            <Save size={16} /> Salvar
-          </button>
-          <button
-            type="button"
-            onClick={abrirAtribuicao}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <IdCard size={16} /> Atribuir ID
+            <Save size={16} /> {editingId ? 'Salvar alterações' : 'Salvar'}
           </button>
           <div className="flex-1" />
           {totalGeral > 0 ? (
@@ -608,7 +790,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
 
       {/* Atribuição de ID */}
       {atribuirTarget ? (
-        <div className="mt-6" style={{ maxWidth: fromId ? '100%' : 760 }}>
+        <div className="mt-6" style={{ maxWidth: fromId ? '100%' : 1100 }}>
           <AtribuirIdPanel
             movimento={atribuirTarget}
             categories={categories}
@@ -618,70 +800,15 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           />
         </div>
       ) : (
-        /* Lançamentos recentes */
-        <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <div className="border-b border-gray-200 px-5 py-3.5">
-            <h3 className="text-[15px] font-bold text-gray-900">Lançamentos recentes — Nascimento</h3>
-          </div>
-          <table className="w-full text-left text-[13px]">
-            <thead>
-              <tr className="bg-[#fcfcfd] text-[11px] uppercase tracking-wide text-gray-500">
-                <th className="p-3 font-bold">Data</th>
-                <th className="p-3 font-bold">Categoria</th>
-                <th className="p-3 text-right font-bold">Qtd</th>
-                <th className="p-3 font-bold">Identificação</th>
-                <th className="p-3 font-bold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movimentos.length ? (
-                movimentos.map((m) => {
-                  // catDecl já consolida declarado + detalhado; pendência vem de naoIdentificados.
-                  const catCell = m.catDecl.length
-                    ? m.catDecl.map((d) => `${catName(d.catId)} (${d.qtd})`).join(', ')
-                    : 'A detalhar';
-                  return (
-                    <tr key={m.id} className="border-t border-gray-100">
-                      <td className="p-3 text-gray-700">{formatDateBR(m.data)}</td>
-                      <td className="p-3 font-semibold text-gray-800">{catCell}</td>
-                      <td className="p-3 text-right tabular-nums text-gray-700">+{m.qtd}</td>
-                      <td className="p-3">
-                        {m.naoIdentificados > 0 ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fdeee3] px-2.5 py-1 text-[11.5px] font-semibold text-[#ea580c]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#ea580c]" />
-                            {m.naoIdentificados} a detalhar
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f6ec] px-2.5 py-1 text-[11.5px] font-semibold text-[#16a34a]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
-                            {m.fichas.length} detalhados
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {m.status === 'conciliado' ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f6ec] px-2.5 py-1 text-[11.5px] font-semibold text-[#16a34a]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a]" /> Conciliado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fdeee3] px-2.5 py-1 text-[11.5px] font-semibold text-[#ea580c]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#ea580c]" /> Pendente
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-400">
-                    <Baby size={30} className="mx-auto mb-2 text-gray-300" />
-                    Nenhum lançamento ainda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        /* Lançamentos recentes (master-detail) */
+        <div className="mt-6">
+          <LancamentosRecentes
+            movimentos={movimentos}
+            catName={catName}
+            onAtribuir={setAtribuirTargetId}
+            onEditar={editarMovimento}
+            onExcluir={excluirMovimento}
+          />
         </div>
       )}
 

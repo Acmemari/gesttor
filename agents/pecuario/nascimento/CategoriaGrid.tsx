@@ -23,8 +23,8 @@ const CategoriaGrid: React.FC<CategoriaGridProps> = ({ rows, onEdit, onRemove })
         <thead>
           <tr className="bg-[#fcfcfd] text-[11px] uppercase tracking-wide text-gray-500">
             <th className="p-2.5 font-bold">Categoria</th>
-            <th className="w-[110px] p-2.5 text-right font-bold">Declarado</th>
-            <th className="w-[110px] p-2.5 text-right font-bold">Detalhado</th>
+            <th className="w-[110px] p-2.5 text-right font-bold">Sem ID</th>
+            <th className="w-[110px] p-2.5 text-right font-bold">Com ID</th>
             <th className="w-[100px] p-2.5 text-right font-bold">Total</th>
             <th className="w-[90px] p-2.5 font-bold">Ações</th>
           </tr>
@@ -40,15 +40,15 @@ const CategoriaGrid: React.FC<CategoriaGridProps> = ({ rows, onEdit, onRemove })
                 <td className="p-2.5">
                   {r.declarado > 0 ? (
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => onEdit(r.catId)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar declarado">
+                      <button type="button" onClick={() => onEdit(r.catId)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar sem ID">
                         <Pencil size={14} />
                       </button>
-                      <button type="button" onClick={() => onRemove(r.catId)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover declarado">
+                      <button type="button" onClick={() => onRemove(r.catId)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover sem ID">
                         <Trash2 size={14} />
                       </button>
                     </div>
                   ) : (
-                    <span className="text-[11px] text-gray-300">só detalhado</span>
+                    <span className="text-[11px] text-gray-300">só com ID</span>
                   )}
                 </td>
               </tr>

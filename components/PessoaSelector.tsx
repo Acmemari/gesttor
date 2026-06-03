@@ -13,6 +13,8 @@ export interface PessoaSelectorProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Quando informado, lista apenas pessoas cujo `tipo` inclui este valor (ex.: 'proprietario'). */
+  filterTipo?: string;
 }
 
 const PessoaSelector: React.FC<PessoaSelectorProps> = ({
@@ -23,6 +25,7 @@ const PessoaSelector: React.FC<PessoaSelectorProps> = ({
   placeholder = 'Selecionar pessoa...',
   className = '',
   disabled = false,
+  filterTipo,
 }) => {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +41,8 @@ const PessoaSelector: React.FC<PessoaSelectorProps> = ({
     setLoading(true);
     listPessoas({ organizationId, ativo: true, signal: controller.signal })
       .then(({ data }) => {
-        if (!cancelled) setPessoas(data);
+        if (cancelled) return;
+        setPessoas(filterTipo ? data.filter((p) => p.tipo?.includes(filterTipo)) : data);
       })
       .catch(() => { /* silent on abort */ })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -47,7 +51,7 @@ const PessoaSelector: React.FC<PessoaSelectorProps> = ({
       cancelled = true;
       controller.abort();
     };
-  }, [organizationId]);
+  }, [organizationId, filterTipo]);
 
   return (
     <select

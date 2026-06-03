@@ -1174,3 +1174,47 @@ export const mapaRebanhoLancamentos = pgTable('mapa_rebanho_lancamentos', {
   uniqueIndex('mapa_rebanho_lanc_header_local_cat_uidx').on(t.mapaHeaderId, t.localId, t.categoriaId),
   index('idx_mapa_rebanho_lanc_header').on(t.mapaHeaderId),
 ]);
+
+// ── Nascimento (Movimentação › Nascimento) ──────────────────────────────────────
+// Cada movimento é um lançamento de nascimento. catDecl/sanitario são snapshots
+// (jsonb) do que a tela monta; as fichas individuais ficam em tabela filha pois
+// podem ser adicionadas depois (Atribuir ID).
+export const nascimentoMovimentos = pgTable('nascimento_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  qtd: integer('qtd').notNull().default(0),
+  naoIdentificados: integer('nao_identificados').notNull().default(0),
+  // 'pendente' | 'conciliado'
+  status: text('status').notNull().default('pendente'),
+  // [{ catId, qtd }]
+  catDecl: jsonb('cat_decl').default('[]'),
+  // SanItem[]
+  sanitario: jsonb('sanitario').default('[]'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_nascimento_mov_org').on(t.organizationId),
+  index('idx_nascimento_mov_farm').on(t.farmId),
+]);
+
+export const nascimentoFichas = pgTable('nascimento_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => nascimentoMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  apelido: text('apelido').notNull(),
+  rfid: text('rfid'),
+  sisbov: text('sisbov'),
+  porte: text('porte'),
+  raca: text('raca'),
+  peso: numeric('peso', { precision: 8, scale: 2 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_nascimento_fichas_mov').on(t.movimentoId),
+]);
