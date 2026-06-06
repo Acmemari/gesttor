@@ -7,7 +7,7 @@ interface IconCardButtonProps {
   title?: string;
   /** Rótulo de acessibilidade (sobrescreve o title para leitores de tela). */
   ariaLabel?: string;
-  /** Estado ativo: aplica o destaque azul (mesmo padrão do botão de brinco). */
+  /** Estado ativo: aplica o destaque verde (mesmo padrão do botão de brinco). */
   active?: boolean;
   onClick?: () => void;
   disabled?: boolean;
@@ -19,7 +19,7 @@ interface IconCardButtonProps {
 /**
  * Botão-card quadrado e reutilizável (cantos arredondados, fundo branco, borda
  * sutil) seguindo o padrão visual de botões de ícone da aplicação. Quando
- * `active`, recebe o destaque azul. O ícone herda a cor pelo currentColor.
+ * `active`, recebe o destaque verde. O ícone herda a cor pelo currentColor.
  */
 const IconCardButton: React.FC<IconCardButtonProps> = ({
   icon,
@@ -41,7 +41,7 @@ const IconCardButton: React.FC<IconCardButtonProps> = ({
     style={{ height: size, width: size }}
     className={`grid shrink-0 place-items-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
       active
-        ? 'border-[#cfe0fb] bg-[#eaf1fb] text-[#2563eb]'
+        ? 'border-[#b7e0c4] bg-[#e7f6ec] text-[#16a34a]'
         : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
     } ${className}`}
   >

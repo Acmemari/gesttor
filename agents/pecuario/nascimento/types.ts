@@ -41,6 +41,16 @@ export interface LrField {
 /** Mapa campo → destino atual. */
 export type FieldPlaces = Record<string, FieldPlace>;
 
+/** Configuração persistida dos campos do Lançamento Rápido (por organização). */
+export interface NascimentoFieldConfig {
+  /** destino de cada campo */
+  places: FieldPlaces;
+  /** ordem global de exibição (lista de field ids) */
+  order: string[];
+  /** numeração automática do Apelido/ID */
+  autonum: boolean;
+}
+
 /** Categoria declarada manualmente (modo DESLIGADO). */
 export interface NascCat {
   catId: string;

@@ -30,6 +30,18 @@ export function safraAtual(now: Date = new Date()): string {
 }
 
 /**
+ * Safra (jul→jun) correspondente a uma data ISO (YYYY-MM-DD).
+ * Ex.: 2026-06-04 → "2025/2026" (junho ainda pertence à safra que começou em julho/2025).
+ */
+export function safraDaData(iso: string): string {
+  if (!iso) return '';
+  const [y, m] = iso.split('-').map(Number);
+  if (!y || !m) return '';
+  const ini = m >= 7 ? y : y - 1; // safra inicia em julho (mês 7)
+  return `${ini}/${ini + 1}`;
+}
+
+/**
  * Próximo Apelido/ID na sequência, preservando prefixo, sufixo e zeros à
  * esquerda. Ex.: 001 → 002 · BZ-09 → BZ-10. Sem número, retorna o original.
  */

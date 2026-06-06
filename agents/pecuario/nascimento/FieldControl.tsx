@@ -16,7 +16,7 @@ interface FieldControlProps {
 }
 
 const baseInput =
-  'w-full rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:border-[#2563eb] focus:ring-[3px] focus:ring-[#2563eb]/15 transition-colors';
+  'w-full rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15 transition-colors';
 
 const FieldControl: React.FC<FieldControlProps> = ({
   field,
@@ -64,7 +64,7 @@ const FieldControl: React.FC<FieldControlProps> = ({
         );
       case 'weight':
         return (
-          <div className={`flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 ${compact ? 'h-[38px]' : 'h-10'} focus-within:border-[#2563eb] focus-within:ring-[3px] focus-within:ring-[#2563eb]/15`}>
+          <div className={`flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 ${compact ? 'h-[38px]' : 'h-10'} focus-within:border-[#16a34a] focus-within:ring-[3px] focus-within:ring-[#16a34a]/15`}>
             <input
               type="text"
               inputMode="decimal"
@@ -73,7 +73,7 @@ const FieldControl: React.FC<FieldControlProps> = ({
               value={value}
               onChange={(e) => onChange(e.target.value)}
             />
-            <span className="shrink-0 text-xs font-bold text-[#2563eb]">Kg</span>
+            <span className="shrink-0 text-xs font-bold text-[#16a34a]">Kg</span>
           </div>
         );
       case 'sexo':

@@ -69,6 +69,9 @@ export const FIELD_BY_ID: Record<string, LrField> = Object.fromEntries(
   LR_REGISTRY.map((f) => [f.id, f]),
 );
 
+/** Ordem padrão de exibição dos campos (índice do registry). */
+export const DEFAULT_ORDER: string[] = LR_REGISTRY.map((f) => f.id);
+
 /** Mapa padrão campo → destino. */
 export function defaultPlaces(): FieldPlaces {
   const p: FieldPlaces = {};

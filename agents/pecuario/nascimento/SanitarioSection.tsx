@@ -11,7 +11,7 @@ interface SanitarioSectionProps {
 }
 
 const inputCls =
-  'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#2563eb] focus:ring-[3px] focus:ring-[#2563eb]/15';
+  'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
 const labelCls = 'text-[12.5px] font-semibold text-gray-700';
 
 let SAN_SEQ = 1;
@@ -83,7 +83,7 @@ const SanitarioSection: React.FC<SanitarioSectionProps> = ({ items, onItemsChang
                 name="san-aplic"
                 checked={aplic === v}
                 onChange={() => setAplic(v)}
-                className="h-4 w-4 accent-[#2563eb]"
+                className="h-4 w-4 accent-[#16a34a]"
               />
               {v === 'unica' ? 'Aplicação Única' : 'Protocolo'}
             </label>
@@ -157,13 +157,13 @@ const SanitarioSection: React.FC<SanitarioSectionProps> = ({ items, onItemsChang
               value={porKg}
               onChange={(e) => setPorKg(e.target.value)}
             />
-            <span className="shrink-0 text-xs font-bold text-[#2563eb]">Kg</span>
+            <span className="shrink-0 text-xs font-bold text-[#16a34a]">Kg</span>
           </div>
         </div>
         <button
           type="button"
           onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#2563eb] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#1d4fd7]"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#16a34a] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d]"
         >
           <Plus size={16} /> Adicionar
         </button>
@@ -218,7 +218,7 @@ const SanitarioSection: React.FC<SanitarioSectionProps> = ({ items, onItemsChang
                 <td colSpan={5} className="p-2.5 font-semibold text-gray-700">
                   Custo total da aplicação
                 </td>
-                <td className="p-2.5 text-right font-bold tabular-nums text-[#2563eb]">R$ {fmtMoeda(total)}</td>
+                <td className="p-2.5 text-right font-bold tabular-nums text-[#16a34a]">R$ {fmtMoeda(total)}</td>
                 <td />
               </tr>
             </tfoot>

@@ -3,21 +3,47 @@ import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pe
 import { useHierarchy } from '../../contexts/HierarchyContext';
 import { listAnimalCategories, type AnimalCategory } from '../../lib/api/animalCategoriesClient';
 import {
-  listMapasByOrg,
-  createMapa,
-  updateMapa,
-  deleteMapa,
-  listLancamentos,
-  upsertLancamento,
   type MapaRebanhoHeader,
   type MapaRebanhoLancamento,
 } from '../../lib/api/mapaRebanhoClient';
+import * as partidaClient from '../../lib/api/mapaRebanhoClient';
+import * as mapaoClient from '../../lib/api/mapaoClient';
+
+type MapaMode = 'partida' | 'mapao';
 
 interface EstoquePartidaProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onBack?: () => void;
   theme?: 'light' | 'dark';
+  /**
+   * 'partida' (default) → Estoque de Partida: um único mapa por fazenda.
+   * 'mapao'             → Mapa Rebanho - Mapão: vários mapas por fazenda (um por data).
+   */
+  mode?: MapaMode;
 }
+
+const MAPA_COPY: Record<MapaMode, {
+  layerLabel: string;
+  pageTitle: string;
+  pageDesc: string;
+  detailLabel: string;
+  emptyHint: string;
+}> = {
+  partida: {
+    layerLabel: 'CAMADA DE ESTOQUE',
+    pageTitle: 'Estoque de Partida',
+    pageDesc: 'Registre o inventário inicial do rebanho por fazenda e categoria animal. Cada mapa é uma fotografia do rebanho em uma data de referência, base para todas as movimentações e relatórios do módulo Pecuário.',
+    detailLabel: 'DETALHE DO ESTOQUE',
+    emptyHint: 'Crie o primeiro mapa utilizando o formulário acima.',
+  },
+  mapao: {
+    layerLabel: 'MAPA PERIÓDICO',
+    pageTitle: 'Mapa Rebanho - Mapão',
+    pageDesc: 'Registre periodicamente o mapa do rebanho por fazenda e categoria animal. Cada lançamento é uma fotografia do rebanho em uma data, permitindo acompanhar a evolução do rebanho ao longo do tempo.',
+    detailLabel: 'DETALHE DO MAPA',
+    emptyHint: 'Crie o primeiro mapa utilizando o formulário acima. Você pode lançar um novo mapa a cada período.',
+  },
+};
 
 interface Local {
   id: string;
@@ -61,10 +87,16 @@ function cellKey(localId: string, categoriaId: string) {
   return `${localId}__${categoriaId}`;
 }
 
-const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme = 'light' }) => {
+const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme = 'light', mode = 'partida' }) => {
   const isDark = false; // Forçado claro conforme diretrizes visuais do Gesttor
   const { selectedOrganization, farms, loading: hierarchyLoading } = useHierarchy();
   const organizationId = selectedOrganization?.id ?? '';
+
+  // ── Modo (Estoque de Partida vs Mapão) ─────────────────────────────────────
+  const api = useMemo(() => (mode === 'mapao' ? mapaoClient : partidaClient), [mode]);
+  const copy = MAPA_COPY[mode];
+  // Estoque de Partida é único por fazenda; o Mapão permite vários (um por data).
+  const enforceUnico = mode === 'partida';
 
   // ── List view state ────────────────────────────────────────────────────────
   const [mapas, setMapas] = useState<MapaRebanhoHeader[]>([]);
@@ -110,14 +142,14 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     }
     setLoadingList(true);
     try {
-      const rows = await listMapasByOrg(organizationId);
+      const rows = await api.listMapasByOrg(organizationId);
       setMapas(rows);
     } catch (err: any) {
       onToast?.(err?.message || 'Erro ao carregar mapas', 'error');
     } finally {
       setLoadingList(false);
     }
-  }, [organizationId, onToast]);
+  }, [organizationId, onToast, api]);
 
   useEffect(() => {
     void loadMapas();
@@ -130,7 +162,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
       const [locaisRes, catsRes, lancRes] = await Promise.all([
         fetchJson<Local[]>(`${LOCAIS_API}?farmIdLocais=${encodeURIComponent(mapa.farmId)}`),
         listAnimalCategories(organizationId),
-        listLancamentos(mapa.id),
+        api.listLancamentos(mapa.id),
       ]);
       setLocais(locaisRes);
       setCategorias(catsRes);
@@ -147,7 +179,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     } finally {
       setLoadingEditor(false);
     }
-  }, [organizationId, onToast]);
+  }, [organizationId, onToast, api]);
 
   const handleOpenMapa = useCallback((mapa: MapaRebanhoHeader) => {
     setOpenMapaId(mapa.id);
@@ -185,7 +217,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     }
     setCreating(true);
     try {
-      const row = await createMapa({ organizationId, farmId: newFarmId, dataReferencia: newDate });
+      const row = await api.createMapa({ organizationId, farmId: newFarmId, dataReferencia: newDate });
       onToast?.('Mapa criado', 'success');
       setMapas(prev => [row, ...prev]);
       handleOpenMapa(row);
@@ -194,12 +226,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     } finally {
       setCreating(false);
     }
-  }, [organizationId, newFarmId, newDate, onToast, handleOpenMapa]);
+  }, [organizationId, newFarmId, newDate, onToast, handleOpenMapa, api]);
 
   // ── Delete mapa ───────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteMapa(id);
+      await api.deleteMapa(id);
       setMapas(prev => prev.filter(m => m.id !== id));
       if (openMapaId === id) handleCloseEditor();
       onToast?.('Mapa excluído', 'success');
@@ -208,7 +240,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     } finally {
       setDeleteConfirmId(null);
     }
-  }, [openMapaId, handleCloseEditor, onToast]);
+  }, [openMapaId, handleCloseEditor, onToast, api]);
 
   // ── Build flat cell list for keyboard navigation ────────────────────────
   const flatCells = useMemo(() => {
@@ -277,7 +309,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     }
 
     try {
-      await upsertLancamento({
+      await api.upsertLancamento({
         mapaHeaderId: openMapa.id,
         localId,
         categoriaId,
@@ -288,7 +320,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
       // Reload to recover ground truth
       void loadEditor(openMapa);
     }
-  }, [editingCell, editingValue, openMapa, lancamentos, onToast, loadEditor]);
+  }, [editingCell, editingValue, openMapa, lancamentos, onToast, loadEditor, api]);
 
   const cancelEditCell = useCallback(() => {
     const prev = editingCell;
@@ -459,7 +491,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     setSavingHeader(true);
     try {
       const nextStatus = openMapa.status === 'salvo' ? 'rascunho' : 'salvo';
-      const row = await updateMapa(openMapa.id, { status: nextStatus });
+      const row = await api.updateMapa(openMapa.id, { status: nextStatus });
       setOpenMapa(row);
       setMapas(prev => prev.map(m => (m.id === row.id ? row : m)));
       onToast?.(nextStatus === 'salvo' ? 'Mapa salvo' : 'Mapa em edição', 'success');
@@ -468,7 +500,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     } finally {
       setSavingHeader(false);
     }
-  }, [openMapa, onToast]);
+  }, [openMapa, onToast, api]);
 
   // ── Derived totals ────────────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -584,7 +616,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     setCatEditingValue('');
 
     try {
-      await upsertLancamento({
+      await api.upsertLancamento({
         mapaHeaderId: openMapa.id,
         localId: targetLocal.id,
         categoriaId: catId,
@@ -594,7 +626,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
       onToast?.(err?.message || 'Erro ao salvar', 'error');
       void loadEditor(openMapa);
     }
-  }, [catEditingCell, catEditingValue, openMapa, locais, lancamentos, onToast, loadEditor]);
+  }, [catEditingCell, catEditingValue, openMapa, locais, lancamentos, onToast, loadEditor, api]);
 
   const cancelCatEdit = useCallback(() => {
     setCatEditingCell(null);
@@ -629,7 +661,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
         <header className="space-y-4 mb-8">
           <div className="flex items-center gap-3">
             <h1 className={`text-2xl md:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Estoque de Partida
+              {copy.pageTitle}
             </h1>
           </div>
         </header>
@@ -663,7 +695,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold text-[#22C55E] tracking-widest uppercase">
-                    DETALHE DO ESTOQUE
+                    {copy.detailLabel}
                   </span>
                   <span
                     className={`inline-block px-2 py-0.5 rounded-full text-[0.6rem] font-bold uppercase tracking-wider ${
@@ -1088,15 +1120,14 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
         )}
         <div className="space-y-0.5">
           <span className="text-[11px] font-bold text-[#22C55E] tracking-widest uppercase">
-            CAMADA DE ESTOQUE
+            {copy.layerLabel}
           </span>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-[#0F172A]">
-            Estoque de Partida
+            {copy.pageTitle}
           </h1>
         </div>
         <p className="text-sm leading-relaxed max-w-2xl text-[#6B7280]">
-          Registre o inventário inicial do rebanho por fazenda e categoria animal. Cada mapa é uma fotografia
-          do rebanho em uma data de referência, base para todas as movimentações e relatórios do módulo Pecuário.
+          {copy.pageDesc}
         </p>
       </header>
 
@@ -1119,7 +1150,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
             </select>
           </div>
 
-          {farmHasMapa ? (
+          {enforceUnico && farmHasMapa ? (
             <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-semibold flex-1 min-w-[280px] bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
               <AlertTriangle size={16} className="shrink-0 text-[#92400E]" />
               <span>Esta fazenda já possui um Estoque de Partida cadastrado. Edite ou exclua o existente na lista abaixo para fazer alterações.</span>
@@ -1158,7 +1189,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
         <div className="flex flex-col items-center justify-center flex-1 text-center border border-dashed rounded-2xl p-16 shadow-md bg-white border-gray-200 text-gray-500">
           <Boxes size={36} className="mb-4 opacity-40" />
           <p className="text-sm font-semibold">Nenhum mapa cadastrado.</p>
-          <p className="text-xs mt-1 opacity-70">Crie o primeiro mapa utilizando o formulário acima.</p>
+          <p className="text-xs mt-1 opacity-70">{copy.emptyHint}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

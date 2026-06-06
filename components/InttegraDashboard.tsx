@@ -6,6 +6,8 @@ import { lazyWithRetry } from '../lib/lazyWithRetry';
 // Lazy-loaded components for Pecuária modules
 const PecuarioCadastrosDesktop = lazyWithRetry(() => import('../agents/pecuario/PecuarioCadastrosDesktop'));
 const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
+// Mapa Rebanho - Mapão reaproveita o mesmo componente em modo periódico.
+const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
 const AnimalBreedsManagement = lazyWithRetry(() => import('../agents/AnimalBreedsManagement'));
@@ -24,7 +26,7 @@ const LoadingFallback: React.FC = () => (
 );
 
 const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) => {
-  const [subView, setSubView] = useState<'desktop' | 'estoque-partida' | 'animal-categories' | 'animal-breeds' | 'people'>('desktop');
+  const [subView, setSubView] = useState<'desktop' | 'estoque-partida' | 'mapao' | 'animal-categories' | 'animal-breeds' | 'people'>('desktop');
 
   // Reset to desktop when view changes
   useEffect(() => {
@@ -59,6 +61,13 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
         </Suspense>
       );
     }
+    if (subView === 'mapao') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <MapaoRebanho mode="mapao" theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
     if (subView === 'animal-categories') {
       return (
         <Suspense fallback={<LoadingFallback />}>
@@ -87,6 +96,7 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
         <PecuarioCadastrosDesktop
           theme="dark"
           onSelectEstoquePartida={() => setSubView('estoque-partida')}
+          onSelectMapao={() => setSubView('mapao')}
           onSelectAnimalCategories={() => setSubView('animal-categories')}
           onSelectAnimalBreeds={() => setSubView('animal-breeds')}
           onSelectPessoas={() => setSubView('people')}

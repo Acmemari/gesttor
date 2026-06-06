@@ -251,13 +251,13 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                 className="h-8 w-8 object-contain"
               />
               <button
-                onClick={onSwitchToGesttor}
+                onClick={onToggleCollapse}
                 className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded transition-colors hover:opacity-90"
                 style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_TEXT }}
-                title="Voltar para Gesttor"
-                aria-label="Voltar para Gesttor"
+                title="Expandir menu"
+                aria-label="Expandir menu"
               >
-                <ArrowLeft size={14} />
+                <ChevronRight size={14} />
               </button>
             </>
           ) : (
@@ -269,13 +269,13 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
               />
               <div className="flex items-center gap-1">
                 <button
-                  onClick={onSwitchToGesttor}
-                  className="p-1.5 rounded transition-colors hover:opacity-90"
+                  onClick={onToggleCollapse}
+                  className="hidden md:flex items-center justify-center p-1.5 rounded transition-colors hover:opacity-90"
                   style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_TEXT }}
-                  title="Voltar para Gesttor"
-                  aria-label="Voltar para Gesttor"
+                  title="Recolher menu"
+                  aria-label="Recolher menu"
                 >
-                  <ArrowLeft size={18} />
+                  <ChevronLeft size={18} />
                 </button>
                 <button
                   onClick={toggleSidebar}
@@ -491,7 +491,7 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
             </div>
           )}
 
-          <div className={`grid gap-1 ${isCollapsed ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <div className={`grid gap-1 ${isCollapsed ? 'grid-cols-1' : 'grid-cols-3'}`}>
             <button
               type="button"
               onClick={onSettingsClick}
@@ -500,6 +500,16 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
               title="Configurações"
             >
               <Settings size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onSwitchToGesttor}
+              className="flex items-center justify-center p-2 rounded-md transition-colors hover:opacity-90"
+              style={{ color: INTEGRA_PLACEHOLDER, backgroundColor: INTEGRA_SURFACE }}
+              title="Voltar para Gesttor"
+              aria-label="Voltar para Gesttor"
+            >
+              <ArrowLeft size={16} />
             </button>
             <button
               type="button"

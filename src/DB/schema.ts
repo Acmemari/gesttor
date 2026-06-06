@@ -1175,6 +1175,44 @@ export const mapaRebanhoLancamentos = pgTable('mapa_rebanho_lancamentos', {
   index('idx_mapa_rebanho_lanc_header').on(t.mapaHeaderId),
 ]);
 
+// ── Mapa Rebanho - Mapão (lançamento periódico) ───────────────────────────────
+// Mesma estrutura do Estoque de Partida (matriz Local × Categoria), porém o
+// usuário lança o mapa periodicamente: vários headers por fazenda, um por data.
+// Tabelas isoladas do Estoque de Partida para que as duas features evoluam
+// de forma independente.
+
+export const mapaoHeaders = pgTable('mapao_headers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  dataReferencia: date('data_referencia').notNull(),
+  // 'rascunho' | 'salvo'
+  status: text('status').notNull().default('rascunho'),
+  observacao: text('observacao'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  // Um único mapa por (fazenda, data de referência) — mas N datas por fazenda.
+  uniqueIndex('mapao_headers_farm_data_uidx').on(t.farmId, t.dataReferencia),
+  index('idx_mapao_headers_org').on(t.organizationId),
+  index('idx_mapao_headers_farm').on(t.farmId),
+]);
+
+export const mapaoLancamentos = pgTable('mapao_lancamentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mapaHeaderId: uuid('mapa_header_id').notNull().references(() => mapaoHeaders.id, { onDelete: 'cascade' }),
+  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').notNull().references(() => animalCategories.id, { onDelete: 'cascade' }),
+  quantidade: integer('quantidade').notNull().default(0),
+  pesoKgCabeca: numeric('peso_kg_cabeca', { precision: 8, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('mapao_lanc_header_local_cat_uidx').on(t.mapaHeaderId, t.localId, t.categoriaId),
+  index('idx_mapao_lanc_header').on(t.mapaHeaderId),
+]);
+
 // ── Nascimento (Movimentação › Nascimento) ──────────────────────────────────────
 // Cada movimento é um lançamento de nascimento. catDecl/sanitario são snapshots
 // (jsonb) do que a tela monta; as fichas individuais ficam em tabela filha pois
@@ -1217,4 +1255,17 @@ export const nascimentoFichas = pgTable('nascimento_fichas', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_nascimento_fichas_mov').on(t.movimentoId),
+]);
+
+// Configuração dos campos do Lançamento Rápido por organização (1 linha por org).
+// `config` é o blob { places, order, autonum } definido no modal "Configurar campos".
+export const nascimentoFieldConfigs = pgTable('nascimento_field_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  // { places: Record<fieldId, place>, order: string[], autonum: boolean }
+  config: jsonb('config').notNull().default('{}'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('nascimento_field_config_org_uidx').on(t.organizationId),
 ]);

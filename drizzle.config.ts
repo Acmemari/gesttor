@@ -33,6 +33,8 @@ export default defineConfig({
     'farm_plano_contas_inativas', 'itens_orcamento',
     // Mapa de Rebanho (Estoque de Partida)
     'mapa_rebanho_headers', 'mapa_rebanho_lancamentos',
+    // Mapa Rebanho - Mapão (lançamento periódico)
+    'mapao_headers', 'mapao_lancamentos',
     // Movimentação › Nascimento
     'nascimento_movimentos', 'nascimento_fichas',
   ],

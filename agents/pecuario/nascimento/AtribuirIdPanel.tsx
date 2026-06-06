@@ -12,7 +12,7 @@ interface AtribuirIdPanelProps {
 }
 
 const cellInputCls =
-  'w-full h-9 rounded-md border border-gray-200 bg-white px-2 text-[12.5px] text-gray-800 focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15';
+  'w-full h-9 rounded-md border border-gray-200 bg-white px-2 text-[12.5px] text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-2 focus:ring-[#16a34a]/15';
 
 const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories, onAdd, onClose, onToast }) => {
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome || '—';
@@ -78,7 +78,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
       </div>
 
       <div className="flex items-start gap-2 bg-[#fafbfc] px-4 py-3 text-[12.5px] text-gray-500">
-        <IdCard size={15} className="mt-0.5 shrink-0 text-[#2563eb]" />
+        <IdCard size={15} className="mt-0.5 shrink-0 text-[#16a34a]" />
         <span>
           Individualizando o nascimento de <b className="text-gray-700">{formatDateBR(movimento.data)}</b> — total{' '}
           <b className="text-gray-700">{movimento.qtd} cab.</b> (a quantidade é a base de conciliação). A categoria de cada
@@ -105,7 +105,6 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
         <table className="w-full text-left text-[12.5px]">
           <thead>
             <tr className="bg-[#fcfcfd] text-[10.5px] uppercase tracking-wide text-gray-500">
-              <th className="p-2.5 font-bold">ID interno</th>
               <th className="p-2.5 font-bold">Apelido / ID</th>
               <th className="p-2.5 font-bold">Categoria</th>
               <th className="p-2.5 font-bold">ID Eletrônica</th>
@@ -118,9 +117,6 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
           <tbody>
             {/* Linha de inclusão */}
             <tr className="border-t border-gray-100 bg-[#f7faff] align-middle">
-              <td className="p-2 text-center">
-                <Plus size={15} className="mx-auto text-[#2563eb]" />
-              </td>
               <td className="p-2">
                 <input
                   className={cellInputCls}
@@ -168,7 +164,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
                     onChange={(e) => setPeso(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
                   />
-                  <span className="shrink-0 text-[11px] font-bold text-[#2563eb]">Kg</span>
+                  <span className="shrink-0 text-[11px] font-bold text-[#16a34a]">Kg</span>
                 </div>
               </td>
               <td className="p-2">
@@ -182,7 +178,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563eb] px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-[#1d4fd7]"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#16a34a] px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-[#15803d]"
                 >
                   <Plus size={14} /> Adicionar
                 </button>
@@ -192,7 +188,6 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
             {movimento.fichas.length ? (
               movimento.fichas.map((f) => (
                 <tr key={f.id} className="border-t border-gray-100">
-                  <td className="p-2.5 font-mono font-semibold text-[#2563eb]">A-{String(f.id).padStart(4, '0')}</td>
                   <td className="p-2.5 font-semibold text-gray-800">{f.apelido}</td>
                   <td className="p-2.5 text-gray-700">{catName(f.catId)}</td>
                   <td className="p-2.5 font-mono text-[11px] text-gray-500">{f.rfid || '—'}</td>
@@ -204,7 +199,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
               ))
             ) : (
               <tr>
-                <td colSpan={8} className="p-5 text-center text-gray-400">
+                <td colSpan={7} className="p-5 text-center text-gray-400">
                   Nenhum bezerro individualizado neste lançamento ainda.
                 </td>
               </tr>

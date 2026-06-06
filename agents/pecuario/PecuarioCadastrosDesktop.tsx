@@ -207,6 +207,7 @@ const CadastroTitle: React.FC<{ entity: string; theme?: 'light' | 'dark' }> = ({
 
 interface PecuarioCadastrosDesktopProps {
   onSelectEstoquePartida: () => void;
+  onSelectMapao?: () => void;
   onSelectAnimalCategories?: () => void;
   onSelectAnimalBreeds?: () => void;
   onSelectPessoas?: () => void;
@@ -215,6 +216,7 @@ interface PecuarioCadastrosDesktopProps {
 
 const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectEstoquePartida,
+  onSelectMapao,
   onSelectAnimalCategories,
   onSelectAnimalBreeds,
   onSelectPessoas,
@@ -279,6 +281,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
         actionLabel: 'Preencher Estoque Inicial',
       }
     },
+    ...(onSelectMapao
+      ? [
+          {
+            id: 'mapao',
+            label: 'Mapa Rebanho - Mapão',
+            title: <CadastroTitle entity="Mapa Rebanho - Mapão" theme={theme} />,
+            description: 'Lance periodicamente o mapa do rebanho por fazenda e categoria. Acompanhe a evolução do efetivo ao longo do tempo.',
+            onClick: onSelectMapao,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Mapa Rebanho (Mapão) tem a mesma estrutura do Estoque de Partida, porém é lançado periodicamente. Enquanto o Estoque de Partida é uma fotografia única que inicia o controle, o Mapão é uma série de fotografias ao longo do tempo, permitindo acompanhar a evolução do rebanho por fazenda, local e categoria.',
+              steps: [
+                {
+                  title: 'Selecionar Fazenda e Data',
+                  desc: 'Escolha a fazenda e a data de referência do período que você está lançando (ex: fechamento mensal).',
+                },
+                {
+                  title: 'Lançar Saldos por Categoria',
+                  desc: 'Informe o número de cabeças e o peso médio de cada categoria animal em cada local/pasto.',
+                },
+                {
+                  title: 'Salvar e Consolidar',
+                  desc: 'Confira os totais e salve o mapa. A cada período, crie um novo mapa com uma nova data de referência.',
+                }
+              ],
+              proTip: 'Mantenha uma cadência regular de lançamento (ex: sempre no último dia do mês) para que os relatórios de evolução de rebanho fiquem consistentes.'
+            },
+            alert: {
+              status: 'Lançamento Periódico',
+              message: 'Cada fazenda pode ter vários mapas, um por data de referência.',
+              impact: 'O acompanhamento periódico alimenta os relatórios de evolução e comparação de rebanho entre períodos.',
+              actionLabel: 'Lançar Mapa',
+            }
+          },
+        ]
+      : []),
     ...(onSelectAnimalCategories
       ? [
           {

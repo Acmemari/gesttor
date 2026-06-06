@@ -23,7 +23,7 @@ import AnalystHeader from './components/AnalystHeader';
 import VisitorContentGuard from './components/VisitorContentGuard';
 import Breadcrumb, { BreadcrumbItem } from './components/shared/Breadcrumb';
 import { Agent } from './types';
-import { Menu, Construction, Loader2, ArrowLeft, Plus, CalendarDays, History, BarChart3, FileText, PenLine } from 'lucide-react';
+import { Construction, Loader2, ArrowLeft, Plus, CalendarDays, History, BarChart3, FileText, PenLine } from 'lucide-react';
 import { ToastContainer, Toast } from './components/Toast';
 // Lazy load agents for code splitting
 const CattleProfitCalculator = lazyWithRetry(() => import('./agents/CattleProfitCalculator'));
@@ -122,6 +122,8 @@ const AppContent: React.FC = () => {
   const { refreshCurrentLevel } = useHierarchy();
   const [activeApp, setActiveApp] = useState<'gesttor' | 'inttegra' | 'gestao-orcamentaria'>('gesttor');
   const prevActiveAppRef = React.useRef<'gesttor' | 'inttegra' | 'gestao-orcamentaria'>('gesttor');
+  // Garante que a entrada no workspace Inttegra (admins) só seja aplicada uma vez por carregamento.
+  const didInitWorkspaceRef = React.useRef(false);
   const [activeAgentId, setActiveAgentId] = useState<string>('cattle-profit');
   const [viewMode, setViewMode] = useState<
     'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution' | 'noticias-pecuaria' | 'vendo-ou-engordo'
@@ -168,6 +170,18 @@ const AppContent: React.FC = () => {
     }
     prevActiveAppRef.current = activeApp;
   }, [activeApp, user, refreshCurrentLevel]);
+
+  // Ao entrar no sistema, admins iniciam direto no workspace Inttegra (em vez do Gesttor).
+  // Roda apenas uma vez por carregamento — depois disso o usuário pode alternar livremente
+  // entre os workspaces sem ser redirecionado de volta.
+  useEffect(() => {
+    if (didInitWorkspaceRef.current) return;
+    if (isLoading || !user) return;
+    didInitWorkspaceRef.current = true;
+    if (user.role === 'admin') {
+      setActiveApp('inttegra');
+    }
+  }, [isLoading, user]);
 
   // Handle window resize to adjust sidebar state
   useEffect(() => {
@@ -1162,23 +1176,6 @@ const AppContent: React.FC = () => {
           className={`flex-1 min-w-0 flex flex-col h-full transition-all duration-300 relative ${isSidebarOpen ? (isInttegraSidebarCollapsed ? 'md:ml-16' : 'md:ml-64') : 'ml-0'}`}
         >
           <AnalystHeader />
-
-          <header className="h-12 bg-ai-bg border-b border-ai-border flex items-center justify-between px-4 shrink-0 sticky top-12 z-40">
-            <div className="flex items-center gap-2 md:gap-0">
-              <button
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="p-1.5 text-ai-subtext hover:text-ai-text rounded hover:bg-ai-surface mr-1 md:mr-3 focus:outline-none transition-colors"
-                aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-                aria-expanded={isSidebarOpen}
-                title={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-              >
-                <Menu size={20} />
-              </button>
-              <h1 className="text-sm font-semibold text-ai-text flex items-center gap-2 truncate max-w-[120px] md:max-w-none">
-                Inttegra
-              </h1>
-            </div>
-          </header>
 
           <main className="flex-1 min-h-0 bg-ai-bg overflow-hidden">
             <div className="h-full w-full max-w-[1600px] mx-auto flex flex-col min-h-0">
