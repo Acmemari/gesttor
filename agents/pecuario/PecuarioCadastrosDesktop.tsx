@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
-import { 
-  Play, 
-  BookOpen, 
-  AlertTriangle, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  Tv, 
-  Clock, 
-  ExternalLink, 
-  ShieldAlert 
+import React, { useState, useEffect } from 'react';
+import {
+  Play,
+  BookOpen,
+  AlertCircle,
+  X,
+  Tv,
+  Clock,
+  ExternalLink,
+  ShieldAlert,
+  Star,
 } from 'lucide-react';
+import { useCadastroFavorites } from '../../hooks/useCadastroFavorites';
+
+type CadastroTab = 'favoritos' | 'recentes' | 'todos';
 
 interface PecuarioCardProps {
   title: React.ReactNode;
@@ -19,6 +21,8 @@ interface PecuarioCardProps {
   active?: boolean;
   theme?: 'light' | 'dark';
   alertColor?: 'green' | 'yellow' | 'red' | 'gray';
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
   onVideoClick: () => void;
   onInstructionsClick: () => void;
   onAlertClick: () => void;
@@ -31,6 +35,8 @@ const PecuarioCard: React.FC<PecuarioCardProps> = ({
   active = true,
   theme = 'light',
   alertColor = 'gray',
+  isFavorite = false,
+  onToggleFavorite,
   onVideoClick,
   onInstructionsClick,
   onAlertClick,
@@ -100,7 +106,24 @@ const PecuarioCard: React.FC<PecuarioCardProps> = ({
           : 'border-gray-200 opacity-60 pointer-events-none'
       }`}
     >
-      <div className="mb-4">
+      {/* Botão de Favoritar (canto superior direito) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite?.();
+        }}
+        className={`absolute top-4 right-4 z-10 p-1.5 rounded-lg transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 hover:bg-amber-50 active:scale-95 ${
+          isFavorite ? 'text-amber-500' : 'text-gray-300 hover:text-amber-500'
+        }`}
+        aria-label={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+        aria-pressed={isFavorite}
+        title={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+      >
+        <Star size={18} className={isFavorite ? 'fill-amber-400' : ''} />
+      </button>
+
+      <div className="mb-4 pr-8">
         {title}
       </div>
       <p className="text-xs leading-relaxed text-gray-500 line-clamp-3 mb-6">
@@ -210,8 +233,14 @@ interface PecuarioCadastrosDesktopProps {
   onSelectMapao?: () => void;
   onSelectAnimalCategories?: () => void;
   onSelectAnimalBreeds?: () => void;
+  onSelectMotivosMorte?: () => void;
   onSelectPessoas?: () => void;
+  onSelectFichaAnimal?: () => void;
   theme?: 'light' | 'dark';
+  /** Aba solicitada externamente (ex.: "Ver todos os cadastros" no sidebar). */
+  initialTab?: CadastroTab;
+  /** Muda a cada pedido externo para reaplicar `initialTab` mesmo já montado. */
+  tabNonce?: number;
 }
 
 const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
@@ -219,10 +248,22 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectMapao,
   onSelectAnimalCategories,
   onSelectAnimalBreeds,
+  onSelectMotivosMorte,
   onSelectPessoas,
+  onSelectFichaAnimal,
   theme = 'light',
+  initialTab,
+  tabNonce,
 }) => {
   const isDark = theme === 'dark';
+  const { favorites, recents, isFavorite, toggleFavorite, recordRecent } = useCadastroFavorites();
+  const [activeTab, setActiveTab] = useState<CadastroTab>(initialTab ?? 'favoritos');
+
+  // Aplica a aba pedida pelo sidebar (ex.: "Todos"); o nonce permite reaplicar
+  // mesmo quando o componente já está montado.
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab, tabNonce]);
 
   const cards: {
     id: string;
@@ -281,6 +322,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
         actionLabel: 'Preencher Estoque Inicial',
       }
     },
+    ...(onSelectFichaAnimal
+      ? [
+          {
+            id: 'ficha-animal',
+            label: 'Ficha Animal',
+            title: <CadastroTitle entity="Ficha Animal" theme={theme} />,
+            description: 'Cadastre fichas individuais dos animais: identificação, genealogia, pesagens, reprodução e mais.',
+            onClick: onSelectFichaAnimal,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'A Ficha Animal centraliza todas as informações de cada animal do rebanho em um único registro, organizado em abas: Identificação, Genealogia, Progênies, Pesagens e GMD, Reprodutivo, Sanitário, Nutricional e Programa de Melhoramento. É a base do controle individual (zootécnico e genético) do rebanho.',
+              steps: [
+                {
+                  title: 'Identificar o Animal',
+                  desc: 'Informe ao menos o ID Manejo (chave da ficha). Brinco, SISBOV, raça, categoria e demais dados podem ser preenchidos depois.',
+                },
+                {
+                  title: 'Registrar a Genealogia',
+                  desc: 'Vincule Pai, Mãe, Avô Paterno e Avô Materno para acompanhar a linhagem e o melhoramento genético.',
+                },
+                {
+                  title: 'Complementar o Desempenho',
+                  desc: 'Use as abas de Pesagens/GMD, Reprodutivo, Sanitário e Nutricional para acompanhar a evolução do animal ao longo do tempo.',
+                },
+              ],
+              proTip: 'Padronize o ID Manejo seguindo a mesma lógica usada nos Nascimentos para manter a rastreabilidade entre as telas.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'A ficha animal usa as mesmas categorias e raças cadastradas no ambiente, garantindo consistência com os lançamentos de Nascimento.',
+              impact: 'O controle individual alimenta os relatórios zootécnicos e de melhoramento genético do rebanho.',
+              actionLabel: 'Abrir Ficha Animal',
+            }
+          },
+        ]
+      : []),
     ...(onSelectMapao
       ? [
           {
@@ -392,6 +470,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
           },
         ]
       : []),
+    ...(onSelectMotivosMorte
+      ? [
+          {
+            id: 'motivos-morte',
+            label: 'Motivos de Morte',
+            title: <CadastroTitle entity="Motivos de Morte" theme={theme} />,
+            description: 'Cadastre os motivos de morte do rebanho para padronizar os lançamentos de mortalidade e os relatórios de causas.',
+            onClick: onSelectMotivosMorte,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Motivos de Morte centraliza a lista de causas de mortalidade utilizadas no rebanho (ex: Pneumonia, Picada de Cobra, Tristeza Parasitária). Os motivos aqui cadastrados ficam disponíveis para seleção nos lançamentos de morte, garantindo padronização e relatórios consistentes de causa mortis.',
+              steps: [
+                {
+                  title: 'Cadastrar Motivo',
+                  desc: 'Clique em "Adicionar" e informe o nome do motivo (ex: Pneumonia, Raio, Intoxicação).',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste os motivos para definir a ordem em que aparecem nas listas de seleção do sistema.',
+                },
+                {
+                  title: 'Ativar ou Inativar',
+                  desc: 'Mantenha ativos apenas os motivos em uso. Motivos inativos deixam de aparecer nos lançamentos sem perder o histórico.',
+                },
+              ],
+              proTip: 'O sistema já vem com uma lista padrão de motivos pré-cadastrada. Ajuste, inative ou complemente conforme a realidade da sua propriedade.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os motivos de morte cadastrados estão disponíveis para seleção nos lançamentos de mortalidade do rebanho.',
+              impact: 'A padronização das causas de morte garante consistência nos relatórios de mortalidade e análise de perdas.',
+              actionLabel: 'Gerenciar Motivos',
+            }
+          },
+        ]
+      : []),
     ...(onSelectPessoas
       ? [
           {
@@ -455,34 +570,120 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
     setActiveDrawer('alert');
   };
 
+  const handleCardOpen = (card: typeof cards[0]) => {
+    recordRecent({ id: card.id, label: card.label });
+    card.onClick?.();
+  };
+
+  // Filtra os cards conforme a aba ativa. Em "Recentes" a ordem segue a do
+  // store (mais recente primeiro); itens já removidos do menu são descartados.
+  const visibleCards =
+    activeTab === 'favoritos'
+      ? cards.filter(c => isFavorite(c.id))
+      : activeTab === 'recentes'
+        ? recents
+            .map(r => cards.find(c => c.id === r.id))
+            .filter((c): c is typeof cards[0] => !!c)
+        : cards;
+
+  const tabs: { id: CadastroTab; label: string; icon: React.ElementType; count?: number }[] = [
+    { id: 'favoritos', label: 'Favoritos', icon: Star, count: favorites.length },
+    { id: 'recentes', label: 'Recentes', icon: Clock, count: recents.length },
+    { id: 'todos', label: 'Todos', icon: BookOpen, count: cards.length },
+  ];
+
   return (
     <div className="h-full flex flex-col p-8 md:p-12 max-w-7xl mx-auto animate-in fade-in duration-500">
-      <header className="space-y-4 mb-12">
+      <header className="space-y-4 mb-8">
         <h1 className={`text-3xl md:text-4xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {isDark ? 'Pecuária · Cadastros' : 'Pecuário · Cadastros'}
         </h1>
         <p className={`text-sm max-w-2xl font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           Escolha um bloco para um novo cadastro
         </p>
+
+        {/* Abas: Favoritos · Recentes · Todos */}
+        <div className={`flex flex-wrap gap-1.5 pt-2 ${isDark ? '' : ''}`}>
+          {tabs.map(({ id, label, icon: Icon, count }) => {
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold tracking-tight border transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
+                  selected
+                    ? isDark
+                      ? 'bg-emerald-500/15 text-[#65C04A] border-emerald-500/30'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : isDark
+                      ? 'text-gray-400 border-transparent hover:text-white hover:bg-white/5'
+                      : 'text-gray-500 border-transparent hover:text-gray-900 hover:bg-gray-100'
+                }`}
+                aria-pressed={selected}
+              >
+                <Icon size={14} className={id === 'favoritos' && selected ? 'fill-current' : ''} />
+                <span>{label}</span>
+                {typeof count === 'number' && count > 0 && (
+                  <span
+                    className={`min-w-[1.25rem] h-5 px-1 inline-flex items-center justify-center rounded-full text-[10px] font-black ${
+                      selected
+                        ? isDark
+                          ? 'bg-emerald-500/25 text-[#65C04A]'
+                          : 'bg-emerald-100 text-emerald-700'
+                        : isDark
+                          ? 'bg-white/10 text-gray-300'
+                          : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </header>
 
       {/* Grid de Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {cards.map(card => (
-          <PecuarioCard
-            key={card.id}
-            title={card.title}
-            description={card.description}
-            onClick={card.onClick}
-            active={card.active}
-            theme={theme}
-            alertColor={card.alertColor}
-            onVideoClick={() => handleVideoTrigger(card)}
-            onInstructionsClick={() => handleInstructionsTrigger(card)}
-            onAlertClick={() => handleAlertTrigger(card)}
-          />
-        ))}
-      </div>
+      {visibleCards.length === 0 ? (
+        <div className={`flex flex-col items-center justify-center text-center rounded-2xl border border-dashed py-16 px-6 ${
+          isDark ? 'border-[#5E6D82]/30 text-gray-400' : 'border-gray-200 text-gray-500'
+        }`}>
+          {activeTab === 'favoritos' ? (
+            <>
+              <Star size={28} className="mb-3 opacity-50" />
+              <p className="text-sm font-medium">Nenhum cadastro favoritado ainda.</p>
+              <p className="text-xs mt-1 opacity-80">Toque na estrela no canto de um card para favoritá-lo.</p>
+            </>
+          ) : (
+            <>
+              <Clock size={28} className="mb-3 opacity-50" />
+              <p className="text-sm font-medium">Nenhum cadastro aberto recentemente.</p>
+              <p className="text-xs mt-1 opacity-80">Os cadastros que você abrir aparecerão aqui.</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {visibleCards.map(card => (
+            <PecuarioCard
+              key={card.id}
+              title={card.title}
+              description={card.description}
+              onClick={() => handleCardOpen(card)}
+              active={card.active}
+              theme={theme}
+              alertColor={card.alertColor}
+              isFavorite={isFavorite(card.id)}
+              onToggleFavorite={() => toggleFavorite({ id: card.id, label: card.label })}
+              onVideoClick={() => handleVideoTrigger(card)}
+              onInstructionsClick={() => handleInstructionsTrigger(card)}
+              onAlertClick={() => handleAlertTrigger(card)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* --- MODAL DO VIDEO TUTORIAL MOCKUP --- */}
       {activeModal === 'video' && selectedCard && (

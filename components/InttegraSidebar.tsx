@@ -3,6 +3,8 @@ import { User } from '../types';
 import { APP_VERSION } from '../src/version';
 import ProdutoCadastroModal from './ProdutoCadastroModal';
 import { CattleHeadIcon } from './icons/CattleHeadIcon';
+import { useCadastroFavorites, openCadastro } from '../hooks/useCadastroFavorites';
+import { PECUARIO_CADASTROS } from '../agents/pecuario/cadastrosCatalog';
 import {
   Settings,
   LogOut,
@@ -46,8 +48,14 @@ const INTEGRA_BORDER = '#5E6D82';
 
 const LOGO_SRC = '/inttegra-logo.png';
 
-type SubItemChild = { label: string; view?: string };
-type SubItem = { label: string; icon?: 'chevron' | 'star'; children?: SubItemChild[] };
+type SubItemChild = { label: string; view?: string; cadastroId?: string };
+type SubItem = {
+  label: string;
+  icon?: 'chevron' | 'star';
+  children?: SubItemChild[];
+  /** Quando true, os filhos são gerados a partir dos cadastros favoritados. */
+  favoritesSource?: boolean;
+};
 type ExpandableItem = { id: string; label: string; icon: React.ElementType; subItems: SubItem[] };
 
 const expandableSections: ExpandableItem[] = [
@@ -56,11 +64,14 @@ const expandableSections: ExpandableItem[] = [
     label: 'Pecuária',
     icon: CattleHeadIcon,
     subItems: [
-      { label: 'Cadastros', icon: 'chevron' },
+      { label: 'Cadastros', icon: 'chevron', favoritesSource: true },
       {
         label: 'Movimentações',
         icon: 'chevron',
-        children: [{ label: 'Nascimentos', view: 'pecuario-movimentacao' }],
+        children: [
+          { label: 'Nascimentos', view: 'pecuario-movimentacao' },
+          { label: 'Mortes', view: 'pecuario-morte' },
+        ],
       },
       { label: 'Relatórios' },
     ],
@@ -144,11 +155,6 @@ const expandableSections: ExpandableItem[] = [
   },
 ];
 
-const simpleItems: { label: string; icon: React.ElementType }[] = [
-  { label: 'Favoritos', icon: Star },
-  { label: 'Recentes', icon: Clock },
-];
-
 const financeiroHierarchy = {
   cadastros: [
     'Produtos',
@@ -185,6 +191,10 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
   onSwitchToGesttor,
   onViewChange,
 }) => {
+  const { favorites, recents } = useCadastroFavorites();
+  const [openSimple, setOpenSimple] = useState<Record<string, boolean>>({
+    recentes: false,
+  });
   const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(false);
   const [openFinanceiroSub, setOpenFinanceiroSub] = useState<Record<string, boolean>>({
     cadastros: false,
@@ -385,7 +395,17 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                 {!isCollapsed && isOpen && (
                   <div className="ml-[16px] mr-0 mt-1 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
                     {subItems.map(sub => {
-                      const hasChildren = !!sub.children?.length;
+                      // Filhos dinâmicos: para "Cadastros" da Pecuária, listamos os
+                      // cadastros favoritados (cada um abre o cadastro específico).
+                      const favoriteChildren: SubItemChild[] = sub.favoritesSource
+                        ? favorites.map(f => ({
+                            label: f.label,
+                            view: 'pecuario-cadastros',
+                            cadastroId: f.id,
+                          }))
+                        : [];
+                      const childItems = sub.favoritesSource ? favoriteChildren : sub.children ?? [];
+                      const hasChildren = sub.favoritesSource || !!sub.children?.length;
                       const subKey = `${id}:${sub.label}`;
                       const subOpen = openSubSections[subKey] ?? false;
                       return (
@@ -394,10 +414,12 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                             className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
                             style={{ color: INTEGRA_TEXT }}
                             onClick={() => {
-                              if (hasChildren) {
-                                toggleSubSection(subKey);
-                              } else if (id === 'pecuaria' && sub.label === 'Cadastros' && onViewChange) {
+                              // "Cadastros" da Pecuária: o clique na linha mostra os
+                              // cards no workspace; a setinha (abaixo) expande os favoritos.
+                              if (sub.favoritesSource && onViewChange) {
                                 onViewChange('pecuario-cadastros');
+                              } else if (hasChildren) {
+                                toggleSubSection(subKey);
                               } else if (sub.label === 'Smart Start' && onViewChange) {
                                 onViewChange('smart-start');
                               } else if (id === 'cadastros-gerais' && sub.label === 'Propriedades' && onViewChange) {
@@ -405,8 +427,35 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                               }
                             }}
                           >
-                            <span className="text-[13px] truncate">{sub.label}</span>
-                            {hasChildren ? (
+                            <span className="flex items-center gap-2 min-w-0 text-[13px]">
+                              <span className="truncate">{sub.label}</span>
+                              {sub.favoritesSource && favoriteChildren.length > 0 && (
+                                <span
+                                  className="text-[10px] font-bold px-1.5 rounded-full leading-5 flex-shrink-0"
+                                  style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_PLACEHOLDER }}
+                                >
+                                  {favoriteChildren.length}
+                                </span>
+                              )}
+                            </span>
+                            {sub.favoritesSource ? (
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  toggleSubSection(subKey);
+                                }}
+                                className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors"
+                                title={subOpen ? 'Recolher favoritos' : 'Expandir favoritos'}
+                                aria-label={subOpen ? 'Recolher favoritos' : 'Expandir favoritos'}
+                              >
+                                {subOpen ? (
+                                  <ChevronUp size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-60" />
+                                ) : (
+                                  <ChevronDown size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-60" />
+                                )}
+                              </button>
+                            ) : hasChildren ? (
                               subOpen ? (
                                 <ChevronUp size={14} style={{ color: INTEGRA_PLACEHOLDER }} className="opacity-60" />
                               ) : (
@@ -420,18 +469,68 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
                           </div>
                           {hasChildren && subOpen && (
                             <div className="ml-[16px] mt-0.5 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
-                              {sub.children!.map(child => (
+                              {sub.favoritesSource && favoriteChildren.length === 0 && (
+                                <div className="pl-4 pr-4 py-1.5 text-[12px] italic" style={{ color: INTEGRA_PLACEHOLDER }}>
+                                  Nenhum favorito ainda
+                                </div>
+                              )}
+                              {childItems.map(child => (
                                 <div
                                   key={child.label}
-                                  className="flex items-center gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                                  className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
                                   style={{ color: INTEGRA_TEXT }}
+                                  title={child.label}
                                   onClick={() => {
                                     if (child.view && onViewChange) onViewChange(child.view);
+                                    if (child.cadastroId) openCadastro(child.cadastroId);
                                   }}
                                 >
                                   <span className="text-[13px] truncate">{child.label}</span>
+                                  {child.cadastroId && (
+                                    <ChevronRight size={14} className="flex-shrink-0 opacity-60" style={{ color: INTEGRA_PLACEHOLDER }} />
+                                  )}
                                 </div>
                               ))}
+                              {sub.favoritesSource && (() => {
+                                const allKey = `${subKey}::todos`;
+                                const allOpen = openSubSections[allKey] ?? false;
+                                return (
+                                  <>
+                                    <div
+                                      className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                                      style={{ color: INTEGRA_ACCENT }}
+                                      title="Ver todos os cadastros"
+                                      onClick={() => toggleSubSection(allKey)}
+                                    >
+                                      <span className="text-[13px] truncate">Ver todos os cadastros</span>
+                                      {allOpen ? (
+                                        <ChevronUp size={14} className="flex-shrink-0 opacity-60" style={{ color: INTEGRA_ACCENT }} />
+                                      ) : (
+                                        <ChevronDown size={14} className="flex-shrink-0 opacity-60" style={{ color: INTEGRA_ACCENT }} />
+                                      )}
+                                    </div>
+                                    {allOpen && (
+                                      <div className="ml-[16px] mt-0.5 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
+                                        {PECUARIO_CADASTROS.map(c => (
+                                          <div
+                                            key={c.id}
+                                            className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                                            style={{ color: INTEGRA_TEXT }}
+                                            title={c.label}
+                                            onClick={() => {
+                                              onViewChange?.('pecuario-cadastros');
+                                              openCadastro(c.id);
+                                            }}
+                                          >
+                                            <span className="text-[13px] truncate">{c.label}</span>
+                                            <ChevronRight size={14} className="flex-shrink-0 opacity-60" style={{ color: INTEGRA_PLACEHOLDER }} />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -443,19 +542,77 @@ const InttegraSidebar: React.FC<InttegraSidebarProps> = ({
             );
           })}
 
-          {/* Simple items (Favoritos, Recentes) */}
+          {/* Recentes (lista dos cards de cadastro abertos recentemente) */}
           <div className="pt-2 space-y-0.5">
-            {simpleItems.map(({ label, icon: Icon }) => (
-              <div
-                key={label}
-                className={`flex items-center cursor-pointer transition-colors hover:bg-white/5 ${isCollapsed ? 'justify-center p-2' : 'justify-between py-2 pr-4 pl-[16px] border-l-[3px] border-transparent'}`}
-                style={{ color: INTEGRA_TEXT }}
-                title={isCollapsed ? label : undefined}
-              >
-                {!isCollapsed && <span className="text-[13px]">{label}</span>}
-                {!isCollapsed && <ChevronDown size={16} style={{ color: INTEGRA_PLACEHOLDER }} />}
-              </div>
-            ))}
+            {([
+              { id: 'recentes', label: 'Recentes', icon: Clock, items: recents, empty: 'Nada recente' },
+            ] as const).map(({ id, label, icon: Icon, items, empty }) => {
+              const open = openSimple[id] ?? false;
+              return (
+                <div key={id}>
+                  <button
+                    type="button"
+                    onClick={() => !isCollapsed && setOpenSimple(prev => ({ ...prev, [id]: !prev[id] }))}
+                    className={`w-full flex items-center transition-colors hover:bg-white/5 ${isCollapsed ? 'justify-center p-2' : 'justify-between py-2 pr-4 pl-[13px] border-l-[3px]'}`}
+                    style={{
+                      color: open ? INTEGRA_ACCENT : INTEGRA_TEXT,
+                      borderColor: open ? INTEGRA_ACCENT : 'transparent',
+                      backgroundColor: open ? 'rgba(255,255,255,0.03)' : 'transparent',
+                    }}
+                    title={isCollapsed ? label : undefined}
+                  >
+                    {isCollapsed ? (
+                      <Icon size={18} />
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-2 text-[13px]">
+                          <Icon size={14} style={{ color: open ? INTEGRA_ACCENT : INTEGRA_PLACEHOLDER }} />
+                          {label}
+                          {items.length > 0 && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 rounded-full leading-5"
+                              style={{ backgroundColor: INTEGRA_SURFACE, color: INTEGRA_PLACEHOLDER }}
+                            >
+                              {items.length}
+                            </span>
+                          )}
+                        </span>
+                        {open ? (
+                          <ChevronUp size={16} style={{ color: INTEGRA_PLACEHOLDER }} />
+                        ) : (
+                          <ChevronDown size={16} style={{ color: INTEGRA_PLACEHOLDER }} />
+                        )}
+                      </>
+                    )}
+                  </button>
+                  {!isCollapsed && open && (
+                    <div className="ml-[16px] mr-0 mt-1 space-y-0.5 border-l" style={{ borderColor: INTEGRA_BORDER }}>
+                      {items.length === 0 ? (
+                        <div className="pl-4 pr-4 py-1.5 text-[12px] italic" style={{ color: INTEGRA_PLACEHOLDER }}>
+                          {empty}
+                        </div>
+                      ) : (
+                        items.map(item => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-2 pl-4 pr-4 py-1.5 hover:bg-white/5 cursor-pointer transition-colors min-w-0"
+                            style={{ color: INTEGRA_TEXT }}
+                            onClick={() => {
+                              onViewChange?.('pecuario-cadastros');
+                              openCadastro(item.id);
+                            }}
+                            title={item.label}
+                          >
+                            <span className="text-[13px] truncate">{item.label}</span>
+                            <ChevronRight size={14} className="flex-shrink-0 opacity-60" style={{ color: INTEGRA_PLACEHOLDER }} />
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

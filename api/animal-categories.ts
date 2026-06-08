@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Create
-      const { organizationId, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca } = req.body ?? {};
+      const { organizationId, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca, ativo } = req.body ?? {};
       if (!organizationId || !nome || !sexo || !grupo) {
         jsonError(res, 'Campos obrigatórios: organizationId, nome, sexo, grupo', { status: 400 });
         return;
@@ -95,6 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         grupo,
         idadeFaixa: idadeFaixa || null,
         pesoKg: pesoKg != null ? String(pesoKg) : null,
+        ativo: typeof ativo === 'boolean' ? ativo : true,
       });
       jsonSuccess(res, row);
       return;
@@ -102,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca } = req.body ?? {};
+      const { id, nome, sexo, grupo, idadeFaixa, pesoKg, complemento, raca, ativo } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
@@ -128,6 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (grupo !== undefined) payload.grupo = grupo;
       if (idadeFaixa !== undefined) payload.idadeFaixa = idadeFaixa || null;
       if (pesoKg !== undefined) payload.pesoKg = pesoKg != null ? String(pesoKg) : null;
+      if (ativo !== undefined) payload.ativo = !!ativo;
 
       const row = await update(id, payload);
       jsonSuccess(res, row);

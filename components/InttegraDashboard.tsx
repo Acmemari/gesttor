@@ -1,7 +1,29 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Layers, Loader2 } from 'lucide-react';
 import SmartStart from './SmartStart';
 import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { onOpenCadastro, onOpenCadastrosTab, type CadastrosTab } from '../hooks/useCadastroFavorites';
+
+type SubView =
+  | 'desktop'
+  | 'estoque-partida'
+  | 'mapao'
+  | 'animal-categories'
+  | 'animal-breeds'
+  | 'motivos-morte'
+  | 'people'
+  | 'ficha-animal';
+
+// Ids de card que correspondem a uma sub-tela de cadastro (= ids de PecuarioCadastrosDesktop).
+const CADASTRO_SUBVIEWS: readonly SubView[] = [
+  'estoque-partida',
+  'mapao',
+  'animal-categories',
+  'animal-breeds',
+  'motivos-morte',
+  'people',
+  'ficha-animal',
+];
 
 // Lazy-loaded components for Pecuária modules
 const PecuarioCadastrosDesktop = lazyWithRetry(() => import('../agents/pecuario/PecuarioCadastrosDesktop'));
@@ -9,13 +31,18 @@ const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePar
 // Mapa Rebanho - Mapão reaproveita o mesmo componente em modo periódico.
 const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
+const MorteView = lazyWithRetry(() => import('../agents/pecuario/morte/MorteView'));
+const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
 const AnimalBreedsManagement = lazyWithRetry(() => import('../agents/AnimalBreedsManagement'));
+const MotivosMorteManagement = lazyWithRetry(() => import('../agents/MotivosMorteManagement'));
 const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
 const PeopleManagement = lazyWithRetry(() => import('../agents/PeopleManagement'));
 
 interface InttegraDashboardProps {
   view?: string;
+  /** Incrementa a cada clique no sidebar; força voltar à tela inicial da seção mesmo na mesma view. */
+  navNonce?: number;
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -25,13 +52,46 @@ const LoadingFallback: React.FC = () => (
   </div>
 );
 
-const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) => {
-  const [subView, setSubView] = useState<'desktop' | 'estoque-partida' | 'mapao' | 'animal-categories' | 'animal-breeds' | 'people'>('desktop');
+const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, onToast }) => {
+  const [subView, setSubView] = useState<SubView>('desktop');
+  // Aba pedida pela sidebar ("Ver todos os cadastros" → "todos"); o nonce força
+  // a tela de cadastros a reaplicar a aba mesmo já montada.
+  const [cadastrosTab, setCadastrosTab] = useState<{ tab: CadastrosTab; nonce: number } | null>(null);
+  // Guarda um cadastro pedido pela sidebar enquanto a troca de view acontece,
+  // para que o reset de subView abaixo não sobrescreva o destino.
+  const pendingCadastroRef = useRef<SubView | null>(null);
 
-  // Reset to desktop when view changes
+  // Navegação direta para um cadastro a partir da sidebar (Favoritos/Recentes).
   useEffect(() => {
-    setSubView('desktop');
-  }, [view]);
+    return onOpenCadastro(id => {
+      if ((CADASTRO_SUBVIEWS as readonly string[]).includes(id)) {
+        pendingCadastroRef.current = id as SubView;
+        setSubView(id as SubView);
+      }
+    });
+  }, []);
+
+  // Pedido de aba específica ("Ver todos os cadastros" no sidebar): volta ao
+  // desktop de cards e marca a aba a ser aberta.
+  useEffect(() => {
+    return onOpenCadastrosTab(tab => {
+      pendingCadastroRef.current = null;
+      setSubView('desktop');
+      setCadastrosTab({ tab, nonce: (Date.now()) });
+    });
+  }, []);
+
+  // Ao trocar de view OU reclicar no item da sidebar (navNonce muda), volta ao
+  // desktop — exceto quando há um cadastro pendente solicitado pela sidebar
+  // (abre direto a sub-tela correspondente).
+  useEffect(() => {
+    if (view === 'pecuario-cadastros' && pendingCadastroRef.current) {
+      setSubView(pendingCadastroRef.current);
+      pendingCadastroRef.current = null;
+    } else {
+      setSubView('desktop');
+    }
+  }, [view, navNonce]);
 
   if (view === 'smart-start') {
     return <SmartStart />;
@@ -49,6 +109,14 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
     return (
       <Suspense fallback={<LoadingFallback />}>
         <PecuarioMovimentos onToast={onToast} />
+      </Suspense>
+    );
+  }
+
+  if (view === 'pecuario-morte') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <MorteView onToast={onToast} />
       </Suspense>
     );
   }
@@ -82,11 +150,27 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
         </Suspense>
       );
     }
+    if (subView === 'motivos-morte') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <MotivosMorteManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
     if (subView === 'people') {
       return (
         <Suspense fallback={<LoadingFallback />}>
           <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
-            <PeopleManagement onToast={onToast} onBack={() => setSubView('desktop')} />
+            <PeopleManagement onToast={onToast} onBack={() => setSubView('desktop')} isInttegra />
+          </div>
+        </Suspense>
+      );
+    }
+    if (subView === 'ficha-animal') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <FichaAnimalView onToast={onToast} onBack={() => setSubView('desktop')} />
           </div>
         </Suspense>
       );
@@ -99,7 +183,11 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, onToast }) 
           onSelectMapao={() => setSubView('mapao')}
           onSelectAnimalCategories={() => setSubView('animal-categories')}
           onSelectAnimalBreeds={() => setSubView('animal-breeds')}
+          onSelectMotivosMorte={() => setSubView('motivos-morte')}
           onSelectPessoas={() => setSubView('people')}
+          onSelectFichaAnimal={() => setSubView('ficha-animal')}
+          initialTab={cadastrosTab?.tab}
+          tabNonce={cadastrosTab?.nonce}
         />
       </Suspense>
     );

@@ -1909,7 +1909,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
               "flex-1 px-4 py-2 text-sm border border-ai-border text-ai-text rounded-lg font-medium hover:bg-ai-surface2 transition-colors"
             }
           >
-            Cancelar
+            {isInttegra ? 'Sair' : 'Cancelar'}
           </button>
           <button
             type="submit"

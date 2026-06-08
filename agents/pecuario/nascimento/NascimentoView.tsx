@@ -177,7 +177,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           setCategories(
             rows
               .filter((c) => c.grupo === 'bezerros_mamando')
-              .map((c) => ({ id: c.id, nome: c.nome })),
+              .map((c) => ({ id: c.id, nome: c.nome, sexo: c.sexo })),
           );
         }
       })
@@ -305,7 +305,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     const apelido = (entryValues.apelido || '').trim();
     const catId = entryValues.categoria || '';
     if (!apelido) {
-      onToast?.('Informe o Apelido/ID', 'error');
+      onToast?.('Informe o ID Manejo', 'error');
       return;
     }
     if (!catId) {
@@ -330,6 +330,16 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
   }, []);
+
+  // Importação em massa: linhas conformes da planilha viram animais detalhados.
+  const importDetalhe = useCallback(
+    (rows: Record<string, string>[]) => {
+      if (!rows.length) return;
+      setDetalhe((prev) => [...prev, ...rows.map((values) => ({ id: detSeq.current++, values }))]);
+      onToast?.(`${rows.length} ${rows.length === 1 ? 'animal importado' : 'animais importados'} da planilha`, 'success');
+    },
+    [onToast],
+  );
 
   // ── Categorias declaradas (modo DESLIGADO) ────────────────────────────────
   const addCat = useCallback(() => {
@@ -386,7 +396,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     setPlaces((prev) => {
       const field = LR_REGISTRY.find((f) => f.id === id);
       let target = val;
-      if (field?.locked) target = val === 'off' ? 'off' : 'bottom'; // Apelido/ID: só Tabela ou Desativar
+      if (field?.locked) target = val === 'off' ? 'off' : 'bottom'; // ID Manejo: só Tabela ou Desativar
       if (field?.enableOnly) target = val === 'top' || val === 'off' ? val : 'top'; // Sanitário: só Superior/Desativar
       return { ...prev, [id]: target };
     });
@@ -641,35 +651,45 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
 
   return (
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
-      {/* Abas: Lançar (formulário) vs. Lançamentos (histórico completo) */}
-      <div className="mb-5 inline-flex rounded-xl border border-gray-200 bg-white p-1">
-        <button
-          type="button"
-          onClick={() => setAba('lancar')}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-            aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          <Plus size={16} /> Lançar
-        </button>
-        <button
-          type="button"
-          onClick={() => setAba('historico')}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-            aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          <List size={16} /> Registros
-          {movimentos.length ? (
-            <span
-              className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
-                aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {movimentos.length}
-            </span>
-          ) : null}
-        </button>
+      {/* Cabeçalho + abas na mesma linha (economiza espaço vertical) */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        {/* Título da tela */}
+        <div className="flex items-center gap-2.5">
+          <BrincoBovinoIcon size={22} className="text-[#16a34a]" />
+          <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Nascimentos</h1>
+        </div>
+
+        {/* Abas: Lançamentos (formulário) vs. Registros (histórico completo).
+            Grid de 2 colunas iguais → os dois botões têm exatamente a mesma dimensão. */}
+        <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
+          <button
+            type="button"
+            onClick={() => setAba('lancar')}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+              aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Plus size={16} /> Lançamentos
+          </button>
+          <button
+            type="button"
+            onClick={() => setAba('historico')}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+              aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <List size={16} /> Registros
+            {movimentos.length ? (
+              <span
+                className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
+                  aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {movimentos.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
       </div>
 
       {aba === 'lancar' ? (
@@ -829,26 +849,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               </div>
             ) : null}
 
-            {/* Ações */}
+            {/* Ações — Salvar e Cancelar juntos à direita */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={novo}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-4 py-2 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec]"
-              >
-                <Plus size={16} /> {editingId ? 'Cancelar' : 'Novo'}
-              </button>
-              <button
-                type="button"
-                onClick={salvar}
-                disabled={!salvarHabilitado}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm ${
-                  salvarHabilitado ? 'bg-[#16a34a] hover:bg-[#15803d]' : 'cursor-not-allowed bg-[#86cfa4]'
-                }`}
-              >
-                <Save size={16} /> {editingId ? 'Salvar alterações' : 'Salvar'}
-              </button>
-              <div className="flex-1" />
               {totalGeral > 0 ? (
                 <span className="text-[13px] text-gray-500">
                   {totalDeclarado > 0 ? (
@@ -862,6 +864,24 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
                   )}
                 </span>
               ) : null}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={novo}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvar}
+                disabled={!salvarHabilitado}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm ${
+                  salvarHabilitado ? 'bg-[#16a34a] hover:bg-[#15803d]' : 'cursor-not-allowed bg-[#86cfa4]'
+                }`}
+              >
+                <Save size={16} /> {editingId ? 'Salvar alterações' : 'Salvar'}
+              </button>
             </div>
           </div>
 
@@ -908,6 +928,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
             dadosOpen={dadosOpen}
             onToggleDados={() => setDadosOpen((p) => !p)}
             onToast={onToast}
+            onImport={importDetalhe}
             onClose={verColetivo}
           />
         </div>

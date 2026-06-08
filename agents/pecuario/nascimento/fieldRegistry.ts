@@ -6,12 +6,18 @@ import type { LrField, FieldPlaces } from './types';
 
 export const RACAS = ['Nelore', 'Anelorado', 'Brangus', 'Angus', 'Senepol', 'Cruzado'] as const;
 export const GRAUS = ['PO', 'PC', '1/2 sangue', '3/4 sangue', '5/8 sangue', 'Cruzado'] as const;
-export const PELAGENS = ['Branca', 'Vermelha', 'Preta', 'Baia', 'Castanha', 'Malhada'] as const;
-export const CHIFRES = ['Aspado', 'Mocho', 'Mocho genético', 'Descornado'] as const;
+export const PELAGENS = ['Branca', 'Preta', 'Cinza', 'Vermelha', 'Amarela', 'Baia', 'Castanha'] as const;
+export const CHIFRES = ['Aspado', 'Mocho', 'Mochado', 'Batoque'] as const;
 export const PORTES = ['P', 'M', 'G'] as const;
 export const PESAGENS = ['Manual', 'Balança'] as const;
 export const COLOSTRO = ['Sim', 'Não'] as const;
 export const TIPO_DOSE = ['Fixa', 'Por Peso'] as const;
+
+/** Ficha Animal · Características e cadastro essencial. */
+export const FRAMES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
+export const CATEGORIAS_GENEALOGICAS = ['Comercial', 'PO', 'PC', 'LA'] as const;
+export const CEIP = ['Sim', 'Não'] as const;
+export const EVENTOS_ENTRADA = ['Nascimento', 'Compra', 'Transferência', 'Doação', 'Herança', 'Outro'] as const;
 
 /** Lotes estáticos (sem backend de Movimentação ainda). */
 export const LOTES_ESTATICOS = [
@@ -39,7 +45,7 @@ export const PROTOCOLOS = [
 
 /** Registro de campos configuráveis, em ordem de exibição. */
 export const LR_REGISTRY: LrField[] = [
-  { id: 'apelido', label: 'Apelido/ID', type: 'text', req: true, placeholder: '504A', def: 'bottom', locked: true },
+  { id: 'apelido', label: 'ID Manejo', type: 'text', req: true, placeholder: '504A', def: 'bottom', locked: true },
   { id: 'categoria', label: 'Categoria', type: 'cat', req: true, def: 'bottom' },
   { id: 'data', label: 'Data', type: 'date', req: true, def: 'top' },
   { id: 'raca', label: 'Raça', type: 'select', req: true, options: RACAS, def: 'top' },

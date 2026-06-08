@@ -868,6 +868,7 @@ export const animalCategories = pgTable('animal_categories', {
   idadeFaixa: text('idade_faixa'),
   pesoKg: numeric('peso_kg', { precision: 8, scale: 2 }),
   ordem: integer('ordem').notNull().default(0),
+  ativo: boolean('ativo').notNull().default(true),
   percentual: numeric('percentual', { precision: 5, scale: 2 }),
   unidadePeso: text('unidade_peso'),
   valorKgArroba: numeric('valor_kg_arroba', { precision: 10, scale: 2 }),
@@ -886,12 +887,39 @@ export const animalBreeds = pgTable('animal_breeds', {
   organizationId: uuid('organization_id').notNull()
     .references(() => organizations.id, { onDelete: 'cascade' }),
   nome: text('nome').notNull(),
+  // Tipo de registro genealógico exclusivo: PO | PC | LA (null = sem classificação).
+  classificacaoRegistro: text('classificacao_registro'),
+  // Código ASBIA/INTERBULL (2 letras maiúsculas).
+  codigoAsbia: text('codigo_asbia'),
+  // CEIP é combinável com qualquer classificacaoRegistro.
+  ceip: boolean('ceip').notNull().default(false),
+  // Marca raças sem cadastro na ASBIA (exibe aviso "Sem referência na ASBIA").
+  semCadastroAsbia: boolean('sem_cadastro_asbia').notNull().default(false),
+  // Observação livre da raça.
+  observacao: text('observacao'),
+  // Raça padrão do sistema: só pode ser ativada/inativada, nunca alterada/excluída.
+  sistema: boolean('sistema').notNull().default(false),
   ordem: integer('ordem').notNull().default(0),
   ativo: boolean('ativo').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_animal_breeds_org_id').on(t.organizationId),
+]);
+
+// ── Motivos de Morte ──────────────────────────────────────────────────────────
+
+export const motivosMorte = pgTable('motivos_morte', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  descricao: text('descricao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_motivos_morte_org_id').on(t.organizationId),
 ]);
 
 // ── Other ──────────────────────────────────────────────────────────────────────
@@ -1268,4 +1296,120 @@ export const nascimentoFieldConfigs = pgTable('nascimento_field_configs', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('nascimento_field_config_org_uidx').on(t.organizationId),
+]);
+
+// ── Morte (Movimentação › Mortes) ───────────────────────────────────────────────
+// Espelha o modelo de Nascimento: cada movimento é uma baixa por morte. catDecl
+// (jsonb) guarda as linhas coletivas declaradas por categoria (com motivo); as
+// fichas individuais ficam em tabela filha (animal identificado por ID Manejo ou
+// Eletrônico). A busca automática de categoria pelo ID será ligada depois.
+export const morteMovimentos = pgTable('morte_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  qtd: integer('qtd').notNull().default(0),
+  naoIdentificados: integer('nao_identificados').notNull().default(0),
+  // 'pendente' | 'conciliado'
+  status: text('status').notNull().default('pendente'),
+  // [{ catId, qtd, motivoId }] — linhas coletivas declaradas (sem detalhe).
+  catDecl: jsonb('cat_decl').default('[]'),
+  // observação do movimento.
+  obs: text('obs'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_morte_mov_org').on(t.organizationId),
+  index('idx_morte_mov_farm').on(t.farmId),
+]);
+
+export const morteFichas = pgTable('morte_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => morteMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  motivoId: uuid('motivo_id').references(() => motivosMorte.id, { onDelete: 'set null' }),
+  // Identificação do animal: ID Manejo (apelido) ou ID Eletrônico (rfid). Pelo
+  // menos um preenchido; mantidos separados para a futura busca no cadastro de animais.
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  obs: text('obs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_morte_fichas_mov').on(t.movimentoId),
+]);
+
+// ── Ficha Animal (Pecuário › Cadastros › Ficha Animal) ──────────────────────────
+// Cadastro individual e persistente de cada animal do rebanho. Uma linha por
+// animal, identificado pelo ID Manejo (apelido) único dentro da organização.
+// As colunas espelham os campos hoje listados na Ficha Animal, agrupados pelas
+// abas do formulário (Identificação, Origem, Genealogia). As abas ainda sem
+// campos definidos (Progênies, Pesagens, Reprodutivo, Sanitário, Nutricional,
+// Melhoramento, Fotos) entram em `extras` (jsonb) até ganharem estrutura própria
+// — assim novos campos são acomodados sem migração a cada inclusão.
+export const fichasAnimal = pgTable('fichas_animal', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  // Vínculo opcional com o nascimento que originou esta ficha (geração automática).
+  nascimentoFichaId: uuid('nascimento_ficha_id').references(() => nascimentoFichas.id, { onDelete: 'set null' }),
+
+  // ── Identificação (LR_REGISTRY) ──────────────────────────────────────────────
+  apelido: text('apelido').notNull(),                 // ID Manejo — chave da ficha
+  nome: text('nome'),                                 // Nome completo
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  sexo: text('sexo'),                                 // derivado da categoria
+  raca: text('raca'),
+  grau: text('grau'),                                 // Grau de sangue
+  pelagem: text('pelagem'),
+  chifre: text('chifre'),                             // Tipo de chifre
+  frame: text('frame'),                               // Frame 1 a 9
+  categoriaGenealogica: text('categoria_genealogica'), // Comercial | PO | PC | LA
+  ceip: text('ceip'),                                 // Sim | Não
+  porte: text('porte'),
+  lote: text('lote'),                                 // lotes ainda estáticos (sem tabela)
+  rfid: text('rfid'),                                 // ID Eletrônica
+  sisbov: text('sisbov'),                             // Nº SISBOV
+  rgn: text('rgn'),                                   // RGN/Tatuagem
+  rgd: text('rgd'),
+  serie: text('serie'),                               // Série Alfa
+  peso: numeric('peso', { precision: 8, scale: 2 }),  // Peso (pesagem atual)
+  pesagem: text('pesagem'),                           // Manual | Balança
+  obs: text('obs'),
+
+  // ── Entrada (Cadastro Essencial) ─────────────────────────────────────────────
+  eventoEntrada: text('evento_entrada'),              // Nascimento | Compra | Transferência | ...
+  dataEntrada: date('data_entrada'),                  // Data de entrada no rebanho
+
+  // ── Origem / Nascimento (ORIGEM_NASC_FIELDS) ─────────────────────────────────
+  data: date('data'),                                 // Data de nascimento/registro
+  pesoNascer: numeric('peso_nascer', { precision: 8, scale: 2 }),
+  colostro: text('colostro'),                         // Sim | Não
+  parto: text('parto'),                               // Normal | Distócico | Assistido | Cesárea
+  fazendaNascimento: text('fazenda_nascimento'),
+
+  // ── Genealogia (GENEALOGIA_FIELDS) ───────────────────────────────────────────
+  pai: text('pai'),
+  mae: text('mae'),
+  avoPaterno: text('avo_paterno'),
+  avoMaterno: text('avo_materno'),
+
+  // ── Situação / status (Ativo | Morte | Venda) ───────────────────────────────
+  situacao: text('situacao').notNull().default('ativo'),
+
+  // Campos das abas ainda não estruturadas + qualquer campo futuro da ficha.
+  extras: jsonb('extras').notNull().default('{}'),
+
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_fichas_animal_org').on(t.organizationId),
+  index('idx_fichas_animal_farm').on(t.farmId),
+  // ID Manejo único por organização.
+  uniqueIndex('fichas_animal_org_apelido_uidx').on(t.organizationId, t.apelido),
 ]);

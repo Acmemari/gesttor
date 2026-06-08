@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle, ChevronDown, ChevronUp, LayoutGrid, List } from 'lucide-react';
+import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle, LayoutGrid, List } from 'lucide-react';
 import { useHierarchy } from '../../contexts/HierarchyContext';
 import { listAnimalCategories, type AnimalCategory } from '../../lib/api/animalCategoriesClient';
 import {
@@ -119,7 +119,6 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   const editInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Summary cards collapsed state ──────────────────────────────────────────
-  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
 
   // ── View mode: 'pasto' (Mapa de Pasto) or 'categoria' (Distribuição por Categoria)
   const [viewMode, setViewMode] = useState<'pasto' | 'categoria'>('pasto');
@@ -715,15 +714,6 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setSummaryCollapsed(prev => !prev)}
-                className="flex items-center gap-1.5 px-3 py-2 text-[0.7rem] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 text-[#6B7280] border border-[#E5E7EB] hover:bg-[#F9FAFB] hover:border-[#D1D5DB]"
-                title={summaryCollapsed ? 'Expandir resumo' : 'Recolher resumo'}
-              >
-                {summaryCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                {summaryCollapsed ? 'Resumo' : 'Recolher'}
-              </button>
-              <button
-                type="button"
                 onClick={toggleStatus}
                 disabled={savingHeader}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-300 ${
@@ -744,9 +734,8 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
             </div>
           </div>
 
-          {/* Summary cards - collapsible & compact */}
-          {!summaryCollapsed && (
-            <div className="flex items-stretch gap-3 mt-3 overflow-x-auto">
+          {/* Summary cards - compact */}
+          <div className="flex items-stretch gap-3 mt-3 overflow-x-auto">
               <div className="bg-white border border-[#E5E7EB] rounded-lg shadow-[0_1px_2px_rgba(16,24,40,0.05)] px-4 py-2.5 flex items-center gap-3 min-w-fit">
                 <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider whitespace-nowrap">Cabeças</p>
                 <p className="text-xl font-black text-[#0F172A]">{fmtNum(totals.totalCab)}</p>
@@ -761,8 +750,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                   {fmtNum(lotacaoFazenda, 2)} <span className="text-xs font-semibold text-gray-500">cab/ha</span>
                 </p>
               </div>
-            </div>
-          )}
+          </div>
 
           {/* DISTRIBUIÇÃO segmented control */}
           <div className="flex items-center justify-end gap-2 mt-3">

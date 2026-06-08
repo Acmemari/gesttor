@@ -30,7 +30,7 @@ export interface LrField {
   options?: readonly string[];
   /** destino padrão */
   def: FieldPlace;
-  /** Apelido/ID: travado em 'bottom' (só Tabela ou Desativar). */
+  /** ID Manejo: travado em 'bottom' (só Tabela ou Desativar). */
   locked?: boolean;
   /** Sanitário: só 'top' (Superior) ou 'off' (Desativar). */
   enableOnly?: boolean;
@@ -47,7 +47,7 @@ export interface NascimentoFieldConfig {
   places: FieldPlaces;
   /** ordem global de exibição (lista de field ids) */
   order: string[];
-  /** numeração automática do Apelido/ID */
+  /** numeração automática do ID Manejo */
   autonum: boolean;
 }
 
@@ -132,4 +132,10 @@ export interface LookupItem {
   /** opcional: unidade/custo p/ medicamentos. */
   unidade?: string;
   custoUnit?: number;
+  /**
+   * Sexo associado (categorias animais). Quando presente, a seleção da
+   * categoria preenche automaticamente o campo Sexo do animal.
+   * Valor cru do cadastro: 'macho' | 'femea'.
+   */
+  sexo?: string;
 }

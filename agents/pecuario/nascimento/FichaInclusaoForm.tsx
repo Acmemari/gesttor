@@ -1,8 +1,9 @@
 import React from 'react';
-import { Plus, ChevronDown } from 'lucide-react';
+import { Plus, ChevronDown, Repeat, IdCard } from 'lucide-react';
 import FieldControl from './FieldControl';
 import SanitarioSection from './SanitarioSection';
 import { FIELD_BY_ID } from './fieldRegistry';
+import { sexoFromCategoria } from './util';
 import type { FieldPlaces, LookupItem, LrField, SanItem } from './types';
 
 interface FichaInclusaoFormProps {
@@ -56,6 +57,16 @@ const FichaInclusaoForm: React.FC<FichaInclusaoFormProps> = ({
   onToggleDados,
   onToast,
 }) => {
+  // Ao selecionar a Categoria, o Sexo vem por padrão (derivado do cadastro da
+  // categoria). Padrão do sistema — vale para todo campo de categoria.
+  const handleFieldChange = (field: LrField, value: string) => {
+    onValueChange(field.id, value);
+    if (field.type === 'cat') {
+      const sexo = sexoFromCategoria(categories, value);
+      if (sexo) onValueChange('sexo', sexo);
+    }
+  };
+
   const ordered = order.map((id) => FIELD_BY_ID[id]).filter(Boolean) as LrField[];
   const topFields = ordered.filter((f) => places[f.id] === 'top' && f.id !== 'sanitario');
   const bottomFields = ordered.filter((f) => places[f.id] === 'bottom');
@@ -65,67 +76,85 @@ const FichaInclusaoForm: React.FC<FichaInclusaoFormProps> = ({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Linha superior (repete em todos) + botão Sanitário */}
+      {/* Bloco "repete em todos": destaque verde, aplica-se a TODOS os lançamentos */}
       {hasTop ? (
-        <div className="flex flex-wrap items-end gap-3.5">
-          {topFields.map((f) => (
-            <div key={f.id} style={{ flex: '1 1 140px', minWidth: 0 }}>
-              <FieldControl
-                field={f}
-                value={values[f.id] ?? ''}
-                onChange={(v) => onValueChange(f.id, v)}
-                categories={categories}
-                lotes={lotes}
-                optionsOverride={optionsOverride}
-              />
+        <div className="rounded-lg border border-[#cdebd7] bg-[#f5fbf7] p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-[#16a34a]">
+            <Repeat size={12} />
+            Repete em todos
+            <span className="font-medium normal-case tracking-normal text-[#16a34a]/70">
+              — vale para cada animal lançado
+            </span>
+          </div>
+          <div className="flex flex-wrap items-end gap-3.5">
+            {topFields.map((f) => (
+              <div key={f.id} style={{ flex: '1 1 140px', minWidth: 0 }}>
+                <FieldControl
+                  field={f}
+                  value={values[f.id] ?? ''}
+                  onChange={(v) => handleFieldChange(f, v)}
+                  categories={categories}
+                  lotes={lotes}
+                  optionsOverride={optionsOverride}
+                />
+              </div>
+            ))}
+            {showSan ? (
+              <button
+                type="button"
+                onClick={onToggleSan}
+                className={`ml-auto inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-[13px] font-semibold ${
+                  sanOpen ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]' : 'border-[#b7e0c4] bg-white text-[#16a34a] hover:bg-[#e7f6ec]'
+                }`}
+              >
+                <ChevronDown size={16} className={`transition-transform ${sanOpen ? '' : '-rotate-90'}`} />
+                Sanitário
+                {sanItems && sanItems.length ? (
+                  <span className="rounded bg-[#e7f6ec] px-1.5 text-[11px] font-bold text-[#16a34a]">{sanItems.length}</span>
+                ) : null}
+              </button>
+            ) : null}
+          </div>
+
+          {showSan && sanOpen && onSanItemsChange ? (
+            <div className="mt-3">
+              <SanitarioSection items={sanItems ?? []} onItemsChange={onSanItemsChange} onToast={onToast} />
             </div>
-          ))}
-          {showSan ? (
-            <button
-              type="button"
-              onClick={onToggleSan}
-              className={`ml-auto inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-[13px] font-semibold ${
-                sanOpen ? 'border-[#b7e0c4] bg-[#e7f6ec] text-[#16a34a]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              <ChevronDown size={16} className={`transition-transform ${sanOpen ? '' : '-rotate-90'}`} />
-              Sanitário
-              {sanItems && sanItems.length ? (
-                <span className="rounded bg-[#e7f6ec] px-1.5 text-[11px] font-bold text-[#16a34a]">{sanItems.length}</span>
-              ) : null}
-            </button>
           ) : null}
         </div>
       ) : null}
 
-      {showSan && sanOpen && onSanItemsChange ? (
-        <SanitarioSection items={sanItems ?? []} onItemsChange={onSanItemsChange} onToast={onToast} />
-      ) : null}
-
-      {hasTop ? <div className="my-0.5 h-px bg-[#b7e0c4] opacity-60" /> : null}
-
-      {/* Linha de lançamento (por animal) + botão Adicionar */}
-      <div className="flex flex-wrap items-end gap-2.5 pb-1">
-        {bottomFields.map((f) => (
-          <div key={f.id} style={{ flex: '1 1 110px', minWidth: 0 }}>
-            <FieldControl
-              field={f}
-              value={values[f.id] ?? ''}
-              onChange={(v) => onValueChange(f.id, v)}
-              categories={categories}
-              lotes={lotes}
-              optionsOverride={optionsOverride}
-              compact
-            />
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex h-[38px] shrink-0 items-center gap-2 rounded-lg bg-[#16a34a] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d]"
-        >
-          <Plus size={16} /> {addLabel}
-        </button>
+      {/* Bloco "por animal": neutro, lançado individualmente a cada Adicionar */}
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
+        <div className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-gray-500">
+          <IdCard size={12} />
+          Individual · por animal
+          <span className="font-medium normal-case tracking-normal text-gray-400">
+            — muda a cada lançamento
+          </span>
+        </div>
+        <div className="flex flex-wrap items-end gap-2.5">
+          {bottomFields.map((f) => (
+            <div key={f.id} style={{ flex: '1 1 110px', minWidth: 0 }}>
+              <FieldControl
+                field={f}
+                value={values[f.id] ?? ''}
+                onChange={(v) => handleFieldChange(f, v)}
+                categories={categories}
+                lotes={lotes}
+                optionsOverride={optionsOverride}
+                compact
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={onAdd}
+            className="inline-flex h-[38px] shrink-0 items-center gap-2 rounded-lg bg-[#16a34a] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d]"
+          >
+            <Plus size={16} /> {addLabel}
+          </button>
+        </div>
       </div>
 
       {/* Dados Adicionais (recolhido) */}
@@ -146,7 +175,7 @@ const FichaInclusaoForm: React.FC<FichaInclusaoFormProps> = ({
                   <FieldControl
                     field={f}
                     value={values[f.id] ?? ''}
-                    onChange={(v) => onValueChange(f.id, v)}
+                    onChange={(v) => handleFieldChange(f, v)}
                     categories={categories}
                     lotes={lotes}
                     optionsOverride={optionsOverride}

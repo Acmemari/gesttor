@@ -33,7 +33,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
 
   const handleAdd = () => {
     if (!apelido.trim()) {
-      onToast?.('Informe o Apelido/ID Usual', 'error');
+      onToast?.('Informe o ID Manejo', 'error');
       return;
     }
     if (!catId) {
@@ -105,7 +105,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
         <table className="w-full text-left text-[12.5px]">
           <thead>
             <tr className="bg-[#fcfcfd] text-[10.5px] uppercase tracking-wide text-gray-500">
-              <th className="p-2.5 font-bold">Apelido / ID</th>
+              <th className="p-2.5 font-bold">ID Manejo</th>
               <th className="p-2.5 font-bold">Categoria</th>
               <th className="p-2.5 font-bold">ID Eletrônica</th>
               <th className="p-2.5 font-bold">SISBOV</th>
@@ -120,7 +120,7 @@ const AtribuirIdPanel: React.FC<AtribuirIdPanelProps> = ({ movimento, categories
               <td className="p-2">
                 <input
                   className={cellInputCls}
-                  placeholder="Apelido/ID *"
+                  placeholder="ID Manejo *"
                   value={apelido}
                   onChange={(e) => setApelido(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}

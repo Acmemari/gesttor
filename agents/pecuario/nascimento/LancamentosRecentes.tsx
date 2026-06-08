@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Baby, Check, ChevronRight, Eye, FilePen, IdCard, Info, MoreHorizontal, Trash2, X } from 'lucide-react';
 import FichaInclusaoForm from './FichaInclusaoForm';
 import { LR_REGISTRY, defaultValue } from './fieldRegistry';
@@ -19,7 +19,7 @@ interface LancamentosRecentesProps {
   lotes: LookupItem[];
   /** override de opções de selects (ex.: raças cadastradas) */
   optionsOverride?: Record<string, string[]>;
-  /** numeração automática do Apelido/ID (próximo na sequência ao adicionar) */
+  /** numeração automática do ID Manejo (próximo na sequência ao adicionar) */
   autonum?: boolean;
   /** persiste uma nova ficha (atribuição de ID) no movimento aberto no detalhamento */
   onAddFicha: (movId: string, ficha: Omit<AtribFicha, 'id'>) => void;
@@ -81,6 +81,9 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
   onToast,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Linha com as categorias expandidas inline (independente da seleção: o 1º
+  // clique seleciona/lista o detalhamento; o 2º expande as categorias aqui).
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   // Menu de ações flutuante (•••): ancorado por coordenadas para não ser
   // recortado pelo overflow-hidden do cartão. `id` é o movimento alvo das ações;
   // `anchor` identifica o botão clicado (linha mestre ou linha de categoria) para
@@ -105,12 +108,27 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
 
   const selected = movimentos.find((m) => m.id === selectedId) || null;
 
-  // Expande/recolhe a linha: a seta abre as linhas das categorias lançadas
-  // logo abaixo (clicar de novo na seta da linha aberta recolhe).
+  // Clique na linha em 3 estágios: 1) lista o detalhamento (seleciona);
+  // 2) abre as linhas das categorias lançadas logo abaixo; 3) fecha tudo.
+  const cycleRow = (id: string) => {
+    setSelectedCatId(null);
+    if (selectedId !== id) {
+      setSelectedId(id);
+      setExpandedId(null);
+    } else if (expandedId !== id) {
+      setExpandedId(id);
+    } else {
+      setSelectedId(null);
+      setExpandedId(null);
+    }
+  };
+
+  // A seta abre/recolhe diretamente as categorias, mantendo o detalhamento aberto.
   const toggleExpand = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedCatId(null);
-    setSelectedId((prev) => (prev === id ? null : id));
+    setSelectedId(id);
+    setExpandedId((prev) => (prev === id ? null : id));
   };
 
   const toggleMenu = (e: React.MouseEvent, id: string, anchor: string) => {
@@ -120,10 +138,36 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
   };
   const closeMenu = () => setMenu(null);
 
+  // ── Divisor arrastável entre a lista (master) e o detalhamento (detail) ─────
+  // Arrastar a régua para cima reduz a altura da lista e amplia o detalhamento
+  // — útil ao atribuir IDs, quando o formulário inferior precisa de mais espaço.
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [masterPct, setMasterPct] = useState(50); // % de altura ocupada pela lista
+  const draggingRef = useRef(false);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onResize = (e: React.PointerEvent) => {
+    if (!draggingRef.current || !splitRef.current) return;
+    const rect = splitRef.current.getBoundingClientRect();
+    const pct = ((e.clientY - rect.top) / rect.height) * 100;
+    setMasterPct(Math.min(85, Math.max(15, pct)));
+  };
+  const endResize = (e: React.PointerEvent) => {
+    draggingRef.current = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  };
+
   return (
-    <div className="flex h-[calc(100vh-240px)] min-h-[440px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
-      {/* ── Master: relação de lançamentos (metade superior, rolagem própria) ── */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <div
+      ref={splitRef}
+      className="flex h-[calc(100vh-240px)] min-h-[440px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white"
+    >
+      {/* ── Master: relação de lançamentos (altura ajustável, rolagem própria) ── */}
+      <div className="min-h-0 shrink-0 overflow-y-auto" style={{ height: `${masterPct}%` }}>
       <table className="w-full text-left text-[13px]">
         <thead className="sticky top-0 z-10">
           <tr className="bg-[#fcfcfd] text-[11px] uppercase tracking-wide text-gray-500">
@@ -138,13 +182,11 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
           {movimentos.length ? (
             movimentos.map((m) => {
               const isSel = m.id === selectedId;
+              const isExpanded = m.id === expandedId;
               return (
                 <React.Fragment key={m.id}>
                 <tr
-                  onClick={() => {
-                    setSelectedCatId(null);
-                    setSelectedId(m.id);
-                  }}
+                  onClick={() => cycleRow(m.id)}
                   className={`cursor-pointer border-t border-gray-100 transition-colors ${
                     isSel ? 'bg-[#e7f6ec]' : 'hover:bg-gray-50'
                   }`}
@@ -154,13 +196,15 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
                       type="button"
                       onClick={(e) => toggleExpand(e, m.id)}
                       className="inline-flex items-center justify-center rounded transition-colors hover:bg-black/5"
-                      aria-expanded={isSel}
-                      aria-label={isSel ? 'Recolher categorias' : 'Expandir categorias'}
-                      title={isSel ? 'Recolher categorias' : 'Expandir categorias'}
+                      aria-expanded={isExpanded}
+                      aria-label={isExpanded ? 'Recolher categorias' : 'Expandir categorias'}
+                      title={isExpanded ? 'Recolher categorias' : 'Expandir categorias'}
                     >
                       <ChevronRight
                         size={15}
-                        className={`transition-transform ${isSel ? 'rotate-90 text-[#16a34a]' : 'text-gray-300'}`}
+                        className={`transition-transform ${
+                          isExpanded ? 'rotate-90 text-[#16a34a]' : isSel ? 'text-[#16a34a]' : 'text-gray-300'
+                        }`}
                       />
                     </button>
                   </td>
@@ -185,7 +229,7 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
                 </tr>
 
                 {/* Linhas das categorias lançadas (visíveis ao expandir a linha). */}
-                {isSel && m.catDecl.length
+                {isExpanded && m.catDecl.length
                   ? m.catDecl.map((d, i) => {
                       const anchor = `${m.id}-cat-${i}`;
                       const isCatSel = selectedCatId === d.catId;
@@ -238,8 +282,23 @@ const LancamentosRecentes: React.FC<LancamentosRecentesProps> = ({
       </table>
       </div>
 
-      {/* ── Detail: detalhamento editável (metade inferior, rolagem própria) ─── */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t-4 border-[#e7f6ec] bg-[#fafbfc]">
+      {/* ── Divisor arrastável: ajusta a divisão lista × detalhamento ───────── */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Ajustar altura da lista de registros"
+        onPointerDown={startResize}
+        onPointerMove={onResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        className="group relative flex h-2.5 shrink-0 cursor-row-resize touch-none items-center justify-center border-t-4 border-[#e7f6ec] bg-[#fafbfc] transition-colors hover:border-[#16a34a]/40"
+        title="Arraste para ajustar o espaço da lista e do detalhamento"
+      >
+        <span className="h-1 w-10 rounded-full bg-gray-300 transition-colors group-hover:bg-[#16a34a]" />
+      </div>
+
+      {/* ── Detail: detalhamento editável (espaço restante, rolagem própria) ─── */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#fafbfc]">
         {selected ? (
           <LancamentoDetalhe
             movimento={selected}
@@ -384,12 +443,17 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
     buildDetalheValues(today, m.data, defaultCatId, racaDefault),
   );
   const [dadosOpen, setDadosOpen] = useState(false);
+  // O formulário de individualização fica recolhido por padrão: a visão default
+  // do detalhamento mostra apenas a listagem de IDs já atribuídos. O formulário
+  // só aparece quando "Atribuir ID" é acionado.
+  const [atribuindo, setAtribuindo] = useState(false);
 
   // Ao trocar de lançamento, de filtro de categoria ou de data, reinicia o
   // formulário (mira na categoria filtrada quando houver).
   useEffect(() => {
     setValues(buildDetalheValues(today, m.data, defaultCatId, racaDefault));
     setDadosOpen(false);
+    setAtribuindo(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m.id, m.data, filterCatId]);
 
@@ -400,7 +464,7 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
     const apelido = (values.apelido || '').trim();
     const catId = values.categoria || '';
     if (!apelido) {
-      onToast?.('Informe o Apelido/ID', 'error');
+      onToast?.('Informe o ID Manejo', 'error');
       return;
     }
     if (!catId) {
@@ -421,7 +485,7 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
       peso: parseWeight(values.peso) || undefined,
     });
     // Próxima entrada: preserva a linha superior (data/raça/lote) e a categoria;
-    // sugere o próximo Apelido se Nº auto; reseta o restante (sexo/porte/peso...).
+    // sugere o próximo ID Manejo se Nº auto; reseta o restante (sexo/porte/peso...).
     setValues((prev) => {
       const next = { ...prev };
       for (const f of LR_REGISTRY) {
@@ -476,15 +540,36 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
           </>
         )}
         {editable ? (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-medium text-gray-400">
-            <IdCard size={13} className="text-[#16a34a]" />
-            Preencha os campos abaixo para atribuir o ID de cada bezerro
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {atribuindo ? (
+              <>
+                <span className="hidden items-center gap-1.5 text-[11.5px] font-medium text-gray-400 sm:inline-flex">
+                  <IdCard size={13} className="text-[#16a34a]" />
+                  Preencha os campos abaixo para atribuir o ID de cada bezerro
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAtribuindo(false)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12.5px] font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <X size={14} /> Fechar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAtribuindo(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm hover:bg-[#15803d]"
+              >
+                <IdCard size={14} /> Atribuir ID
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
 
       {/* Formulário de inclusão (mesmos campos do Lançamento Rápido) */}
-      {editable ? (
+      {editable && atribuindo ? (
         <div
           className="border-t border-gray-200 bg-white px-5 py-4"
           onKeyDown={(e) => {
@@ -515,7 +600,7 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
         <table className="w-full text-left text-[12.5px]">
           <thead>
             <tr className="bg-[#fcfcfd] text-[10.5px] uppercase tracking-wide text-gray-500">
-              <th className="p-2.5 font-bold">Apelido / ID</th>
+              <th className="p-2.5 font-bold">ID Manejo</th>
               <th className="p-2.5 font-bold">Categoria</th>
               <th className="p-2.5 font-bold">ID Eletrônica</th>
               <th className="p-2.5 font-bold">SISBOV</th>
@@ -538,13 +623,19 @@ const LancamentoDetalhe: React.FC<LancamentoDetalheProps> = ({
             ) : (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-gray-400">
-                  {isFiltered
-                    ? editable
-                      ? 'Nenhum bezerro desta categoria ainda — preencha o formulário acima para identificar.'
-                      : 'Nenhum bezerro desta categoria foi individualizado.'
-                    : editable
-                    ? 'Nenhum bezerro individualizado ainda — preencha o formulário acima para identificar.'
-                    : 'Nenhum bezerro individualizado neste lançamento.'}
+                  {(() => {
+                    const acaoHint = atribuindo
+                      ? 'preencha o formulário acima para identificar.'
+                      : 'clique em “Atribuir ID” para identificar.';
+                    if (isFiltered) {
+                      return editable
+                        ? `Nenhum bezerro desta categoria ainda — ${acaoHint}`
+                        : 'Nenhum bezerro desta categoria foi individualizado.';
+                    }
+                    return editable
+                      ? `Nenhum bezerro individualizado ainda — ${acaoHint}`
+                      : 'Nenhum bezerro individualizado neste lançamento.';
+                  })()}
                 </td>
               </tr>
             )}

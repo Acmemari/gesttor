@@ -11,6 +11,7 @@ export interface AnimalCategory {
   idadeFaixa: string | null;
   pesoKg: string | null;
   ordem: number;
+  ativo: boolean;
   percentual: string | null;
   unidadePeso: string | null;
   valorKgArroba: string | null;
@@ -40,6 +41,7 @@ export async function createAnimalCategory(data: {
   grupo: string;
   idadeFaixa?: string;
   pesoKg?: number | null;
+  ativo?: boolean;
 }): Promise<AnimalCategory> {
   return fetchJson<AnimalCategory>(API_BASE, {
     method: 'POST',
@@ -56,6 +58,7 @@ export async function updateAnimalCategory(id: string, data: {
   grupo?: string;
   idadeFaixa?: string;
   pesoKg?: number | null;
+  ativo?: boolean;
 }): Promise<AnimalCategory> {
   return fetchJson<AnimalCategory>(API_BASE, {
     method: 'PATCH',

@@ -1,7 +1,9 @@
-import React from 'react';
-import { Pencil, Trash2, IdCard, X, FileSpreadsheet } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Pencil, Trash2, IdCard, X, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import FichaInclusaoForm from './FichaInclusaoForm';
+import ImportarPlanilhaModal from './ImportarPlanilhaModal';
 import { exportLancamentoTemplate } from './exportTemplate';
+import { readSheetRows, validateImport, type ImportResult } from './importTemplate';
 import { parseWeight } from './util';
 import type { FieldPlaces, LookupItem, NascDetalhe, SanItem } from './types';
 
@@ -26,6 +28,8 @@ interface LancamentoRapidoProps {
   dadosOpen: boolean;
   onToggleDados: () => void;
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  /** Importa animais (linhas conformes) vindos da planilha para a lista de detalhe. */
+  onImport: (rows: Record<string, string>[]) => void;
   /** Fecha o painel de Lançamento Rápido (volta à visão coletiva). */
   onClose?: () => void;
 }
@@ -50,9 +54,15 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
   dadosOpen,
   onToggleDados,
   onToast,
+  onImport,
   onClose,
 }) => {
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome || '—';
+
+  // Conferência da planilha importada (modal): resultado validado + nome do arquivo.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importFileName, setImportFileName] = useState('');
 
   // Exporta um modelo .xlsx com uma coluna por campo configurado, para ser
   // preenchido offline e, depois, reimportado (aceleração de lançamentos).
@@ -60,9 +70,37 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
     try {
       const cols = exportLancamentoTemplate({ order, places, categories, lotes, optionsOverride });
       onToast?.(`Modelo exportado · ${cols} colunas. Preencha e importe para lançar em massa.`, 'success');
-    } catch (err: any) {
-      onToast?.(err?.message || 'Erro ao exportar a planilha modelo', 'error');
+    } catch (err) {
+      onToast?.(err instanceof Error ? err.message : 'Erro ao exportar a planilha modelo', 'error');
     }
+  };
+
+  // Lê a planilha escolhida, valida contra os campos configurados e abre a tela
+  // de conferência (sinais de conformidade por linha).
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite reescolher o mesmo arquivo depois
+    if (!file) return;
+    try {
+      const rows = await readSheetRows(file);
+      if (rows.length < 2) {
+        onToast?.('A planilha não tem linhas de dados abaixo do cabeçalho.', 'error');
+        return;
+      }
+      const existingApelidos = detalhe.map((d) => d.values.apelido || '');
+      const result = validateImport({ rows, order, places, categories, lotes, optionsOverride, existingApelidos });
+      setImportFileName(file.name);
+      setImportResult(result);
+    } catch (err) {
+      onToast?.(err instanceof Error ? err.message : 'Erro ao ler a planilha. Verifique se é .xlsx, .xls ou .csv.', 'error');
+    }
+  };
+
+  const closeImport = () => setImportResult(null);
+
+  const confirmImport = (rows: Record<string, string>[]) => {
+    onImport(rows);
+    setImportResult(null);
   };
 
   return (
@@ -76,18 +114,30 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
         >
           <Pencil size={15} />
         </button>
-        Lançamento Rápido
-        <span className="text-[11.5px] font-medium text-gray-400">
-          — a linha de cima repete em todos; a de baixo lança em modo rápido
-        </span>
+        Defina seus campos
         <div className="ml-auto flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
           <button
             type="button"
             onClick={handleExport}
-            title="Exportar planilha modelo com os campos configurados (para preencher e importar depois)"
+            title="Exportar planilha modelo com os campos configurados (baixar para preencher)"
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#16a34a] bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-[#16a34a] hover:bg-[#e7f6ec]"
           >
-            <FileSpreadsheet size={14} /> Exportar planilha
+            <ArrowDownToLine size={14} /> Planilha
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Importar planilha preenchida (conferir e lançar em massa)"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#16a34a] bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-[#16a34a] hover:bg-[#e7f6ec]"
+          >
+            <ArrowUpFromLine size={14} /> Planilha
           </button>
           {onClose ? (
             <button
@@ -127,7 +177,7 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
         <table className="w-full table-fixed text-left text-[11.5px]">
           <thead>
             <tr className="bg-[#fcfcfd] text-[10.5px] uppercase tracking-wide text-gray-500">
-              <th className="p-2 font-bold">Apelido / ID</th>
+              <th className="p-2 font-bold">ID Manejo</th>
               <th className="p-2 font-bold">ID Eletrônica</th>
               <th className="p-2 font-bold">SISBOV</th>
               <th className="p-2 font-bold">Sexo</th>
@@ -176,6 +226,21 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* Conferência da planilha importada */}
+      {importResult ? (
+        <ImportarPlanilhaModal
+          result={importResult}
+          fileName={importFileName}
+          categories={categories}
+          onConfirm={confirmImport}
+          onClose={closeImport}
+          onReselect={() => {
+            closeImport();
+            fileInputRef.current?.click();
+          }}
+        />
+      ) : null}
     </div>
   );
 };

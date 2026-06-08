@@ -160,6 +160,13 @@ const AppContent: React.FC = () => {
   const [isPeopleFormView, setIsPeopleFormView] = useState(false);
   const [peopleFormLabel, setPeopleFormLabel] = useState<'form-new' | 'form-edit'>('form-edit');
   const [inttegraActiveView, setInttegraActiveView] = useState('dashboard');
+  // Nonce que incrementa a cada navegação pelo sidebar — permite voltar à tela
+  // inicial da seção mesmo ao clicar no mesmo item já ativo (reseta sub-telas).
+  const [inttegraNavNonce, setInttegraNavNonce] = useState(0);
+  const handleInttegraViewChange = (view: string) => {
+    setInttegraActiveView(view);
+    setInttegraNavNonce(n => n + 1);
+  };
 
   const canAccessFeedbackAgent = user?.qualification === 'analista';
 
@@ -1169,7 +1176,7 @@ const AppContent: React.FC = () => {
             setActiveAgentId('settings');
           }}
           onSwitchToGesttor={() => setActiveApp('gesttor')}
-          onViewChange={setInttegraActiveView}
+          onViewChange={handleInttegraViewChange}
         />
 
         <div
@@ -1180,7 +1187,7 @@ const AppContent: React.FC = () => {
           <main className="flex-1 min-h-0 bg-ai-bg overflow-hidden">
             <div className="h-full w-full max-w-[1600px] mx-auto flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <InttegraDashboard view={inttegraActiveView} onToast={handleToast} />
+                <InttegraDashboard view={inttegraActiveView} navNonce={inttegraNavNonce} onToast={handleToast} />
               </div>
             </div>
           </main>
@@ -1200,7 +1207,6 @@ const AppContent: React.FC = () => {
         onSelectAgent={id => {
           if (id === 'cattle-profit') setViewMode('desktop');
           if (id === 'cadastros') setCadastroView('desktop');
-          if (id === 'pecuario-cadastros') setPecuarioCadastroView('desktop');
           setActiveAgentId(id);
         }}
         isOpen={isSidebarOpen}

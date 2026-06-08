@@ -285,6 +285,9 @@ app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-cat
 // Raças de animais
 app.all('/api/animal-breeds', (req, res) => handleApiRoute('./api/animal-breeds.ts', req, res));
 
+// Motivos de morte
+app.all('/api/motivos-morte', (req, res) => handleApiRoute('./api/motivos-morte.ts', req, res));
+
 // Mapa de Rebanho (Estoque de Partida)
 app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));
 
@@ -294,6 +297,12 @@ app.all('/api/mapao', (req, res) => handleApiRoute('./api/mapao.ts', req, res));
 // Movimentação › Nascimento
 app.all('/api/nascimentos', (req, res) => handleApiRoute('./api/nascimentos.ts', req, res));
 app.all('/api/nascimento-field-config', (req, res) => handleApiRoute('./api/nascimento-field-config.ts', req, res));
+
+// Movimentação › Mortes
+app.all('/api/mortes', (req, res) => handleApiRoute('./api/mortes.ts', req, res));
+
+// Pecuário › Cadastros › Ficha Animal
+app.all('/api/fichas-animal', (req, res) => handleApiRoute('./api/fichas-animal.ts', req, res));
 
 // Admin / Auxiliares
 app.all('/api/admin', (req, res) => handleApiRoute('./api/admin.ts', req, res));

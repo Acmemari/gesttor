@@ -17,6 +17,7 @@ export async function create(data: {
   grupo: string;
   idadeFaixa?: string | null;
   pesoKg?: string | null;
+  ativo?: boolean;
 }) {
   const [maxRow] = await db.select({ maxOrdem: max(animalCategories.ordem) })
     .from(animalCategories)
@@ -32,6 +33,7 @@ export async function create(data: {
     grupo: data.grupo,
     idadeFaixa: data.idadeFaixa ?? null,
     pesoKg: data.pesoKg ?? null,
+    ativo: data.ativo ?? true,
     ordem: nextOrdem,
   }).returning();
   return row;
@@ -45,6 +47,7 @@ export async function update(id: string, data: {
   grupo?: string;
   idadeFaixa?: string | null;
   pesoKg?: string | null;
+  ativo?: boolean;
 }) {
   const [row] = await db.update(animalCategories)
     .set({ ...data, updatedAt: new Date() })

@@ -2,7 +2,7 @@
  * Funções puras da tela de Nascimento — derivações, validações e formatação.
  * Mantidas sem dependência de React/DOM para serem testáveis isoladamente.
  */
-import type { NascCat, NascDetalhe, SanItem } from './types';
+import type { LookupItem, NascCat, NascDetalhe, SanItem } from './types';
 
 /** Hoje em ISO (YYYY-MM-DD), data local. */
 export function todayISO(): string {
@@ -42,7 +42,7 @@ export function safraDaData(iso: string): string {
 }
 
 /**
- * Próximo Apelido/ID na sequência, preservando prefixo, sufixo e zeros à
+ * Próximo ID Manejo na sequência, preservando prefixo, sufixo e zeros à
  * esquerda. Ex.: 001 → 002 · BZ-09 → BZ-10. Sem número, retorna o original.
  */
 export function proximoApelido(prev: string): string {
@@ -95,4 +95,20 @@ export function tallyPorCategoria(detalhe: NascDetalhe[]): Record<string, number
 /** Formata número como moeda BR sem o símbolo (12,40). */
 export function fmtMoeda(n: number): string {
   return n.toFixed(2).replace('.', ',');
+}
+
+/**
+ * Sexo do campo Sexo (formato 'Macho' | 'Fêmea') derivado da categoria
+ * selecionada. O cadastro guarda o sexo cru ('macho' | 'femea'); aqui ele é
+ * normalizado para o formato do controle de Sexo. Retorna undefined quando a
+ * categoria não tem sexo definido (não sobrescreve o valor atual).
+ */
+export function sexoFromCategoria(categories: LookupItem[], catId: string): string | undefined {
+  if (!catId) return undefined;
+  const raw = categories.find((c) => c.id === catId)?.sexo;
+  if (!raw) return undefined;
+  const v = String(raw).trim().toLowerCase();
+  if (['femea', 'fêmea', 'f', '♀', 'female', 'feminino'].includes(v)) return 'Fêmea';
+  if (['macho', 'm', '♂', 'male', 'masculino'].includes(v)) return 'Macho';
+  return undefined;
 }

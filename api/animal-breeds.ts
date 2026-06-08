@@ -2,9 +2,9 @@
  * API route for animal breeds (raças de animais).
  *
  *   GET    ?organizationId=xxx              — list breeds for org
- *   POST   { organizationId, nome, ativo? }            — create
+ *   POST   { organizationId, nome, codigoAsbia?, observacao?, classificacaoRegistro?, ceip?, semCadastroAsbia?, ativo? } — create
  *   POST   { action: 'reorder', items: [{id, ordem}] } — reorder
- *   PATCH  { id, nome?, ativo? }                        — update
+ *   PATCH  { id, nome?, codigoAsbia?, observacao?, ativo?, ... }  — update (raça padrão do sistema: só 'ativo')
  *   DELETE ?id=xxx                                      — delete
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Create
-      const { organizationId, nome, ativo } = req.body ?? {};
+      const { organizationId, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, observacao, ativo } = req.body ?? {};
       if (!organizationId || !nome || !String(nome).trim()) {
         jsonError(res, 'Campos obrigatórios: organizationId, nome', { status: 400 });
         return;
@@ -70,6 +70,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const row = await create({
         organizationId,
         nome: String(nome).trim(),
+        classificacaoRegistro: classificacaoRegistro ? String(classificacaoRegistro).trim() : null,
+        codigoAsbia: codigoAsbia ? String(codigoAsbia).trim().toUpperCase().slice(0, 2) : null,
+        ceip: ceip !== undefined ? !!ceip : false,
+        semCadastroAsbia: semCadastroAsbia !== undefined ? !!semCadastroAsbia : false,
+        observacao: observacao ? String(observacao).trim() : null,
         ativo: ativo !== undefined ? !!ativo : true,
       });
       jsonSuccess(res, row);
@@ -78,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, nome, ativo } = req.body ?? {};
+      const { id, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, observacao, ativo } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
@@ -92,6 +97,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         payload.nome = String(nome).trim();
       }
+      if (classificacaoRegistro !== undefined) {
+        payload.classificacaoRegistro = classificacaoRegistro ? String(classificacaoRegistro).trim() : null;
+      }
+      if (codigoAsbia !== undefined) {
+        payload.codigoAsbia = codigoAsbia ? String(codigoAsbia).trim().toUpperCase().slice(0, 2) : null;
+      }
+      if (ceip !== undefined) payload.ceip = !!ceip;
+      if (semCadastroAsbia !== undefined) payload.semCadastroAsbia = !!semCadastroAsbia;
+      if (observacao !== undefined) payload.observacao = observacao ? String(observacao).trim() : null;
       if (ativo !== undefined) payload.ativo = !!ativo;
 
       const row = await update(id, payload);

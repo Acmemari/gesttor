@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       port: 3000,
-      host: 'localhost',
+      host: true,
       proxy: {
         // Proxy para Python API (Evolução do Rebanho) — deve vir ANTES de /api
         '/api/py': {
