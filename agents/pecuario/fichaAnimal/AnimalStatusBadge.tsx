@@ -84,3 +84,68 @@ const AnimalStatusBadge: React.FC<AnimalStatusBadgeProps> = ({ situacao, size = 
 };
 
 export default AnimalStatusBadge;
+
+/** Rótulo do momento que inativou o animal. */
+const MOMENTO_LABEL: Record<AnimalSituacao, string> = {
+  ativo: '',
+  morte: 'Morte',
+  venda: 'Venda',
+};
+
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA' (datas já vêm normalizadas do back-end). */
+function formatDataBR(raw?: string | null): string {
+  const v = (raw || '').slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
+
+interface AnimalSituacaoFieldProps {
+  /** Valor bruto do campo de situação da ficha. */
+  situacao?: string | null;
+  /** Data do evento que inativou o animal (morte/venda), em 'AAAA-MM-DD'. */
+  data?: string | null;
+  /** Detalhe do evento (ex.: motivo da morte). */
+  motivo?: string | null;
+}
+
+/**
+ * Campo automático "Situação" exibido no Cadastro Essencial da Ficha Animal.
+ * Sinalizador verde = Ativo; vermelho = Inativo, seguido de um campo com o
+ * momento da inativação (Morte/Venda) e seu detalhe (data/motivo). O valor é
+ * derivado das telas de Morte e Venda — não é editável aqui.
+ */
+export const AnimalSituacaoField: React.FC<AnimalSituacaoFieldProps> = ({ situacao, data, motivo }) => {
+  const s = resolveSituacao(situacao);
+  const ativo = s === 'ativo';
+  const momento = MOMENTO_LABEL[s];
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label className="truncate text-xs font-semibold text-gray-700">Situação</label>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Sinalizador Ativo (verde) / Inativo (vermelho) */}
+        <span
+          className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-bold ${
+            ativo
+              ? 'border-[#16a34a]/30 bg-[#e7f6ec] text-[#15803d]'
+              : 'border-[#dc2626]/30 bg-[#fdecec] text-[#b91c1c]'
+          }`}
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${ativo ? 'bg-[#16a34a]' : 'bg-[#dc2626]'}`} />
+          {ativo ? 'Ativo' : 'Inativo'}
+        </span>
+
+        {/* Momento da inativação — vem das telas de Morte/Venda */}
+        {!ativo && momento ? (
+          <span className="inline-flex h-10 min-w-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700">
+            {momento}
+            {data ? <span className="font-medium text-gray-400">· {formatDataBR(data)}</span> : null}
+            {motivo ? <span className="truncate font-medium text-gray-400">· {motivo}</span> : null}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-[11px] leading-snug text-gray-400">
+        Preenchido automaticamente pelas telas de Morte e Venda.
+      </p>
+    </div>
+  );
+};

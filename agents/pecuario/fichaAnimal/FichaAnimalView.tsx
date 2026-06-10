@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, List, ArrowLeft, BadgePlus, Search, Sprout } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
 import { listAnimalBreeds } from '../../../lib/api/animalBreedsClient';
 import { listMovimentos, type NascimentoMovimentoRow } from '../../../lib/api/nascimentosClient';
+import { listMovimentos as listMortes, type MorteMovimentoRow } from '../../../lib/api/mortesClient';
+import { listMotivosMorte, type MotivoMorte } from '../../../lib/api/motivosMorteClient';
 import {
   listFichasAnimal,
   createFichaAnimal,
@@ -56,6 +58,39 @@ function fichasFromNascimento(
   return out;
 }
 
+/** Normaliza um identificador para casar buscas independentemente de caixa/espaços. */
+const normId = (s: string) => s.trim().toLowerCase();
+
+/** Dados de inativação de um animal, derivados de uma baixa (morte). */
+interface SituacaoInfo {
+  situacao: 'morte' | 'venda';
+  /** Data do evento ('AAAA-MM-DD'). */
+  data: string;
+  /** Detalhe do evento (ex.: motivo da morte). */
+  motivo: string;
+}
+
+/**
+ * Monta o índice de animais inativados a partir das baixas (mortes) persistidas,
+ * por ID de Manejo (apelido) e por ID Eletrônico (rfid). É a fonte que torna a
+ * Situação da ficha automática: havendo baixa para o animal, ela vira "Morte".
+ */
+function buildMorteIndex(
+  mortes: MorteMovimentoRow[],
+  motivoNome: (id: string | null) => string,
+): { byManejo: Map<string, SituacaoInfo>; byRfid: Map<string, SituacaoInfo> } {
+  const byManejo = new Map<string, SituacaoInfo>();
+  const byRfid = new Map<string, SituacaoInfo>();
+  for (const m of mortes) {
+    for (const f of m.fichas) {
+      const info: SituacaoInfo = { situacao: 'morte', data: m.data, motivo: motivoNome(f.motivoId) };
+      if (f.apelido) byManejo.set(normId(f.apelido), info);
+      if (f.rfid) byRfid.set(normId(f.rfid), info);
+    }
+  }
+  return { byManejo, byRfid };
+}
+
 interface FichaAnimalViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   /** Volta para a grade de Cadastros do Pecuário. */
@@ -83,6 +118,9 @@ const FichaAnimalView: React.FC<FichaAnimalViewProps> = ({ onToast, onBack }) =>
   const [refreshKey, setRefreshKey] = useState(0);
   // Nascimentos salvos — origem das fichas geradas automaticamente.
   const [movimentos, setMovimentos] = useState<NascimentoMovimentoRow[]>([]);
+  // Baixas (mortes) e motivos — fonte da Situação automática (Ativo/Inativo).
+  const [mortes, setMortes] = useState<MorteMovimentoRow[]>([]);
+  const [motivos, setMotivos] = useState<MotivoMorte[]>([]);
   // Ficha aberta para visualização/edição (Registros → clique). Null = lista.
   const [viewing, setViewing] = useState<Record<string, string> | null>(null);
   const [busca, setBusca] = useState('');
@@ -141,6 +179,33 @@ const FichaAnimalView: React.FC<FichaAnimalViewProps> = ({ onToast, onBack }) =>
     };
   }, [organizationId, onToast]);
 
+  // Carrega as baixas (mortes) e os motivos — usados para derivar a Situação.
+  useEffect(() => {
+    if (!organizationId) {
+      setMortes([]);
+      setMotivos([]);
+      return;
+    }
+    let cancelled = false;
+    listMortes(organizationId)
+      .then((rows) => {
+        if (!cancelled) setMortes(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setMortes([]);
+      });
+    listMotivosMorte(organizationId)
+      .then((rows) => {
+        if (!cancelled) setMotivos(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setMotivos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
   // Carrega as fichas animais persistidas (Neon). Recarrega ao salvar (refreshKey).
   useEffect(() => {
     if (!organizationId) {
@@ -180,16 +245,42 @@ const FichaAnimalView: React.FC<FichaAnimalViewProps> = ({ onToast, onBack }) =>
     return [...fichas, ...nascOnly];
   }, [nascFichas, fichas]);
 
+  const motivoNome = useCallback(
+    (id: string | null) => motivos.find((m) => m.id === id)?.nome || '',
+    [motivos],
+  );
+
+  // Índice das baixas por identificador (Manejo/Eletrônico).
+  const morteIndex = useMemo(() => buildMorteIndex(mortes, motivoNome), [mortes, motivoNome]);
+
+  // Aplica a Situação automática: animal com baixa registrada vira "Inativo · Morte",
+  // anexando data e motivo para exibição na ficha (chaves '__' não são persistidas).
+  const todasFichasComSituacao = useMemo(() => {
+    if (!morteIndex.byManejo.size && !morteIndex.byRfid.size) return todasFichas;
+    return todasFichas.map((f) => {
+      const hit =
+        (f.apelido ? morteIndex.byManejo.get(normId(f.apelido)) : undefined) ||
+        (f.rfid ? morteIndex.byRfid.get(normId(f.rfid)) : undefined);
+      if (!hit) return f;
+      return {
+        ...f,
+        situacao: hit.situacao,
+        __situacaoData: hit.data,
+        __situacaoMotivo: hit.motivo,
+      };
+    });
+  }, [todasFichas, morteIndex]);
+
   const fichasFiltradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    if (!q) return todasFichas;
+    if (!q) return todasFichasComSituacao;
     const nameOf = (id: string) => categories.find((c) => c.id === id)?.nome || '';
-    return todasFichas.filter((f) =>
+    return todasFichasComSituacao.filter((f) =>
       [f.apelido, f.nome, f.rfid, f.sisbov, nameOf(f.categoria), f.raca]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q)),
     );
-  }, [todasFichas, busca, categories]);
+  }, [todasFichasComSituacao, busca, categories]);
 
   // Persiste a ficha no banco. Ficha já persistida (__src 'db') → atualiza pelo id;
   // ficha derivada de nascimento (__src 'nascimento') → cria, preservando o vínculo;

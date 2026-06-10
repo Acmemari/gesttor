@@ -168,7 +168,8 @@ const AppContent: React.FC = () => {
     setInttegraNavNonce(n => n + 1);
   };
 
-  const canAccessFeedbackAgent = user?.qualification === 'analista';
+  const canAccessFeedbackAgent =
+    user?.role === 'admin' || user?.qualification === 'analista' || user?.qualification === 'cliente';
 
   // Recarregar hierarquia (organizações e fazendas) ao retornar ao workspace Gesttor
   useEffect(() => {

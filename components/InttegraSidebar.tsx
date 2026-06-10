@@ -71,6 +71,8 @@ const expandableSections: ExpandableItem[] = [
         children: [
           { label: 'Nascimentos', view: 'pecuario-movimentacao' },
           { label: 'Mortes', view: 'pecuario-morte' },
+          { label: 'Vendas', view: 'pecuario-venda' },
+          { label: 'Gestão de Lotes', view: 'pecuario-gestao-lotes' },
         ],
       },
       { label: 'Relatórios' },

@@ -35,7 +35,7 @@ import {
 import { sexoFromCategoria } from '../nascimento/util';
 import type { LrField, LookupItem } from '../nascimento/types';
 import { useHorizontalOverflow } from '../../../hooks/useHorizontalOverflow';
-import AnimalStatusBadge from './AnimalStatusBadge';
+import AnimalStatusBadge, { AnimalSituacaoField } from './AnimalStatusBadge';
 
 interface FichaAnimalFormProps {
   /**
@@ -344,12 +344,19 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
     f.span === 3 ? 'lg:col-span-3 sm:col-span-2' : f.span === 2 ? 'sm:col-span-2' : '';
 
   // Renderiza um grupo da aba Identificação (cabeçalho + grade de campos).
-  const renderGroup = (title: string, Icon: React.ElementType, fields: LrField[]) => (
+  // `leading` é renderizado como primeira célula da grade (ex.: campo Situação).
+  const renderGroup = (
+    title: string,
+    Icon: React.ElementType,
+    fields: LrField[],
+    leading?: React.ReactNode,
+  ) => (
     <div>
       <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-2 text-[12.5px] font-bold uppercase tracking-wider text-[#16a34a]">
         <Icon size={15} /> {title}
       </div>
       <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
+        {leading}
         {fields.map((f) => (
           <div key={f.id} className={spanClass(f)}>
             <FieldControl
@@ -569,7 +576,18 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
       <div className="px-5 py-5">
         {tab === 'identificacao' ? (
           <div className="flex flex-col gap-6">
-            {renderGroup('Cadastro Essencial', BadgeCheck, ESSENCIAL_FIELDS)}
+            {renderGroup(
+              'Cadastro Essencial',
+              BadgeCheck,
+              ESSENCIAL_FIELDS,
+              <div className="sm:col-span-2 lg:col-span-3">
+                <AnimalSituacaoField
+                  situacao={values.situacao}
+                  data={values.__situacaoData}
+                  motivo={values.__situacaoMotivo}
+                />
+              </div>,
+            )}
             {renderGroup('Identificadores', Fingerprint, IDENTIFICADORES_FIELDS)}
             {renderGroup('Características', Palette, CARACTERISTICAS_FIELDS)}
           </div>

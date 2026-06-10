@@ -98,7 +98,7 @@ const PecuarioCard: React.FC<PecuarioCardProps> = ({
       tabIndex={active ? 0 : -1}
       onClick={handleCardClick}
       onKeyDown={handleKeyDown}
-      className={`group relative flex flex-col p-8 rounded-2xl border bg-white text-left w-full transition-all duration-300 shadow-md outline-none ${
+      className={`group relative flex flex-col p-5 rounded-2xl border bg-white text-left w-full transition-all duration-300 shadow-md outline-none ${
         active
           ? isDark
             ? 'border-[#5E6D82]/20 cursor-pointer hover:shadow-xl hover:border-emerald-500/50 focus-visible:ring-2 focus-visible:ring-emerald-500/50'
@@ -123,15 +123,15 @@ const PecuarioCard: React.FC<PecuarioCardProps> = ({
         <Star size={18} className={isFavorite ? 'fill-amber-400' : ''} />
       </button>
 
-      <div className="mb-4 pr-8">
+      <div className="mb-3 pr-8">
         {title}
       </div>
-      <p className="text-xs leading-relaxed text-gray-500 line-clamp-3 mb-6">
+      <p className="text-xs leading-relaxed text-gray-500 line-clamp-3 mb-4">
         {description}
       </p>
 
       {/* Divisor de seção */}
-      <div className="w-full h-px bg-gray-100 mb-4 mt-auto" />
+      <div className="w-full h-px bg-gray-100 mb-3 mt-auto" />
 
       {/* Linha de Símbolos de Ações Rápidas */}
       <div 
@@ -221,7 +221,7 @@ const CadastroTitle: React.FC<{ entity: string; theme?: 'light' | 'dark' }> = ({
       <span className={`text-[0.65rem] font-bold uppercase tracking-wider mb-0.5 ${isDark ? 'text-[#65C04A]' : 'text-gray-400'}`}>
         cadastro de
       </span>
-      <span className="text-lg font-black tracking-tight text-gray-900 group-hover:text-emerald-600 transition-colors duration-300">
+      <span className="text-base font-black tracking-tight text-gray-900 group-hover:text-emerald-600 transition-colors duration-300">
         {entity}
       </span>
     </div>
@@ -233,7 +233,12 @@ interface PecuarioCadastrosDesktopProps {
   onSelectMapao?: () => void;
   onSelectAnimalCategories?: () => void;
   onSelectAnimalBreeds?: () => void;
+  onSelectPadraoRacial?: () => void;
+  onSelectPelagens?: () => void;
+  onSelectReprodutores?: () => void;
   onSelectMotivosMorte?: () => void;
+  onSelectTiposChifre?: () => void;
+  onSelectLotes?: () => void;
   onSelectPessoas?: () => void;
   onSelectFichaAnimal?: () => void;
   theme?: 'light' | 'dark';
@@ -248,7 +253,12 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectMapao,
   onSelectAnimalCategories,
   onSelectAnimalBreeds,
+  onSelectPadraoRacial,
+  onSelectPelagens,
+  onSelectReprodutores,
   onSelectMotivosMorte,
+  onSelectTiposChifre,
+  onSelectLotes,
   onSelectPessoas,
   onSelectFichaAnimal,
   theme = 'light',
@@ -470,6 +480,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
           },
         ]
       : []),
+    ...(onSelectPadraoRacial
+      ? [
+          {
+            id: 'padrao-racial',
+            label: 'Padrão Racial e Grau de Sangue',
+            title: <CadastroTitle entity="Padrão Racial e Grau de Sangue" theme={theme} />,
+            description: 'Cadastre os padrões raciais (PO, PC, LA, CEIP, Comercial) usados na classificação genealógica do rebanho.',
+            onClick: onSelectPadraoRacial,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Padrão Racial e Grau de Sangue centraliza as classificações genealógicas do rebanho. Para cada registro você define o padrão racial (PO, PC, LA ou Comercial) e, quando aplicável, o CEIP. Os padrões aqui cadastrados ficam disponíveis para seleção nas telas de lançamento, garantindo padronização da informação em todo o sistema.',
+              steps: [
+                {
+                  title: 'Cadastrar Padrão Racial',
+                  desc: 'Na aba "Lançamentos", informe o nome do registro e selecione o padrão racial correspondente.',
+                },
+                {
+                  title: 'Definir o Padrão Racial',
+                  desc: 'Selecione apenas um padrão entre PO, PC, LA e Comercial. O CEIP pode ser marcado em conjunto com PO, PC ou LA.',
+                },
+                {
+                  title: 'Ordenar e Ativar',
+                  desc: 'Arraste os registros para ordená-los e mantenha ativos apenas os padrões em uso. Registros inativos deixam de aparecer nos lançamentos sem perder o histórico.',
+                },
+              ],
+              proTip: 'O padrão racial indica a classificação genealógica do animal. Use o CEIP apenas em conjunto com animais PO, PC ou LA, conforme a certificação.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os padrões raciais cadastrados estão disponíveis para seleção nos lançamentos do rebanho.',
+              impact: 'A padronização dos padrões raciais garante consistência na classificação genealógica e nos relatórios do rebanho.',
+              actionLabel: 'Gerenciar Padrões Raciais',
+            }
+          },
+        ]
+      : []),
     ...(onSelectMotivosMorte
       ? [
           {
@@ -503,6 +550,154 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'Os motivos de morte cadastrados estão disponíveis para seleção nos lançamentos de mortalidade do rebanho.',
               impact: 'A padronização das causas de morte garante consistência nos relatórios de mortalidade e análise de perdas.',
               actionLabel: 'Gerenciar Motivos',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectPelagens
+      ? [
+          {
+            id: 'pelagens',
+            label: 'Pelagens',
+            title: <CadastroTitle entity="Pelagens" theme={theme} />,
+            description: 'Cadastre as pelagens dos animais para utilizar nos lançamentos e fichas zootécnicas de bovinos e equídeos.',
+            onClick: onSelectPelagens,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Pelagens centraliza as cores e padrões de pelagens dos animais. Permite categorizar quais pelagens se aplicam a Bovinos, Equídeos ou a ambos, garantindo a padronização e relatórios zootécnicos precisos.',
+              steps: [
+                {
+                  title: 'Cadastrar Pelagem',
+                  desc: 'Informe a descrição da pelagem (ex: Tordilha, Alazã, Preta) e selecione a quais espécies ela se aplica.',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste as pelagens para definir a ordem em que aparecem nas listas de seleção do sistema.',
+                },
+                {
+                  title: 'Visualizar e Editar',
+                  desc: 'Clique em uma pelagem para carregar seus detalhes no painel de edição e atualizar suas observações ou espécies vinculadas.',
+                },
+              ],
+              proTip: 'O sistema pré-cadastra pelagens padrão baseadas na tabela técnica de pelagens do Gesttor. Adapte ou adicione novos padrões conforme a necessidade da fazenda.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As pelagens cadastradas estão disponíveis para seleção e visualização nos cadastros e relatórios.',
+              impact: 'A padronização das pelagens garante consistência nos dados zootécnicos e identificação visual do rebanho.',
+              actionLabel: 'Gerenciar Pelagens',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectReprodutores
+      ? [
+          {
+            id: 'reprodutores',
+            label: 'Sêmen e Embriões',
+            title: <CadastroTitle entity="Sêmen e Embriões" theme={theme} />,
+            description: 'Cadastre os reprodutores (touros e material genético) usados na inseminação, com fotos e genealogia.',
+            onClick: onSelectReprodutores,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Sêmen e Embriões centraliza os reprodutores (touros e material genético) utilizados na inseminação da fazenda. Cada registro reúne identificação (nome, registro, data de nascimento, raça e central), fotos e a genealogia completa (pai, mãe e avós), na aba Genealogia em estilo pedigree.',
+              steps: [
+                {
+                  title: 'Identificar o Reprodutor',
+                  desc: 'Na aba "Dados", informe o Nome completo (obrigatório), Registro, Data de nascimento, Tipo (Sêmen ou Embrião), Raça e Central.',
+                },
+                {
+                  title: 'Lançar a Genealogia',
+                  desc: 'Na aba "Genealogia", preencha pai, mãe e os avós paternos e maternos, cada um com nome e registro.',
+                },
+                {
+                  title: 'Importar das Centrais',
+                  desc: 'Use o botão "Localizar das centrais" para importar um touro pré-cadastrado e pré-preencher o formulário automaticamente.',
+                },
+              ],
+              proTip: 'Anexe fotos do reprodutor e mantenha a genealogia completa para facilitar a seleção dos acasalamentos e o acompanhamento do melhoramento genético.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os reprodutores cadastrados ficam disponíveis para consulta de genealogia e seleção nas inseminações.',
+              impact: 'A padronização do sêmen e embriões garante rastreabilidade genética e consistência nos acasalamentos do rebanho.',
+              actionLabel: 'Gerenciar Sêmen e Embriões',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectTiposChifre
+      ? [
+          {
+            id: 'tipos-chifre',
+            label: 'Tipo de Chifre - Aspas',
+            title: <CadastroTitle entity="Tipo de Chifre - Aspas" theme={theme} />,
+            description: 'Cadastre os tipos de chifre (aspas) do rebanho para padronizar os lançamentos e a caracterização dos animais.',
+            onClick: onSelectTiposChifre,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Tipo de Chifre - Aspas centraliza a lista de tipos de chifre utilizados na caracterização do rebanho (ex: Aspado, Mocho, Aspas curtas, Aspas longas). Os tipos aqui cadastrados ficam disponíveis para seleção nos lançamentos, garantindo padronização e relatórios consistentes.',
+              steps: [
+                {
+                  title: 'Cadastrar Tipo de Chifre',
+                  desc: 'Na aba "Lançamentos", informe a Descrição (ex: Aspado, Mocho) e uma Observação opcional, e clique em Salvar.',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste os tipos para definir a ordem em que aparecem nas listas de seleção do sistema.',
+                },
+                {
+                  title: 'Ativar ou Inativar',
+                  desc: 'Use a coluna Situações para manter ativos apenas os tipos em uso. Tipos inativos deixam de aparecer nos lançamentos sem perder o histórico.',
+                },
+              ],
+              proTip: 'Use a Observação para descrever o que caracteriza cada tipo de chifre e evitar dúvidas no momento do lançamento.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os tipos de chifre cadastrados estão disponíveis para seleção nos lançamentos do rebanho.',
+              impact: 'A padronização dos tipos de chifre garante consistência na caracterização dos animais e nos relatórios.',
+              actionLabel: 'Gerenciar Tipos de Chifre',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectLotes
+      ? [
+          {
+            id: 'lotes',
+            label: 'Cadastro de Lotes',
+            title: <CadastroTitle entity="Lotes" theme={theme} />,
+            description: 'Cadastre os lotes da fazenda para agrupar e acompanhar os animais ao longo do manejo.',
+            onClick: onSelectLotes,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Lotes centraliza os lotes utilizados para agrupar animais no manejo. Cada lote possui um nome, uma data de início e pode ser marcado como finalizado quando encerrado, ficando disponível para seleção nos lançamentos do rebanho.',
+              steps: [
+                {
+                  title: 'Cadastrar Lote',
+                  desc: 'Na aba "Lançamentos", informe o Nome, a Data Início e uma Descrição opcional, e clique em Salvar.',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste os lotes para definir a ordem em que aparecem nas listas de seleção do sistema.',
+                },
+                {
+                  title: 'Finalizar um Lote',
+                  desc: 'Use o controle "Lote Finalizado" para encerrar um lote. Lotes finalizados mantêm o histórico, mas indicam que não estão mais em andamento.',
+                },
+              ],
+              proTip: 'Use a Descrição para registrar a finalidade do lote (ex.: recria, engorda, desmama) e facilitar a identificação no momento do lançamento.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os lotes cadastrados estão disponíveis para seleção nos lançamentos e no manejo do rebanho.',
+              impact: 'A padronização dos lotes garante o agrupamento correto dos animais e a consistência dos relatórios.',
+              actionLabel: 'Gerenciar Lotes',
             }
           },
         ]
@@ -665,7 +860,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {visibleCards.map(card => (
             <PecuarioCard
               key={card.id}

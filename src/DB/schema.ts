@@ -895,6 +895,12 @@ export const animalBreeds = pgTable('animal_breeds', {
   ceip: boolean('ceip').notNull().default(false),
   // Marca raças sem cadastro na ASBIA (exibe aviso "Sem referência na ASBIA").
   semCadastroAsbia: boolean('sem_cadastro_asbia').notNull().default(false),
+  // Composição racial: raças que compõem esta raça com seu percentual.
+  // Soma dos percentuais = 100%, exatamente um componente `principal`.
+  // Ex.: Brangus = [{Angus, 62.5, principal}, {Nelore, 37.5}]; Nelore = [{Nelore, 100, principal}].
+  composicaoRacial: jsonb('composicao_racial')
+    .$type<{ breedId: string | null; nome: string; percentual: number; principal: boolean }[]>()
+    .default([]),
   // Observação livre da raça.
   observacao: text('observacao'),
   // Raça padrão do sistema: só pode ser ativada/inativada, nunca alterada/excluída.
@@ -905,6 +911,33 @@ export const animalBreeds = pgTable('animal_breeds', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_animal_breeds_org_id').on(t.organizationId),
+]);
+
+// ── Padrão Racial e Grau de Sangue ──────────────────────────────────────────────
+// Classificação genealógica do rebanho. `classificacao` é o Padrão Racial
+// exclusivo (PO | PC | LA | Comercial); `ceip` é combinável apenas com PO/PC/LA;
+// `grauSangue` é o Grau de Sangue (Puro, 1/2 sangue, 3/4 sangue, ...).
+export const padraoRacial = pgTable('padrao_racial', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  // Padrão Racial exclusivo: 'PO' | 'PC' | 'LA' | 'Comercial' (null = não definido).
+  classificacao: text('classificacao'),
+  // CEIP é combinável apenas com PO/PC/LA.
+  ceip: boolean('ceip').notNull().default(false),
+  // Grau de Sangue: 'Puro' | '1/2 sangue' | '3/4 sangue' | '5/8 sangue' | '3/8 sangue' | '7/8 sangue' | '15/16 sangue'.
+  grauSangue: text('grau_sangue'),
+  // Observação livre.
+  observacao: text('observacao'),
+  // Registro padrão do sistema: só pode ser ativado/inativado, nunca alterado/excluído.
+  sistema: boolean('sistema').notNull().default(false),
+  ordem: integer('ordem').notNull().default(0),
+  ativo: boolean('ativo').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_padrao_racial_org_id').on(t.organizationId),
 ]);
 
 // ── Motivos de Morte ──────────────────────────────────────────────────────────
@@ -920,6 +953,27 @@ export const motivosMorte = pgTable('motivos_morte', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_motivos_morte_org_id').on(t.organizationId),
+]);
+
+// ── Tipo de Chifre / Aspas (Pecuário › Cadastros) ───────────────────────────────
+// Cadastro de referência dos tipos de chifre (aspas) do rebanho. Espelha o modelo
+// de Motivos de Morte: lista simples por organização, ordenável, com status
+// ativo/inativo ("Situações") para sair das listas de seleção sem perder histórico.
+export const tiposChifre = pgTable('tipos_chifre', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  // "Tipo de Chifre" exibido nas listas (campo Descrição no lançamento).
+  nome: text('nome').notNull(),
+  // Observação do tipo de chifre.
+  descricao: text('descricao'),
+  // "Situações": ativo aparece nas seleções; inativo é arquivado sem perder histórico.
+  ativo: boolean('ativo').notNull().default(true),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_tipos_chifre_org_id').on(t.organizationId),
 ]);
 
 // ── Other ──────────────────────────────────────────────────────────────────────
@@ -1343,6 +1397,80 @@ export const morteFichas = pgTable('morte_fichas', {
   index('idx_morte_fichas_mov').on(t.movimentoId),
 ]);
 
+// ── Venda (Movimentação › Vendas) ───────────────────────────────────────────────
+// Venda Abate (peso morto), versão "Lote de animais". Valor por arroba e peso
+// morto total são informados POR CATEGORIA em venda_itens (junto com quantidade,
+// idade média e peso vivo/cabeça). No cabeçalho (venda_movimentos) ficam apenas
+// os snapshots consolidados: valor_arroba é o valor/@ médio ponderado, e
+// peso_morto_total/valor_total/peso_morto_arroba/rendimento são os agregados —
+// persistidos para estabilidade dos Registros/relatórios (rendimento é NULL
+// quando faltam pesos vivos em alguma linha).
+export const vendaMovimentos = pgTable('venda_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  clienteId: uuid('cliente_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  // 'abate' (peso morto) | 'pe' (peso vivo — futuro)
+  tipoVenda: text('tipo_venda').notNull().default('abate'),
+  // 'arroba' (@) | 'kg' (futuro)
+  tipoPeso: text('tipo_peso').notNull().default('arroba'),
+  valorArroba: numeric('valor_arroba'),
+  pesoMortoTotal: numeric('peso_morto_total'),
+  qtd: integer('qtd').notNull().default(0),
+  valorTotal: numeric('valor_total'),
+  pesoMortoArroba: numeric('peso_morto_arroba'),
+  rendimento: numeric('rendimento'),
+  // 'conciliado' | 'pendente' (sempre 'conciliado' na Venda Abate global)
+  status: text('status').notNull().default('conciliado'),
+  obs: text('obs'),
+  desconto: numeric('desconto'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_venda_mov_org').on(t.organizationId),
+  index('idx_venda_mov_farm').on(t.farmId),
+  index('idx_venda_mov_cliente').on(t.clienteId),
+]);
+
+export const vendaItens = pgTable('venda_itens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => vendaMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  qtd: integer('qtd').notNull().default(0),
+  idadeMeses: integer('idade_meses'),
+  pesoVivoKg: numeric('peso_vivo_kg'),
+  // Valores comerciais por categoria (Venda Abate).
+  valorArroba: numeric('valor_arroba'),
+  pesoMortoTotal: numeric('peso_morto_total'),
+  desconto: numeric('desconto'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_venda_itens_mov').on(t.movimentoId),
+]);
+
+// Animais detalhados por ID na Venda Abate (modo individual / "Com ID"). Cada
+// linha é um animal identificado (ID Manejo e/ou Eletrônico), com categoria,
+// pesos e o valor/@ do animal (padrão = valor/@ do lote, editável por animal).
+export const vendaFichas = pgTable('venda_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => vendaMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  pesoVivoKg: numeric('peso_vivo_kg'),
+  pesoMortoKg: numeric('peso_morto_kg'),
+  valorArroba: numeric('valor_arroba'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_venda_fichas_mov').on(t.movimentoId),
+]);
+
 // ── Ficha Animal (Pecuário › Cadastros › Ficha Animal) ──────────────────────────
 // Cadastro individual e persistente de cada animal do rebanho. Uma linha por
 // animal, identificado pelo ID Manejo (apelido) único dentro da organização.
@@ -1413,3 +1541,90 @@ export const fichasAnimal = pgTable('fichas_animal', {
   // ID Manejo único por organização.
   uniqueIndex('fichas_animal_org_apelido_uidx').on(t.organizationId, t.apelido),
 ]);
+
+// ── Pelagens ──────────────────────────────────────────────────────────────────
+export const pelagens = pgTable('pelagens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  descricao: text('descricao').notNull(),
+  bovino: boolean('bovino').notNull().default(false),
+  equideo: boolean('equideo').notNull().default(false),
+  observacao: text('observacao'),
+  imagens: jsonb('imagens').notNull().default('[]'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_pelagens_org_id').on(t.organizationId),
+]);
+
+// ── Reprodutores (Sêmen e Embriões) ─────────────────────────────────────────────
+export const reprodutores = pgTable('reprodutores', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  registro: text('registro'),
+  dataNascimento: text('data_nascimento'),
+  tipo: text('tipo').notNull().default('semen'),
+  raca: text('raca'),
+  central: text('central'),
+  imagens: jsonb('imagens').notNull().default('[]'),
+  genealogia: jsonb('genealogia').notNull().default('{}'),
+  observacao: text('observacao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_reprodutores_org_id').on(t.organizationId),
+]);
+
+// ── Lotes ───────────────────────────────────────────────────────────────────────
+export const lotes = pgTable('lotes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  // Identidade do lote (Gestão de Lotes): codigo (ex.: "RC-01") e finalidade
+  // (Cria | Recria | Terminação | Outra Finalidade) — a finalidade não muda
+  // enquanto o lote existir e habilita o 4º card (Processo Reprodutivo) só p/ Cria.
+  codigo: text('codigo'),
+  finalidade: text('finalidade'),
+  sistema: text('sistema'),                           // ex.: "Pasto + suplemento"
+  dataInicio: date('data_inicio').notNull(),
+  finalizado: boolean('finalizado').notNull().default(false),
+  descricao: text('descricao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_lotes_org_id').on(t.organizationId),
+]);
+
+// ── Lote Eventos ────────────────────────────────────────────────────────────────
+// Ledger imutável: a ÚNICA fonte de verdade dos estados do lote (composição,
+// localização, regime, fase reprodutiva). O usuário nunca edita o estado — ele
+// empilha um evento e os estados são derivados por selectors puros no front.
+export const loteEventos = pgTable('lote_eventos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  loteId: uuid('lote_id').notNull()
+    .references(() => lotes.id, { onDelete: 'cascade' }),
+  tipo: text('tipo').notNull(),     // 'alocacao' | 'transferencia' | 'manejo' | 'repro'
+  data: date('data').notNull(),
+  resp: text('resp'),               // responsável (texto livre)
+  // Payload específico do tipo:
+  //  alocacao:      { sentido: 'entrada'|'saida', outroLoteId: string|null, qtd, categoriaId|null, categoriaNome?, naoIdent, animais: string[] }
+  //  transferencia: { de: string, para: string, tipoLocal: 'Retiro'|'Pasto'|'Setor'|'Confinamento'|'Curral' }
+  //  manejo:        { dim: 'nutricional'|'reprodutivo', plano: string }
+  //  repro:         { fase: string, detalhe: string }
+  dados: jsonb('dados').notNull().default('{}'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_lote_eventos_org').on(t.organizationId),
+  index('idx_lote_eventos_lote').on(t.loteId),
+]);
+

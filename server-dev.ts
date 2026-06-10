@@ -285,8 +285,26 @@ app.all('/api/animal-categories', (req, res) => handleApiRoute('./api/animal-cat
 // Raças de animais
 app.all('/api/animal-breeds', (req, res) => handleApiRoute('./api/animal-breeds.ts', req, res));
 
+// Padrão Racial e Grau de Sangue
+app.all('/api/padrao-racial', (req, res) => handleApiRoute('./api/padrao-racial.ts', req, res));
+
 // Motivos de morte
 app.all('/api/motivos-morte', (req, res) => handleApiRoute('./api/motivos-morte.ts', req, res));
+
+// Pelagens
+app.all('/api/pelagens', (req, res) => handleApiRoute('./api/pelagens.ts', req, res));
+
+// Reprodutores (Sêmen e Embriões)
+app.all('/api/reprodutores', (req, res) => handleApiRoute('./api/reprodutores.ts', req, res));
+
+// Lotes
+app.all('/api/lotes', (req, res) => handleApiRoute('./api/lotes.ts', req, res));
+
+// Movimentação › Gestão de Lotes (ledger de eventos)
+app.all('/api/lote-eventos', (req, res) => handleApiRoute('./api/lote-eventos.ts', req, res));
+
+// Tipo de Chifre - Aspas
+app.all('/api/tipos-chifre', (req, res) => handleApiRoute('./api/tipos-chifre.ts', req, res));
 
 // Mapa de Rebanho (Estoque de Partida)
 app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));
@@ -300,6 +318,9 @@ app.all('/api/nascimento-field-config', (req, res) => handleApiRoute('./api/nasc
 
 // Movimentação › Mortes
 app.all('/api/mortes', (req, res) => handleApiRoute('./api/mortes.ts', req, res));
+
+// Movimentação › Vendas
+app.all('/api/vendas', (req, res) => handleApiRoute('./api/vendas.ts', req, res));
 
 // Pecuário › Cadastros › Ficha Animal
 app.all('/api/fichas-animal', (req, res) => handleApiRoute('./api/fichas-animal.ts', req, res));

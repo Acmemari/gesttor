@@ -67,6 +67,7 @@ const ALLOWED_KEY_PREFIXES = [
   'knowledge-docs/',
   'meeting-transcriptions/',
   'ata-fotos/',
+  'pelagens-photos/',
 ];
 
 /**

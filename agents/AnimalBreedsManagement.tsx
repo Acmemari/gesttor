@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
 import {
   Plus,
   List,
@@ -12,6 +12,8 @@ import {
   Dna,
   Lock,
   Info,
+  Star,
+  HelpCircle,
 } from 'lucide-react';
 import {
   DndContext,
@@ -41,6 +43,7 @@ import {
   deleteAnimalBreed,
   reorderAnimalBreeds,
   type AnimalBreed,
+  type ComposicaoComponente,
 } from '../lib/api/animalBreedsClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -56,13 +59,37 @@ interface DraftBreed {
   localId: number;
   nome: string;
   codigoAsbia: string;
+  composicao: ComposicaoComponente[];
   observacao: string;
 }
 
 const inputCls =
   'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
+const selectCls =
+  'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
 const textareaCls =
   'w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15 resize-none';
+
+// ── Composição Racial: helpers ──────────────────────────────────────────────────
+
+/** Formata um percentual em pt-BR com 2 casas (ex.: 62.5 → "62,50%"). */
+const formatPercent = (n: number): string =>
+  `${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+/** Converte texto pt-BR ("62,5") em número (62.5), limitado a 0–100; NaN se inválido. */
+const parsePercent = (s: string): number => {
+  const n = parseFloat(String(s).replace(',', '.').trim());
+  if (!Number.isFinite(n)) return NaN;
+  return Math.round(Math.min(Math.max(n, 0), 100) * 100) / 100;
+};
+
+/** Soma dos percentuais, arredondada a 2 casas. */
+const somaComposicao = (comp: ComposicaoComponente[]): number =>
+  Math.round(comp.reduce((s, c) => s + c.percentual, 0) * 100) / 100;
+
+/** Composição válida: ≥1 componente, soma 100% e exatamente uma principal. */
+const composicaoValida = (comp: ComposicaoComponente[]): boolean =>
+  comp.length > 0 && somaComposicao(comp) === 100 && comp.filter((c) => c.principal).length === 1;
 
 // ── UI helpers ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +123,259 @@ const CodigoCell: React.FC<{ codigo: string | null }> = ({ codigo }) =>
     <span className="text-sm text-gray-300">—</span>
   );
 
+/** Célula com os badges da composição racial (principal destacada). */
+const ComposicaoCell: React.FC<{ comp?: ComposicaoComponente[] | null }> = ({ comp }) => {
+  if (!comp || comp.length === 0) return <span className="text-sm text-gray-300">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {comp.map((c, i) => (
+        <span
+          key={`${c.breedId ?? c.nome}-${i}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            c.principal
+              ? 'bg-[#E7F6EC] text-[#15803D] ring-1 ring-inset ring-[#16A34A]/30'
+              : 'bg-[#F1F5F9] text-[#475569]'
+          }`}
+          title={c.principal ? 'Raça principal' : undefined}
+        >
+          {c.principal && <Star size={9} className="fill-current" />}
+          {c.nome} {formatPercent(c.percentual)}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Editor da Composição Racial.
+ * O usuário escolhe uma raça (do cadastro), informa o percentual e marca a
+ * principal; "+" adiciona a linha. A soma deve totalizar 100% e exatamente uma
+ * raça é a principal (a primeira adicionada é principal por padrão).
+ */
+const ComposicaoRacialEditor: React.FC<{
+  breeds: AnimalBreed[];
+  value: ComposicaoComponente[];
+  onChange: (next: ComposicaoComponente[]) => void;
+  onToast?: Props['onToast'];
+}> = ({ breeds, value, onChange, onToast }) => {
+  const radioName = useId();
+  const [selId, setSelId] = useState('');
+  const [pctText, setPctText] = useState('');
+  const [principalInput, setPrincipalInput] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Raças disponíveis no dropdown: ativas e ainda não usadas na composição.
+  const available = useMemo(
+    () =>
+      breeds
+        .filter((b) => b.ativo && !value.some((c) => c.breedId === b.id))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    [breeds, value],
+  );
+
+  const total = somaComposicao(value);
+  const principais = value.filter((c) => c.principal).length;
+  const completo = composicaoValida(value);
+  const isFirst = value.length === 0; // a primeira raça será sempre a principal
+
+  const add = () => {
+    if (!selId) {
+      onToast?.('Selecione a raça da composição', 'error');
+      return;
+    }
+    if (value.some((c) => c.breedId === selId)) {
+      onToast?.('Essa raça já está na composição', 'warning');
+      return;
+    }
+    const pct = parsePercent(pctText);
+    if (!(pct > 0)) {
+      onToast?.('Informe um percentual válido (maior que zero)', 'error');
+      return;
+    }
+    const breed = breeds.find((b) => b.id === selId);
+    if (!breed) return;
+
+    const makePrincipal = isFirst ? true : principalInput;
+    let next: ComposicaoComponente[] = [
+      ...value,
+      { breedId: breed.id, nome: breed.nome, percentual: pct, principal: makePrincipal },
+    ];
+    if (makePrincipal) {
+      const lastIdx = next.length - 1;
+      next = next.map((c, i) => ({ ...c, principal: i === lastIdx }));
+    }
+    onChange(next);
+    setSelId('');
+    setPctText('');
+    setPrincipalInput(false);
+  };
+
+  const setPrincipal = (idx: number) =>
+    onChange(value.map((c, i) => ({ ...c, principal: i === idx })));
+
+  const remove = (idx: number) => {
+    let next = value.filter((_, i) => i !== idx);
+    // garante que sempre reste uma principal
+    if (next.length > 0 && !next.some((c) => c.principal)) {
+      next = next.map((c, i) => ({ ...c, principal: i === 0 }));
+    }
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-2">
+        <label className="text-[12.5px] font-semibold text-gray-700">
+          Composição Racial <span className="text-[#DC2626]">*</span>
+        </label>
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-[#16a34a] transition-colors hover:bg-[#E7F6EC]"
+        >
+          <HelpCircle size={13} /> Como preencher?
+        </button>
+      </div>
+
+      {showHelp && (
+        <div className="mb-2 rounded-lg border border-[#D1FAE5] bg-[#F0FDF4] p-3 text-[12px] leading-relaxed text-[#15803D]">
+          Informe as raças que compõem esta raça e o percentual de cada uma. A soma deve totalizar{' '}
+          <strong>100%</strong> e exatamente uma raça deve ser a <strong>principal</strong>.
+          <br />
+          Ex.: <strong>Brangus</strong> = Angus 62,50% + Nelore 37,50%. &nbsp;•&nbsp;{' '}
+          <strong>Nelore</strong> = Nelore 100,00%.
+        </div>
+      )}
+
+      {/* Linha de entrada: raça + percentual + principal + adicionar */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-[#FAFAFA] p-3">
+        <div className="min-w-[200px] flex-1">
+          <label className="mb-1 block text-[11.5px] font-semibold text-gray-600">Raça</label>
+          <select value={selId} onChange={(e) => setSelId(e.target.value)} className={selectCls}>
+            <option value="">Selecione a raça…</option>
+            {available.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="w-[130px]">
+          <label className="mb-1 block text-[11.5px] font-semibold text-gray-600">Percentual</label>
+          <div className="relative">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={pctText}
+              onChange={(e) => setPctText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  add();
+                }
+              }}
+              placeholder="0,00"
+              className={`${inputCls} pr-7 text-right`}
+            />
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+              %
+            </span>
+          </div>
+        </div>
+        <label
+          className={`flex h-10 items-center gap-2 text-[12.5px] font-semibold cursor-pointer select-none ${
+            isFirst ? 'text-gray-400' : 'text-gray-700'
+          }`}
+          title={isFirst ? 'A primeira raça da composição é a principal' : undefined}
+        >
+          <input
+            type="checkbox"
+            checked={isFirst ? true : principalInput}
+            disabled={isFirst}
+            onChange={(e) => setPrincipalInput(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-[#16a34a] focus:ring-[#16a34a] disabled:opacity-60"
+          />
+          Principal
+        </label>
+        <button
+          type="button"
+          onClick={add}
+          className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#16a34a] text-white transition-colors hover:bg-[#15803d]"
+          title="Adicionar à composição"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
+      {/* Lista dos componentes adicionados + total */}
+      {value.length > 0 && (
+        <div className="mt-2 overflow-hidden rounded-xl border border-gray-200">
+          <table className="w-full text-sm">
+            <tbody>
+              {value.map((c, i) => (
+                <tr key={`${c.breedId ?? c.nome}-${i}`} className="border-b border-gray-100 last:border-0">
+                  <td className="px-3 py-2 font-semibold text-gray-800">{c.nome}</td>
+                  <td className="w-28 px-3 py-2 text-right tabular-nums text-gray-700">
+                    {formatPercent(c.percentual)}
+                  </td>
+                  <td className="w-32 px-3 py-2">
+                    <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[12px] font-semibold text-gray-700">
+                      <input
+                        type="radio"
+                        name={radioName}
+                        checked={c.principal}
+                        onChange={() => setPrincipal(i)}
+                        className="h-3.5 w-3.5 border-gray-300 text-[#16a34a] focus:ring-[#16a34a]"
+                      />
+                      {c.principal ? (
+                        <span className="inline-flex items-center gap-1 text-[#15803D]">
+                          <Star size={12} className="fill-current" /> Principal
+                        </span>
+                      ) : (
+                        'Principal'
+                      )}
+                    </label>
+                  </td>
+                  <td className="w-10 px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      className="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-[#DC2626]"
+                      title="Remover"
+                    >
+                      <X size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div
+            className={`flex items-center justify-between px-3 py-2 text-[12px] font-bold ${
+              completo ? 'bg-[#F0FDF4] text-[#15803D]' : 'bg-[#FEF2F2] text-[#B91C1C]'
+            }`}
+          >
+            <span>Total</span>
+            <span className="tabular-nums">
+              {formatPercent(total)}
+              {total === 100
+                ? ' ✓'
+                : total < 100
+                ? ` — faltam ${formatPercent(100 - total)}`
+                : ` — excede ${formatPercent(total - 100)}`}
+            </span>
+          </div>
+          {principais !== 1 && (
+            <div className="bg-[#FEF2F2] px-3 pb-2 text-[11px] font-semibold text-[#B91C1C]">
+              Marque exatamente uma raça principal.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Sortable Row (aba Registros) ───────────────────────────────────────────────
 
 interface SortableRowProps {
@@ -112,6 +392,7 @@ interface SortableRowProps {
   onCancelEdit: () => void;
   onDelete: (id: string) => void;
   onToggleAtivoDirect: (b: AnimalBreed) => void;
+  onEditComposicao: (b: AnimalBreed) => void;
 }
 
 const SortableRow: React.FC<SortableRowProps> = ({
@@ -128,6 +409,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
   onCancelEdit,
   onDelete,
   onToggleAtivoDirect,
+  onEditComposicao,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: breed.id,
@@ -201,6 +483,21 @@ const SortableRow: React.FC<SortableRowProps> = ({
         ) : (
           <CodigoCell codigo={breed.codigoAsbia} />
         )}
+      </td>
+      <td className="px-4 py-3 text-[#0F172A]">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <ComposicaoCell comp={breed.composicaoRacial} />
+          </div>
+          <button
+            type="button"
+            onClick={() => onEditComposicao(breed)}
+            className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 transition-all hover:bg-[#E7F6EC] hover:text-[#16A34A]"
+            title="Editar composição racial"
+          >
+            <Dna size={15} />
+          </button>
+        </div>
       </td>
       <td className="px-4 py-3">
         {editing ? (
@@ -289,6 +586,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [drafts, setDrafts] = useState<DraftBreed[]>([]);
   const [nome, setNome] = useState('');
   const [codigoAsbia, setCodigoAsbia] = useState('');
+  const [composicao, setComposicao] = useState<ComposicaoComponente[]>([]);
   const [observacao, setObservacao] = useState('');
   const draftSeq = useRef(1);
 
@@ -297,6 +595,11 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [editNome, setEditNome] = useState('');
   const [editCodigoAsbia, setEditCodigoAsbia] = useState('');
   const [editAtivo, setEditAtivo] = useState(true);
+
+  // Edição da composição racial (modal — vale para qualquer raça, inclusive padrão do sistema)
+  const [composicaoEditId, setComposicaoEditId] = useState<string | null>(null);
+  const [composicaoEditValue, setComposicaoEditValue] = useState<ComposicaoComponente[]>([]);
+  const [savingComposicao, setSavingComposicao] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -336,19 +639,36 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
       onToast?.('Essa raça já foi adicionada', 'warning');
       return;
     }
+
+    // Composição racial é obrigatória: ≥1 raça, soma 100% e exatamente uma principal.
+    if (composicao.length === 0) {
+      onToast?.('Informe a composição racial da raça', 'error');
+      return;
+    }
+    if (somaComposicao(composicao) !== 100) {
+      onToast?.('A soma dos percentuais da composição deve ser 100%', 'error');
+      return;
+    }
+    if (composicao.filter((c) => c.principal).length !== 1) {
+      onToast?.('Marque exatamente uma raça principal na composição', 'error');
+      return;
+    }
+
     setDrafts((prev) => [
       ...prev,
       {
         localId: draftSeq.current++,
         nome: clean,
         codigoAsbia: codigoAsbia.trim().toUpperCase(),
+        composicao,
         observacao: observacao.trim(),
       },
     ]);
-    setNome(''); // reset: limpa nome/código/observação
+    setNome(''); // reset: limpa nome/código/composição/observação
     setCodigoAsbia('');
+    setComposicao([]);
     setObservacao('');
-  }, [nome, codigoAsbia, observacao, drafts, breeds, onToast]);
+  }, [nome, codigoAsbia, composicao, observacao, drafts, breeds, onToast]);
 
   const removeDraft = useCallback((localId: number) => {
     setDrafts((prev) => prev.filter((d) => d.localId !== localId));
@@ -358,6 +678,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setDrafts([]);
     setNome('');
     setCodigoAsbia('');
+    setComposicao([]);
     setObservacao('');
   }, []);
 
@@ -369,6 +690,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
         await createAnimalBreed({
           nome: d.nome.trim(),
           codigoAsbia: d.codigoAsbia || null,
+          composicaoRacial: d.composicao,
           observacao: d.observacao || null,
           ativo: true,
           organizationId,
@@ -379,6 +701,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
       setDrafts([]);
       setNome('');
       setCodigoAsbia('');
+      setComposicao([]);
       setObservacao('');
       await loadBreeds();
       setAba('registros');
@@ -440,6 +763,32 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
     [onToast, loadBreeds],
   );
 
+  // ── Edição da composição racial (modal) ─────────────────────────────────────
+
+  const openComposicaoEdit = useCallback((breed: AnimalBreed) => {
+    setComposicaoEditId(breed.id);
+    setComposicaoEditValue(breed.composicaoRacial ?? []);
+  }, []);
+
+  const saveComposicaoEdit = useCallback(async () => {
+    if (!composicaoEditId) return;
+    if (!composicaoValida(composicaoEditValue)) {
+      onToast?.('Composição inválida: a soma deve ser 100% e ter exatamente uma raça principal', 'error');
+      return;
+    }
+    setSavingComposicao(true);
+    try {
+      await updateAnimalBreed(composicaoEditId, { composicaoRacial: composicaoEditValue });
+      onToast?.('Composição racial atualizada', 'success');
+      setComposicaoEditId(null);
+      await loadBreeds();
+    } catch (err: any) {
+      onToast?.(err.message || 'Erro ao salvar composição racial', 'error');
+    } finally {
+      setSavingComposicao(false);
+    }
+  }, [composicaoEditId, composicaoEditValue, onToast, loadBreeds]);
+
   // ── Delete ────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
@@ -497,6 +846,11 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
       key: 'codigoAsbia',
       header: 'Código',
       render: (d) => <CodigoCell codigo={d.codigoAsbia || null} />,
+    },
+    {
+      key: 'composicao',
+      header: 'Composição',
+      render: (d) => <ComposicaoCell comp={d.composicao} />,
     },
     {
       key: 'observacao',
@@ -590,6 +944,14 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
             </div>
           </div>
 
+          {/* Composição Racial — entre o nome da raça e a observação */}
+          <ComposicaoRacialEditor
+            breeds={breeds}
+            value={composicao}
+            onChange={setComposicao}
+            onToast={onToast}
+          />
+
           <div>
             <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Observação</label>
             <textarea
@@ -600,6 +962,14 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
               className={textareaCls}
             />
           </div>
+
+          <button
+            type="button"
+            onClick={addDraft}
+            className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg border border-[#16a34a] px-4 text-[13px] font-bold text-[#16a34a] transition-colors hover:bg-[#E7F6EC]"
+          >
+            <Plus size={16} /> Adicionar raça à lista
+          </button>
 
           {drafts.length > 0 && (
             <InlineEntryTable
@@ -649,6 +1019,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                       Código <Info size={12} className="text-gray-400" />
                     </span>
                   </th>
+                  <th className="px-4 py-3.5 text-left">Composição</th>
                   <th className="px-4 py-3.5 text-left">Situação</th>
                   <th className="px-4 py-3.5 text-right">Ações</th>
                 </tr>
@@ -677,6 +1048,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                         onCancelEdit={cancelEdit}
                         onDelete={(id) => setDeleteConfirmId(id)}
                         onToggleAtivoDirect={toggleAtivoDirect}
+                        onEditComposicao={openComposicaoEdit}
                       />
                     ))}
                   </tbody>
@@ -694,6 +1066,9 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                           </td>
                           <td className="px-4 py-3">
                             <CodigoCell codigo={activeDragBreed.codigoAsbia} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <ComposicaoCell comp={activeDragBreed.composicaoRacial} />
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -744,6 +1119,49 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-[#DC2626] rounded-xl hover:bg-[#B91C1C] transition-all duration-300 shadow-md shadow-red-950/10"
               >
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Composição Racial Dialog (qualquer raça, inclusive padrão do sistema) ── */}
+      {composicaoEditId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-2xl transition-all duration-300">
+            <div className="mb-4 flex items-center gap-2">
+              <Dna size={18} className="text-[#16A34A]" />
+              <h3 className="text-lg font-black tracking-tight text-[#0F172A]">
+                Composição Racial
+                <span className="ml-2 text-sm font-semibold text-[#6B7280]">
+                  {breeds.find((b) => b.id === composicaoEditId)?.nome}
+                </span>
+              </h3>
+            </div>
+
+            <ComposicaoRacialEditor
+              breeds={breeds}
+              value={composicaoEditValue}
+              onChange={setComposicaoEditValue}
+              onToast={onToast}
+            />
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setComposicaoEditId(null)}
+                className="rounded-xl border border-[#E5E7EB] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-[#6B7280] transition-all duration-300 hover:bg-[#F9FAFB]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveComposicaoEdit}
+                disabled={!composicaoValida(composicaoEditValue) || savingComposicao}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#16A34A] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all duration-300 hover:bg-[#15803D] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingComposicao && <Loader2 size={14} className="animate-spin" />}
+                Salvar
               </button>
             </div>
           </div>

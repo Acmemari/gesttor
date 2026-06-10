@@ -18,6 +18,37 @@ import {
   reorder,
 } from '../src/DB/repositories/animal-breeds.js';
 
+type ComposicaoRacialItem = { breedId: string | null; nome: string; percentual: number; principal: boolean };
+
+/**
+ * Normaliza e valida a composição racial.
+ * Regras: pelo menos um componente, soma dos percentuais = 100% e exatamente um `principal`.
+ */
+function normalizeComposicao(
+  value: any,
+): { ok: boolean; data: ComposicaoRacialItem[]; error: string | null } {
+  if (!Array.isArray(value)) return { ok: false, data: [], error: 'Composição racial inválida' };
+
+  const items: ComposicaoRacialItem[] = value
+    .map((c: any) => ({
+      breedId: typeof c?.breedId === 'string' && c.breedId ? c.breedId : null,
+      nome: typeof c?.nome === 'string' ? c.nome.trim() : '',
+      percentual: Math.round(Number(c?.percentual) * 100) / 100,
+      principal: !!c?.principal,
+    }))
+    .filter((c) => c.nome && Number.isFinite(c.percentual) && c.percentual > 0);
+
+  if (items.length === 0) return { ok: false, data: [], error: 'Informe a composição racial (mínimo uma raça)' };
+
+  const total = Math.round(items.reduce((s, c) => s + c.percentual, 0) * 100) / 100;
+  if (total !== 100) return { ok: false, data: items, error: 'A soma dos percentuais da composição deve ser 100%' };
+
+  const principais = items.filter((c) => c.principal).length;
+  if (principais !== 1) return { ok: false, data: items, error: 'Marque exatamente uma raça principal na composição' };
+
+  return { ok: true, data: items, error: null };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
   if (req.method === 'OPTIONS') {
@@ -61,9 +92,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Create
-      const { organizationId, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, observacao, ativo } = req.body ?? {};
+      const { organizationId, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, composicaoRacial, observacao, ativo } = req.body ?? {};
       if (!organizationId || !nome || !String(nome).trim()) {
         jsonError(res, 'Campos obrigatórios: organizationId, nome', { status: 400 });
+        return;
+      }
+
+      // Composição racial é obrigatória na criação.
+      const comp = normalizeComposicao(composicaoRacial);
+      if (!comp.ok) {
+        jsonError(res, comp.error || 'Composição racial inválida', { status: 400 });
         return;
       }
 
@@ -74,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         codigoAsbia: codigoAsbia ? String(codigoAsbia).trim().toUpperCase().slice(0, 2) : null,
         ceip: ceip !== undefined ? !!ceip : false,
         semCadastroAsbia: semCadastroAsbia !== undefined ? !!semCadastroAsbia : false,
+        composicaoRacial: comp.data,
         observacao: observacao ? String(observacao).trim() : null,
         ativo: ativo !== undefined ? !!ativo : true,
       });
@@ -83,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, observacao, ativo } = req.body ?? {};
+      const { id, nome, classificacaoRegistro, codigoAsbia, ceip, semCadastroAsbia, composicaoRacial, observacao, ativo } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
@@ -105,6 +144,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (ceip !== undefined) payload.ceip = !!ceip;
       if (semCadastroAsbia !== undefined) payload.semCadastroAsbia = !!semCadastroAsbia;
+      if (composicaoRacial !== undefined) {
+        const compUpd = normalizeComposicao(composicaoRacial);
+        if (!compUpd.ok) {
+          jsonError(res, compUpd.error || 'Composição racial inválida', { status: 400 });
+          return;
+        }
+        payload.composicaoRacial = compUpd.data;
+      }
       if (observacao !== undefined) payload.observacao = observacao ? String(observacao).trim() : null;
       if (ativo !== undefined) payload.ativo = !!ativo;
 

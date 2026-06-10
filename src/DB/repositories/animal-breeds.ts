@@ -78,6 +78,8 @@ export async function listByOrganization(organizationId: string) {
   return rows;
 }
 
+type ComposicaoRacialItem = { breedId: string | null; nome: string; percentual: number; principal: boolean };
+
 export async function create(data: {
   organizationId: string;
   nome: string;
@@ -85,6 +87,7 @@ export async function create(data: {
   codigoAsbia?: string | null;
   ceip?: boolean;
   semCadastroAsbia?: boolean;
+  composicaoRacial?: ComposicaoRacialItem[];
   observacao?: string | null;
   ativo?: boolean;
 }) {
@@ -100,6 +103,7 @@ export async function create(data: {
     codigoAsbia: data.codigoAsbia ?? null,
     ceip: data.ceip ?? false,
     semCadastroAsbia: data.semCadastroAsbia ?? false,
+    composicaoRacial: data.composicaoRacial ?? [],
     observacao: data.observacao ?? null,
     // `sistema` nunca vem do usuário: raças criadas na tela não são padrão do sistema.
     sistema: false,
@@ -115,17 +119,19 @@ export async function update(id: string, data: {
   codigoAsbia?: string | null;
   ceip?: boolean;
   semCadastroAsbia?: boolean;
+  composicaoRacial?: ComposicaoRacialItem[];
   observacao?: string | null;
   ativo?: boolean;
 }) {
-  // Raças padrão do sistema só podem ser ativadas/inativadas.
+  // Raças padrão do sistema: só situação (ativo) e composição racial podem ser editadas.
   const [existing] = await db.select({ sistema: animalBreeds.sistema })
     .from(animalBreeds)
     .where(eq(animalBreeds.id, id as any));
   if (existing?.sistema) {
-    const onlyAtivo = Object.keys(data).every((k) => k === 'ativo');
-    if (!onlyAtivo) {
-      throw new Error('Raça padrão do sistema: só é permitido ativar/inativar.');
+    const allowed = new Set(['ativo', 'composicaoRacial']);
+    const onlyAllowed = Object.keys(data).every((k) => allowed.has(k));
+    if (!onlyAllowed) {
+      throw new Error('Raça padrão do sistema: só é permitido ativar/inativar e editar a composição racial.');
     }
   }
 

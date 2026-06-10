@@ -10,17 +10,26 @@ type SubView =
   | 'mapao'
   | 'animal-categories'
   | 'animal-breeds'
+  | 'padrao-racial'
+  | 'pelagens'
+  | 'reprodutores'
   | 'motivos-morte'
+  | 'tipos-chifre'
+  | 'lotes'
   | 'people'
   | 'ficha-animal';
 
-// Ids de card que correspondem a uma sub-tela de cadastro (= ids de PecuarioCadastrosDesktop).
 const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'estoque-partida',
   'mapao',
   'animal-categories',
   'animal-breeds',
+  'padrao-racial',
+  'pelagens',
+  'reprodutores',
   'motivos-morte',
+  'tipos-chifre',
+  'lotes',
   'people',
   'ficha-animal',
 ];
@@ -32,10 +41,17 @@ const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePar
 const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
 const MorteView = lazyWithRetry(() => import('../agents/pecuario/morte/MorteView'));
+const VendaView = lazyWithRetry(() => import('../agents/pecuario/venda/VendaView'));
+const GestaoLotesView = lazyWithRetry(() => import('../agents/pecuario/gestaoLotes/GestaoLotesView'));
 const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
 const AnimalBreedsManagement = lazyWithRetry(() => import('../agents/AnimalBreedsManagement'));
+const PadraoRacialManagement = lazyWithRetry(() => import('../agents/PadraoRacialManagement'));
+const PelagensManagement = lazyWithRetry(() => import('../agents/PelagensManagement'));
+const ReprodutoresManagement = lazyWithRetry(() => import('../agents/ReprodutoresManagement'));
 const MotivosMorteManagement = lazyWithRetry(() => import('../agents/MotivosMorteManagement'));
+const TiposChifreManagement = lazyWithRetry(() => import('../agents/TiposChifreManagement'));
+const LotesManagement = lazyWithRetry(() => import('../agents/LotesManagement'));
 const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
 const PeopleManagement = lazyWithRetry(() => import('../agents/PeopleManagement'));
 
@@ -121,6 +137,22 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
     );
   }
 
+  if (view === 'pecuario-venda') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <VendaView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
+  if (view === 'pecuario-gestao-lotes') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <GestaoLotesView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
   if (view === 'pecuario-cadastros') {
     if (subView === 'estoque-partida') {
       return (
@@ -150,10 +182,45 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         </Suspense>
       );
     }
+    if (subView === 'padrao-racial') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <PadraoRacialManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
+    if (subView === 'pelagens') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <PelagensManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
+    if (subView === 'reprodutores') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <ReprodutoresManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
     if (subView === 'motivos-morte') {
       return (
         <Suspense fallback={<LoadingFallback />}>
           <MotivosMorteManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
+    if (subView === 'tipos-chifre') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <TiposChifreManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
+    if (subView === 'lotes') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <LotesManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
         </Suspense>
       );
     }
@@ -183,7 +250,12 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
           onSelectMapao={() => setSubView('mapao')}
           onSelectAnimalCategories={() => setSubView('animal-categories')}
           onSelectAnimalBreeds={() => setSubView('animal-breeds')}
+          onSelectPadraoRacial={() => setSubView('padrao-racial')}
+          onSelectPelagens={() => setSubView('pelagens')}
+          onSelectReprodutores={() => setSubView('reprodutores')}
           onSelectMotivosMorte={() => setSubView('motivos-morte')}
+          onSelectTiposChifre={() => setSubView('tipos-chifre')}
+          onSelectLotes={() => setSubView('lotes')}
           onSelectPessoas={() => setSubView('people')}
           onSelectFichaAnimal={() => setSubView('ficha-animal')}
           initialTab={cadastrosTab?.tab}

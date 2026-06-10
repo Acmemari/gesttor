@@ -37,5 +37,7 @@ export default defineConfig({
     'mapao_headers', 'mapao_lancamentos',
     // Movimentação › Nascimento
     'nascimento_movimentos', 'nascimento_fichas',
+    // Movimentação › Vendas
+    'venda_movimentos', 'venda_itens', 'venda_fichas',
   ],
 });
