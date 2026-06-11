@@ -159,6 +159,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   // Aba ativa: formulário de lançamento vs. histórico (todos os lançamentos).
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
+  // Tela cheia do Lançamento Rápido (foco na alocação individual por animal).
+  const [lrExpanded, setLrExpanded] = useState(false);
   const fichaSeq = useRef(1);
 
   const total = parseInt(totalStr, 10) || 0;
@@ -293,6 +295,21 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     [farmLocais, retiro],
   );
 
+  // Tela cheia: trava o scroll do fundo e permite reduzir com Esc.
+  useEffect(() => {
+    if (!lrExpanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLrExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [lrExpanded]);
+
   // ── Helpers de nome ───────────────────────────────────────────────────────
   const catName = useCallback((id: string) => categories.find((c) => c.id === id)?.nome || '—', [categories]);
 
@@ -389,6 +406,16 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     setFromId(false);
     setSanOpen(false);
     setDadosOpen(false);
+    setLrExpanded(false);
+  }, []);
+
+  // Alterna a tela cheia do painel de Lançamento Rápido.
+  const toggleLrExpand = useCallback(() => setLrExpanded((p) => !p), []);
+
+  // Troca de aba: sair da tela cheia ao abrir Registros (master-detail completo).
+  const irParaAba = useCallback((next: 'lancar' | 'historico') => {
+    if (next === 'historico') setLrExpanded(false);
+    setAba(next);
   }, []);
 
   // ── Configuração de campos ────────────────────────────────────────────────
@@ -431,6 +458,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     setSanOpen(false);
     setDadosOpen(false);
     setFromId(false);
+    setLrExpanded(false);
     setEntryValues(buildEntryValues(today));
     setEditingId(null);
   }, [today]);
@@ -511,6 +539,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       setEntryValues(buildEntryValues(today));
       setTotalStr('');
       setFromId(false);
+      setLrExpanded(false);
       setEditingId(null);
     } catch (err: any) {
       onToast?.(err?.message || (editingId ? 'Erro ao atualizar nascimento' : 'Erro ao salvar nascimento'), 'error');
@@ -649,6 +678,71 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
 
+  // Abas: Lançamentos (formulário) vs. Registros (histórico completo).
+  // Extraído para reuso no cabeçalho normal e no cabeçalho da tela cheia.
+  // Grid de 2 colunas iguais → os dois botões têm exatamente a mesma dimensão.
+  const abasToggle = (
+    <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
+      <button
+        type="button"
+        onClick={() => irParaAba('lancar')}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <Plus size={16} /> Lançamentos
+      </button>
+      <button
+        type="button"
+        onClick={() => irParaAba('historico')}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <List size={16} /> Registros
+        {movimentos.length ? (
+          <span
+            className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
+              aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {movimentos.length}
+          </span>
+        ) : null}
+      </button>
+    </div>
+  );
+
+  // Painel de Lançamento Rápido (modo individual): mesmo elemento usado tanto
+  // na visão normal quanto na tela cheia, para não duplicar a lista de props.
+  const lancamentoRapidoEl = fromId ? (
+    <LancamentoRapido
+      places={places}
+      order={order}
+      categories={categories}
+      lotes={lotes}
+      optionsOverride={optionsOverride}
+      values={entryValues}
+      onValueChange={setEntryValue}
+      detalhe={detalhe}
+      onAdd={addDetalhe}
+      onRemoveDetalhe={removeDetalhe}
+      onOpenConfig={() => setConfigOpen(true)}
+      sanEnabled={sanEnabled}
+      sanOpen={sanOpen}
+      onToggleSan={() => setSanOpen((p) => !p)}
+      sanItems={sanItems}
+      onSanItemsChange={setSanItems}
+      dadosOpen={dadosOpen}
+      onToggleDados={() => setDadosOpen((p) => !p)}
+      onToast={onToast}
+      onImport={importDetalhe}
+      onClose={verColetivo}
+      expanded={lrExpanded}
+      onToggleExpand={toggleLrExpand}
+    />
+  ) : null;
+
   return (
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
       {/* Cabeçalho + abas na mesma linha (economiza espaço vertical) */}
@@ -659,41 +753,13 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Nascimentos</h1>
         </div>
 
-        {/* Abas: Lançamentos (formulário) vs. Registros (histórico completo).
-            Grid de 2 colunas iguais → os dois botões têm exatamente a mesma dimensão. */}
-        <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setAba('lancar')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Plus size={16} /> Lançamentos
-          </button>
-          <button
-            type="button"
-            onClick={() => setAba('historico')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <List size={16} /> Registros
-            {movimentos.length ? (
-              <span
-                className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
-                  aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {movimentos.length}
-              </span>
-            ) : null}
-          </button>
-        </div>
+        {/* Abas: Lançamentos (formulário) vs. Registros (histórico completo). */}
+        {abasToggle}
       </div>
 
       {aba === 'lancar' ? (
       <>
+      {!lrExpanded ? (
       <div className="@container" style={{ maxWidth: PANEL_MAX_W }}>
         {/* Um único cartão (= um lançamento) dividido em dois painéis por uma régua
             interna: dados básicos 65% (esquerda) e a área dedicada à distribuição por
@@ -904,33 +970,12 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
+      ) : null}
 
       {/* Lançamento Rápido (modo individual) — card separado, com o topo alinhado ao da lista de lançamentos */}
-      {fromId ? (
+      {fromId && !lrExpanded ? (
         <div className="mt-6" style={{ maxWidth: PANEL_MAX_W }}>
-          <LancamentoRapido
-            places={places}
-            order={order}
-            categories={categories}
-            lotes={lotes}
-            optionsOverride={optionsOverride}
-            values={entryValues}
-            onValueChange={setEntryValue}
-            detalhe={detalhe}
-            onAdd={addDetalhe}
-            onRemoveDetalhe={removeDetalhe}
-            onOpenConfig={() => setConfigOpen(true)}
-            sanEnabled={sanEnabled}
-            sanOpen={sanOpen}
-            onToggleSan={() => setSanOpen((p) => !p)}
-            sanItems={sanItems}
-            onSanItemsChange={setSanItems}
-            dadosOpen={dadosOpen}
-            onToggleDados={() => setDadosOpen((p) => !p)}
-            onToast={onToast}
-            onImport={importDetalhe}
-            onClose={verColetivo}
-          />
+          {lancamentoRapidoEl}
         </div>
       ) : null}
 
@@ -973,6 +1018,75 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           />
         </div>
       )}
+
+      {/* Tela cheia do Lançamento Rápido: foco na alocação individual por animal.
+          Mantém visível só o título, as abas e uma linha compacta de dados básicos.
+          z-40 (abaixo dos modais z-50, que continuam aparecendo por cima). */}
+      {fromId && lrExpanded ? (
+        <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-[#f9fafb]">
+          {/* Cabeçalho fixo: título + abas + linha compacta de dados básicos */}
+          <div className="sticky top-0 z-10 border-b border-gray-200 bg-[#f9fafb]/95 px-6 py-3 backdrop-blur-sm md:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <BrincoBovinoIcon size={22} className="text-[#16a34a]" />
+                <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Nascimentos</h1>
+              </div>
+              {abasToggle}
+            </div>
+            {/* Linha única editável: Data · Proprietário · Fazenda · Retiro (sem Local) */}
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div className="min-w-0" style={{ flex: '0 0 150px' }}>
+                <label className={labelCls}>Data</label>
+                <input type="date" className={`${inputCls} mt-1`} value={data} onChange={(e) => setData(e.target.value)} />
+              </div>
+              <div className="min-w-0" style={{ flex: '1 1 200px' }}>
+                <label className={labelCls}>Proprietário</label>
+                <PessoaSelector
+                  organizationId={organizationId}
+                  value={proprietario}
+                  onChange={setProprietario}
+                  filterTipo="proprietario"
+                  placeholder="Selecionar proprietário..."
+                  className="mt-1 h-10 w-full"
+                />
+              </div>
+              <div className="min-w-0" style={{ flex: '1 1 160px' }}>
+                <label className={labelCls}>Fazenda</label>
+                <select className={`${inputCls} mt-1`} value={fazenda} onChange={(e) => setFazenda(e.target.value)}>
+                  <option value="">—</option>
+                  {farms.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-0" style={{ flex: '1 1 160px' }}>
+                <label className={labelCls}>Retiro</label>
+                <select
+                  className={`${inputCls} mt-1`}
+                  value={retiro}
+                  onChange={(e) => {
+                    setRetiro(e.target.value);
+                    setLocal('');
+                  }}
+                >
+                  <option value="">—</option>
+                  {retiros.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          {/* Corpo rolável: só o painel de Lançamento Rápido */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 md:px-8">
+            <div className="mx-auto w-full max-w-[1400px]">{lancamentoRapidoEl}</div>
+          </div>
+        </div>
+      ) : null}
 
       {configOpen ? (
         <CamposConfigModal

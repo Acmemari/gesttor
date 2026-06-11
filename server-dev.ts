@@ -322,6 +322,9 @@ app.all('/api/mortes', (req, res) => handleApiRoute('./api/mortes.ts', req, res)
 // Movimentação › Vendas
 app.all('/api/vendas', (req, res) => handleApiRoute('./api/vendas.ts', req, res));
 
+// Movimentação › Compras
+app.all('/api/compras', (req, res) => handleApiRoute('./api/compras.ts', req, res));
+
 // Pecuário › Cadastros › Ficha Animal
 app.all('/api/fichas-animal', (req, res) => handleApiRoute('./api/fichas-animal.ts', req, res));
 

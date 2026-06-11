@@ -39,5 +39,7 @@ export default defineConfig({
     'nascimento_movimentos', 'nascimento_fichas',
     // Movimentação › Vendas
     'venda_movimentos', 'venda_itens', 'venda_fichas',
+    // Movimentação › Compras
+    'compra_movimentos', 'compra_itens', 'compra_fichas',
   ],
 });

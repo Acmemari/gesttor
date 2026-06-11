@@ -70,6 +70,7 @@ const expandableSections: ExpandableItem[] = [
         icon: 'chevron',
         children: [
           { label: 'Nascimentos', view: 'pecuario-movimentacao' },
+          { label: 'Compras', view: 'pecuario-compra' },
           { label: 'Mortes', view: 'pecuario-morte' },
           { label: 'Vendas', view: 'pecuario-venda' },
           { label: 'Gestão de Lotes', view: 'pecuario-gestao-lotes' },

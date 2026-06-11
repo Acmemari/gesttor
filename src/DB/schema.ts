@@ -1471,6 +1471,66 @@ export const vendaFichas = pgTable('venda_fichas', {
   index('idx_venda_fichas_mov').on(t.movimentoId),
 ]);
 
+// ── Compra (Movimentação › Compras) ─────────────────────────────────────────────
+export const compraMovimentos = pgTable('compra_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  clienteId: uuid('cliente_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  tipoVenda: text('tipo_venda').notNull().default('pe'),
+  tipoPeso: text('tipo_peso').notNull().default('kg'),
+  valorArroba: numeric('valor_arroba'),
+  pesoMortoTotal: numeric('peso_morto_total'),
+  qtd: integer('qtd').notNull().default(0),
+  valorTotal: numeric('valor_total'),
+  pesoMortoArroba: numeric('peso_morto_arroba'),
+  rendimento: numeric('rendimento'),
+  status: text('status').notNull().default('conciliado'),
+  obs: text('obs'),
+  desconto: numeric('desconto'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_compra_mov_org').on(t.organizationId),
+  index('idx_compra_mov_farm').on(t.farmId),
+  index('idx_compra_mov_cliente').on(t.clienteId),
+]);
+
+export const compraItens = pgTable('compra_itens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => compraMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  qtd: integer('qtd').notNull().default(0),
+  idadeMeses: integer('idade_meses'),
+  pesoVivoKg: numeric('peso_vivo_kg'),
+  valorArroba: numeric('valor_arroba'),
+  pesoMortoTotal: numeric('peso_morto_total'),
+  desconto: numeric('desconto'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_compra_itens_mov').on(t.movimentoId),
+]);
+
+export const compraFichas = pgTable('compra_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => compraMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  pesoVivoKg: numeric('peso_vivo_kg'),
+  pesoMortoKg: numeric('peso_morto_kg'),
+  valorArroba: numeric('valor_arroba'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_compra_fichas_mov').on(t.movimentoId),
+]);
+
 // ── Ficha Animal (Pecuário › Cadastros › Ficha Animal) ──────────────────────────
 // Cadastro individual e persistente de cada animal do rebanho. Uma linha por
 // animal, identificado pelo ID Manejo (apelido) único dentro da organização.

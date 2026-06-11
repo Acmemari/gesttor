@@ -42,6 +42,7 @@ const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoqueParti
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
 const MorteView = lazyWithRetry(() => import('../agents/pecuario/morte/MorteView'));
 const VendaView = lazyWithRetry(() => import('../agents/pecuario/venda/VendaView'));
+const CompraView = lazyWithRetry(() => import('../agents/pecuario/compra/CompraView'));
 const GestaoLotesView = lazyWithRetry(() => import('../agents/pecuario/gestaoLotes/GestaoLotesView'));
 const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
@@ -141,6 +142,14 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
     return (
       <Suspense fallback={<LoadingFallback />}>
         <VendaView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
+  if (view === 'pecuario-compra') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <CompraView onToast={onToast} />
       </Suspense>
     );
   }

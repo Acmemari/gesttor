@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Pencil, Trash2, IdCard, X, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Pencil, Trash2, IdCard, X, ArrowDownToLine, ArrowUpFromLine, Maximize2, Minimize2 } from 'lucide-react';
 import FichaInclusaoForm from './FichaInclusaoForm';
 import ImportarPlanilhaModal from './ImportarPlanilhaModal';
 import { exportLancamentoTemplate } from './exportTemplate';
@@ -32,6 +32,10 @@ interface LancamentoRapidoProps {
   onImport: (rows: Record<string, string>[]) => void;
   /** Fecha o painel de Lançamento Rápido (volta à visão coletiva). */
   onClose?: () => void;
+  /** Indica se o painel está em tela cheia (controla o ícone do botão). */
+  expanded?: boolean;
+  /** Alterna o modo tela cheia do Lançamento Rápido. */
+  onToggleExpand?: () => void;
 }
 
 const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
@@ -56,6 +60,8 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
   onToast,
   onImport,
   onClose,
+  expanded,
+  onToggleExpand,
 }) => {
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome || '—';
 
@@ -147,6 +153,17 @@ const LancamentoRapido: React.FC<LancamentoRapidoProps> = ({
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-gray-600 hover:bg-gray-50"
             >
               <X size={14} /> Fechar
+            </button>
+          ) : null}
+          {onToggleExpand ? (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              title={expanded ? 'Sair da tela cheia' : 'Expandir para tela cheia'}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#16a34a] bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-[#16a34a] hover:bg-[#e7f6ec]"
+            >
+              {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              {expanded ? 'Reduzir' : 'Expandir'}
             </button>
           ) : null}
         </div>
