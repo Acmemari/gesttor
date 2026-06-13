@@ -8,6 +8,7 @@ type SubView =
   | 'desktop'
   | 'estoque-partida'
   | 'mapao'
+  | 'areas'
   | 'animal-categories'
   | 'animal-breeds'
   | 'padrao-racial'
@@ -17,11 +18,13 @@ type SubView =
   | 'tipos-chifre'
   | 'lotes'
   | 'people'
-  | 'ficha-animal';
+  | 'ficha-animal'
+  | 'propriedades';
 
 const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'estoque-partida',
   'mapao',
+  'areas',
   'animal-categories',
   'animal-breeds',
   'padrao-racial',
@@ -32,6 +35,7 @@ const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'lotes',
   'people',
   'ficha-animal',
+  'propriedades',
 ];
 
 // Lazy-loaded components for Pecuária modules
@@ -39,10 +43,13 @@ const PecuarioCadastrosDesktop = lazyWithRetry(() => import('../agents/pecuario/
 const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
 // Mapa Rebanho - Mapão reaproveita o mesmo componente em modo periódico.
 const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
+const CadastroAreasView = lazyWithRetry(() => import('../agents/pecuario/areas/CadastroAreasView'));
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
 const MorteView = lazyWithRetry(() => import('../agents/pecuario/morte/MorteView'));
 const VendaView = lazyWithRetry(() => import('../agents/pecuario/venda/VendaView'));
 const CompraView = lazyWithRetry(() => import('../agents/pecuario/compra/CompraView'));
+const DesmameView = lazyWithRetry(() => import('../agents/pecuario/desmame/DesmameView'));
+const MudancaCategoriaView = lazyWithRetry(() => import('../agents/pecuario/mudancaCategoria/MudancaCategoriaView'));
 const GestaoLotesView = lazyWithRetry(() => import('../agents/pecuario/gestaoLotes/GestaoLotesView'));
 const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
@@ -154,6 +161,22 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
     );
   }
 
+  if (view === 'pecuario-desmame') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <DesmameView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
+  if (view === 'pecuario-mudanca-categoria') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <MudancaCategoriaView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
   if (view === 'pecuario-gestao-lotes') {
     return (
       <Suspense fallback={<LoadingFallback />}>
@@ -174,6 +197,13 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
       return (
         <Suspense fallback={<LoadingFallback />}>
           <MapaoRebanho mode="mapao" theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+        </Suspense>
+      );
+    }
+    if (subView === 'areas') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <CadastroAreasView theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
         </Suspense>
       );
     }
@@ -251,12 +281,22 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         </Suspense>
       );
     }
+    if (subView === 'propriedades') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <FarmManagement onToast={onToast} isInttegra={true} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={<LoadingFallback />}>
         <PecuarioCadastrosDesktop
           theme="dark"
           onSelectEstoquePartida={() => setSubView('estoque-partida')}
           onSelectMapao={() => setSubView('mapao')}
+          onSelectAreas={() => setSubView('areas')}
           onSelectAnimalCategories={() => setSubView('animal-categories')}
           onSelectAnimalBreeds={() => setSubView('animal-breeds')}
           onSelectPadraoRacial={() => setSubView('padrao-racial')}
@@ -267,6 +307,7 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
           onSelectLotes={() => setSubView('lotes')}
           onSelectPessoas={() => setSubView('people')}
           onSelectFichaAnimal={() => setSubView('ficha-animal')}
+          onSelectPropriedades={() => setSubView('propriedades')}
           initialTab={cadastrosTab?.tab}
           tabNonce={cadastrosTab?.nonce}
         />

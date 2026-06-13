@@ -1,11 +1,11 @@
 /**
- * Leitura e validação da planilha do Lançamento Rápido (importação).
+ * Leitura e validação da planilha do painel "Defina seus campos" (importação).
  *
  * Simétrico a `exportTemplate.ts`: o modelo exporta uma coluna por campo
- * configurado usando o RÓTULO do campo como cabeçalho; aqui o cabeçalho é
- * remapeado de volta para o field id, cada célula é validada por tipo e a linha
- * recebe um sinal de conformidade (ok / aviso / erro). Mantido sem dependência
- * de React/DOM (só do leitor xlsx) para ser testável isoladamente.
+ * configurado usando o RÓTULO como cabeçalho; aqui o cabeçalho é remapeado para
+ * o field id, cada célula é validada por tipo e a linha recebe um sinal de
+ * conformidade (ok / aviso / erro). Genérico via fieldById. Sem dependência de
+ * React/DOM (só do leitor xlsx).
  */
 import * as XLSX from 'xlsx';
 import { templateFields } from './exportTemplate';
@@ -17,37 +17,26 @@ export type CellStatus = 'ok' | 'aviso' | 'erro';
 
 /** Célula avaliada: valor cru lido, valor normalizado e o sinal. */
 export interface ImportCell {
-  /** texto lido da planilha (já trimado). */
   raw: string;
-  /** valor canônico para o sistema (ex.: id da categoria, 'Macho', ISO). */
   value: string;
   status: CellStatus;
-  /** motivo do aviso/erro (exibido no hover). */
   msg?: string;
 }
 
 /** Linha avaliada da planilha. */
 export interface ImportRow {
-  /** índice da linha na planilha (1-based em relação ao cabeçalho). */
   index: number;
-  /** célula por field id. */
   cells: Record<string, ImportCell>;
-  /** valores canônicos por field id (vira NascDetalhe.values). */
   values: Record<string, string>;
-  /** pior sinal entre as células da linha. */
   status: CellStatus;
-  /** lista de pendências legíveis (campo: motivo). */
   issues: string[];
 }
 
 /** Resultado completo da conferência de uma planilha importada. */
 export interface ImportResult {
-  /** campos (colunas) esperados, na ordem configurada. */
   fields: LrField[];
   rows: ImportRow[];
-  /** cabeçalhos da planilha não reconhecidos. */
   unmatchedHeaders: string[];
-  /** colunas obrigatórias ausentes do cabeçalho. */
   missingRequiredCols: LrField[];
   okCount: number;
   avisoCount: number;
@@ -61,18 +50,19 @@ export interface ValidateArgs {
   order: string[];
   /** destino atual de cada campo. */
   places: FieldPlaces;
+  /** mapa id → campo do movimento. */
+  fieldById: Record<string, LrField>;
   categories: LookupItem[];
   lotes: LookupItem[];
+  lookups?: Record<string, LookupItem[]>;
   optionsOverride?: Record<string, string[]>;
-  /** apelidos já presentes (para detectar duplicidade). */
-  existingApelidos: string[];
+  /** ids do campo-âncora já presentes (para detectar duplicidade). */
+  existingIds: string[];
 }
 
 /**
  * Lê o arquivo (.xlsx/.xls/.csv) e devolve a matriz de strings (linha 0 =
- * cabeçalho). Para Excel, prioriza a aba "Lançamento" (a que o modelo gera) e
- * usa `raw: false` para receber os valores já formatados (datas em DD/MM/AAAA,
- * conforme o que o usuário vê na célula).
+ * cabeçalho). Para Excel, prioriza a aba "Lançamento".
  */
 export async function readSheetRows(file: File): Promise<string[][]> {
   const name = file.name.toLowerCase();
@@ -111,24 +101,11 @@ function fieldOptions(f: LrField, src: ValidateArgs): string[] {
   }
 }
 
-/** Padrão de um campo (espelha defaultValue, com raça dinâmica). */
+/** Padrão de um campo: date→hoje; select→1ª opção/override; senão field.default. */
 function fieldDefault(f: LrField, src: ValidateArgs): string {
-  switch (f.id) {
-    case 'data':
-      return todayISO();
-    case 'raca':
-      return src.optionsOverride?.raca?.[0] ?? 'Nelore';
-    case 'porte':
-      return 'M';
-    case 'colostro':
-      return 'Sim';
-    case 'pesagem':
-      return 'Manual';
-    case 'sexo':
-      return 'Macho';
-    default:
-      return '';
-  }
+  if (f.type === 'date') return todayISO();
+  if (f.type === 'select') return src.optionsOverride?.[f.id]?.[0] ?? f.default ?? '';
+  return f.default ?? '';
 }
 
 /** Casa um valor com uma lista de opções (case-insensitive) → opção canônica. */
@@ -167,22 +144,17 @@ function isValidYmd(y: number, mo: number, d: number): boolean {
   return y >= 1900 && y <= 3000 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31;
 }
 
-/** Campos opcionais que mesmo assim recebem um padrão silencioso ao ficar vazios. */
-const OPTIONAL_DEFAULTED = new Set(['colostro', 'pesagem']);
-
 /** Avalia uma célula segundo o tipo do campo. */
 function validateCell(f: LrField, raw: string, src: ValidateArgs): ImportCell {
   if (raw === '') {
+    const def = fieldDefault(f, src);
     if (f.req) {
-      // ID Manejo e Categoria não têm padrão → erro; os demais obrigatórios usam padrão (aviso).
-      if (f.id === 'apelido' || f.id === 'categoria') {
-        return { raw, value: '', status: 'erro', msg: 'Obrigatório' };
-      }
-      const def = fieldDefault(f, src);
+      // Sem padrão disponível (ex.: ID âncora, Categoria) → erro; com padrão → aviso.
+      if (def === '') return { raw, value: '', status: 'erro', msg: 'Obrigatório' };
       return { raw, value: def, status: 'aviso', msg: `Vazio — usaria "${def}"` };
     }
-    // Opcional: alguns recebem padrão silencioso; o resto fica vazio.
-    return { raw, value: OPTIONAL_DEFAULTED.has(f.id) ? fieldDefault(f, src) : '', status: 'ok' };
+    // Opcional: usa o padrão silencioso quando houver; senão fica vazio.
+    return { raw, value: def, status: 'ok' };
   }
 
   switch (f.type) {
@@ -196,6 +168,12 @@ function validateCell(f: LrField, raw: string, src: ValidateArgs): ImportCell {
       if (!lote) return { raw, value: '', status: 'erro', msg: 'Lote não encontrado' };
       return { raw, value: lote.id, status: 'ok' };
     }
+    case 'lookup': {
+      const list = src.lookups?.[f.lookupKey ?? f.id] ?? [];
+      const item = list.find((l) => l.nome.trim().toLowerCase() === raw.toLowerCase());
+      if (!item) return { raw, value: '', status: 'erro', msg: `${f.label} não encontrado` };
+      return { raw, value: item.id, status: 'ok' };
+    }
     case 'sexo': {
       const s = normalizeSexo(raw);
       if (!s) return { raw, value: '', status: 'erro', msg: 'Sexo inválido (Macho/Fêmea)' };
@@ -206,9 +184,10 @@ function validateCell(f: LrField, raw: string, src: ValidateArgs): ImportCell {
       if (!norm) return { raw, value: '', status: 'erro', msg: 'Valor fora da lista' };
       return { raw, value: norm, status: 'ok' };
     }
-    case 'weight': {
+    case 'weight':
+    case 'money': {
       const n = parseFloat(raw.replace(',', '.'));
-      if (!Number.isFinite(n)) return { raw, value: '', status: 'erro', msg: 'Peso não numérico' };
+      if (!Number.isFinite(n)) return { raw, value: '', status: 'erro', msg: f.type === 'money' ? 'Valor não numérico' : 'Peso não numérico' };
       return { raw, value: raw, status: 'ok' };
     }
     case 'date': {
@@ -230,10 +209,10 @@ function worst(a: CellStatus, b: CellStatus): CellStatus {
 
 /**
  * Valida a planilha lida contra os campos configurados e devolve a conferência
- * completa (uma linha por animal, com sinais de conformidade por célula).
+ * completa (uma linha por animal, com sinais por célula).
  */
 export function validateImport(src: ValidateArgs): ImportResult {
-  const fields = templateFields(src.order, src.places);
+  const fields = templateFields(src.order, src.places, src.fieldById);
 
   // Cabeçalho (linha 0) → coluna por field id, por rótulo (independe da ordem).
   const header = (src.rows[0] ?? []).map((h) => String(h ?? '').trim());
@@ -248,7 +227,12 @@ export function validateImport(src: ValidateArgs): ImportResult {
   });
   const missingRequiredCols = fields.filter((f) => f.req && colOf[f.id] == null);
 
-  const seen = new Set(src.existingApelidos.map((a) => a.trim().toLowerCase()).filter(Boolean));
+  // Campos especiais (derivação Sexo↔Categoria e duplicidade do ID âncora).
+  const catField = fields.find((f) => f.type === 'cat');
+  const sexoField = fields.find((f) => f.type === 'sexo');
+  const idField = fields.find((f) => f.locked);
+
+  const seen = new Set(src.existingIds.map((a) => a.trim().toLowerCase()).filter(Boolean));
   const rows: ImportRow[] = [];
 
   for (let i = 1; i < src.rows.length; i++) {
@@ -266,21 +250,22 @@ export function validateImport(src: ValidateArgs): ImportResult {
       values[f.id] = cell.value;
     }
 
-    // Sexo vem por padrão da categoria (mesmo comportamento da seleção nas
-    // telas): quando a planilha não traz Sexo, deriva-o da categoria informada.
-    const catCell = cells.categoria;
-    const sexoCell = cells.sexo;
-    if (sexoCell && sexoCell.raw === '' && catCell && catCell.status === 'ok') {
-      const derived = sexoFromCategoria(src.categories, catCell.value);
-      if (derived) {
-        sexoCell.value = derived;
-        sexoCell.status = 'ok';
-        sexoCell.msg = undefined;
-        values.sexo = derived;
+    // Sexo vem por padrão da categoria quando o registro tem ambos os campos.
+    if (catField && sexoField) {
+      const catCell = cells[catField.id];
+      const sexoCell = cells[sexoField.id];
+      if (sexoCell && sexoCell.raw === '' && catCell && catCell.status === 'ok') {
+        const derived = sexoFromCategoria(src.categories, catCell.value);
+        if (derived) {
+          sexoCell.value = derived;
+          sexoCell.status = 'ok';
+          sexoCell.msg = undefined;
+          values[sexoField.id] = derived;
+        }
       }
     }
 
-    // Agrega o sinal e as pendências da linha a partir das células avaliadas.
+    // Agrega o sinal e as pendências da linha.
     const issues: string[] = [];
     let status: CellStatus = 'ok';
     for (const f of fields) {
@@ -289,20 +274,22 @@ export function validateImport(src: ValidateArgs): ImportResult {
       if (cell.status !== 'ok' && cell.msg) issues.push(`${f.label}: ${cell.msg}`);
     }
 
-    // Duplicidade de ID Manejo (na planilha ou já na lista atual).
-    const apelido = (values.apelido || '').trim();
-    if (apelido) {
-      const key = apelido.toLowerCase();
-      if (seen.has(key)) {
-        const c = cells.apelido;
-        if (c && c.status === 'ok') {
-          c.status = 'aviso';
-          c.msg = 'ID Manejo duplicado';
+    // Duplicidade do ID âncora (na planilha ou já na lista atual).
+    if (idField) {
+      const idVal = (values[idField.id] || '').trim();
+      if (idVal) {
+        const key = idVal.toLowerCase();
+        if (seen.has(key)) {
+          const c = cells[idField.id];
+          if (c && c.status === 'ok') {
+            c.status = 'aviso';
+            c.msg = `${idField.label} duplicado`;
+          }
+          status = worst(status, 'aviso');
+          issues.push(`${idField.label} duplicado`);
         }
-        status = worst(status, 'aviso');
-        issues.push('ID Manejo duplicado');
+        seen.add(key);
       }
-      seen.add(key);
     }
 
     rows.push({ index: i, cells, values, status, issues });
@@ -319,7 +306,7 @@ export function validateImport(src: ValidateArgs): ImportResult {
   };
 }
 
-/** Valores (NascDetalhe.values) das linhas 100% conformes (verde). */
+/** Valores (FichaDetalhe.values) das linhas 100% conformes (verde). */
 export function okRowValues(result: ImportResult): Record<string, string>[] {
   return result.rows.filter((r) => r.status === 'ok').map((r) => r.values);
 }

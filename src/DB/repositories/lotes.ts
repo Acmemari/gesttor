@@ -15,6 +15,8 @@ export async function listByOrganization(organizationId: string) {
 
 export async function create(data: {
   organizationId: string;
+  farmId?: string | null;
+  retiro?: string | null;
   nome: string;
   codigo?: string | null;
   finalidade?: string | null;
@@ -30,6 +32,8 @@ export async function create(data: {
 
   const [row] = await db.insert(lotes).values({
     organizationId: data.organizationId,
+    farmId: data.farmId ?? null,
+    retiro: data.retiro ?? null,
     nome: data.nome,
     codigo: data.codigo ?? null,
     finalidade: data.finalidade ?? null,
@@ -43,6 +47,8 @@ export async function create(data: {
 }
 
 export async function update(id: string, data: {
+  farmId?: string | null;
+  retiro?: string | null;
   nome?: string;
   codigo?: string | null;
   finalidade?: string | null;

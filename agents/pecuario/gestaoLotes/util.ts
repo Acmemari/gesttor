@@ -164,6 +164,33 @@ export function loteDoAnimal(
   return null;
 }
 
+/** Mapa animalId → loteId derivado do ledger (vínculo por ID), para toda a org. */
+export function ledgerLoteByAnimal(
+  eventosByLote: Record<string, LoteEventoRow[]>,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [loteId, eventos] of Object.entries(eventosByLote)) {
+    for (const id of animaisVinculados(eventos)) map.set(id, loteId);
+  }
+  return map;
+}
+
+/** Resolve o texto livre de `ficha.lote` para um id de lote real (por id, nome ou código). */
+export function resolveLoteIdFromText(
+  text: string | null | undefined,
+  lotes: { id: string; nome: string; codigo: string | null }[],
+): string | null {
+  if (!text || !text.trim()) return null;
+  const t = text.trim().toLowerCase();
+  const hit = lotes.find(
+    (l) =>
+      l.id.toLowerCase() === t ||
+      l.nome.trim().toLowerCase() === t ||
+      (l.codigo || '').trim().toLowerCase() === t,
+  );
+  return hit?.id ?? null;
+}
+
 // ── Linha do tempo (biografia do lote) ────────────────────────────────────────
 
 const COR_POR_TIPO: Record<string, string> = {

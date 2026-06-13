@@ -5,51 +5,13 @@
  * são somados; o que ficar só declarado (sem detalhe) vira pendência.
  */
 
-/** Onde um campo do Lançamento Rápido aparece. */
-export type FieldPlace = 'top' | 'bottom' | 'dados' | 'off';
-
-/** Tipo de controle de um campo configurável. */
-export type FieldType =
-  | 'text'
-  | 'textarea'
-  | 'date'
-  | 'weight'
-  | 'select'
-  | 'cat'
-  | 'lote'
-  | 'sexo'
-  | 'sanitario';
-
-/** Definição de um campo do registro configurável (lápis). */
-export interface LrField {
-  id: string;
-  label: string;
-  type: FieldType;
-  req?: boolean;
-  placeholder?: string;
-  options?: readonly string[];
-  /** destino padrão */
-  def: FieldPlace;
-  /** ID Manejo: travado em 'bottom' (só Tabela ou Desativar). */
-  locked?: boolean;
-  /** Sanitário: só 'top' (Superior) ou 'off' (Desativar). */
-  enableOnly?: boolean;
-  /** colunas que o campo ocupa no grid de Dados Adicionais. */
-  span?: 1 | 2 | 3;
-}
-
-/** Mapa campo → destino atual. */
-export type FieldPlaces = Record<string, FieldPlace>;
+// Tipos genéricos do kit "Defina seus campos" (compartilhado entre os movimentos).
+// Reexportados aqui para não quebrar os imports existentes da tela de Nascimento.
+export type { FieldPlace, FieldType, LrField, FieldPlaces, MovimentoFieldConfig } from '../fichas/types';
+import type { MovimentoFieldConfig } from '../fichas/types';
 
 /** Configuração persistida dos campos do Lançamento Rápido (por organização). */
-export interface NascimentoFieldConfig {
-  /** destino de cada campo */
-  places: FieldPlaces;
-  /** ordem global de exibição (lista de field ids) */
-  order: string[];
-  /** numeração automática do ID Manejo */
-  autonum: boolean;
-}
+export type NascimentoFieldConfig = MovimentoFieldConfig;
 
 /** Categoria declarada manualmente (modo DESLIGADO). */
 export interface NascCat {
@@ -126,16 +88,4 @@ export interface MovimentoNasc {
 }
 
 /** Item simples de lookup estático (medicamento, protocolo, lote, raça...). */
-export interface LookupItem {
-  id: string;
-  nome: string;
-  /** opcional: unidade/custo p/ medicamentos. */
-  unidade?: string;
-  custoUnit?: number;
-  /**
-   * Sexo associado (categorias animais). Quando presente, a seleção da
-   * categoria preenche automaticamente o campo Sexo do animal.
-   * Valor cru do cadastro: 'macho' | 'femea'.
-   */
-  sexo?: string;
-}
+export type { LookupItem } from '../fichas/types';

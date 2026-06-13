@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estoque/Nascimento · Total sempre visível — 3 opções</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+  body{background:#eef1f5;padding:0;}
+  .cmp-top{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);padding:16px 32px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(16,24,40,.05);}
+  .cmp-top h1{margin:0;font-size:18px;font-weight:700;}
+  .cmp-top p{margin:2px 0 0;font-size:13px;color:var(--muted);}
+  .cmp-toggle{margin-left:auto;display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;}
+  .cmp-toggle button{border:none;background:transparent;padding:9px 16px;font-size:13px;font-weight:600;color:var(--muted);border-right:1px solid var(--line);font-family:inherit;}
+  .cmp-toggle button:last-child{border-right:none;}
+  .cmp-toggle button.on{background:var(--blue);color:#fff;}
+  .cmp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;padding:28px 32px 60px;max-width:1640px;margin:0 auto;}
+  @media(max-width:1280px){.cmp-grid{grid-template-columns:1fr;max-width:760px;}}
+  .opt{background:transparent;}
+  .opt-tag{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .opt-badge{width:28px;height:28px;border-radius:8px;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700;font-size:14px;flex-shrink:0;}
+  .opt-tag h2{margin:0;font-size:15px;font-weight:700;}
+  .opt-tag .desc{font-size:12.5px;color:var(--muted);}
+  .mock{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow);}
+  .mock .li-head{margin-bottom:12px;}
+  .qc-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:14px;}
+  .qc-row .field{margin:0;}
+  .tag-btn{width:46px;height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;display:grid;place-items:center;color:var(--muted);flex-shrink:0;}
+  .tag-btn svg{width:18px;height:18px;}
+  .btn-mais{height:40px;}
+  /* shared mini table reset for mocks */
+  .mock .tbl th{padding:9px 14px;}
+  .mock .tbl td{padding:10px 14px;}
+  .mock .tbl tfoot td{padding:11px 14px;}
+  /* Option B — total chip card */
+  .totchip{display:flex;align-items:center;gap:14px;background:linear-gradient(0deg,#f7faff,#fff);border:1px solid var(--blue-line);border-radius:12px;padding:14px 18px;margin:4px 0 14px;}
+  .totchip .tc-ic{width:40px;height:40px;border-radius:10px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;flex-shrink:0;}
+  .totchip .tc-ic svg{width:21px;height:21px;}
+  .totchip .tc-num{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1;color:var(--text);}
+  .totchip .tc-num small{font-size:14px;font-weight:600;color:var(--muted);margin-left:4px;}
+  .totchip .tc-lbl{font-size:12px;color:var(--muted);margin-top:3px;}
+  .totchip .tc-cats{margin-left:auto;text-align:right;}
+  .totchip .tc-cats b{font-size:20px;font-weight:700;}
+  .totchip .tc-cats span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  /* Option C — metric strip */
+  .mstrip{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 14px;}
+  .mstrip .ms{border:1px solid var(--line);border-radius:11px;padding:13px 16px;background:#fcfcfd;}
+  .mstrip .ms-lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
+  .mstrip .ms-val{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:5px;line-height:1;}
+  .mstrip .ms.accent{background:var(--blue-soft);border-color:var(--blue-line);}
+  .mstrip .ms.accent .ms-val{color:var(--blue);}
+  .empty-cat td{color:var(--muted);font-style:normal;text-align:center;padding:18px!important;}
+  .note{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5;}
+  .note b{color:var(--text);}
+</style>
+</head>
+<body>
+  <div class="cmp-top">
+    <div>
+      <h1>Total sempre visível — 3 opções</h1>
+      <p>Como mostrar o somatório das categorias mesmo antes de qualquer detalhamento (estado zero).</p>
+    </div>
+    <div class="cmp-toggle">
+      <button id="t-vazio" class="on" onclick="setEstado('vazio')">Estado vazio (0)</button>
+      <button id="t-cheio" onclick="setEstado('cheio')">Com 2 categorias</button>
+    </div>
+  </div>
+
+  <div class="cmp-grid">
+    <!-- OPÇÃO A -->
+    <div class="opt">
+      <div class="opt-tag">
+        <span class="opt-badge">A</span>
+        <div><h2>Tabela sempre presente</h2><div class="desc">Tabela fixa com rodapé "Total". Linha vazia quando não há categorias.</div></div>
+      </div>
+      <div class="mock">
+        <div id="mockA"></div>
+        <div class="note"><b>Mais discreto.</b> O total vive no rodapé da tabela, que está sempre lá mostrando <b>0 cab.</b> — coerente com o resultado final.</div>
+      </div>
+    </div>
+
+    <!-- OPÇÃO B -->
+    <div class="opt">
+      <div class="opt-tag">
+        <span class="opt-badge">B</span>
+        <div><h2>Cartão de total em destaque</h2><div class="desc">Cartão fixo acima da tabela com o número grande, sempre visível.</div></div>
+      </div>
+      <div class="mock">
+        <div id="mockB"></div>
+        <div class="note"><b>Mais chamativo.</b> O total ganha um cartão dedicado com número grande (0) + contagem de categorias. A tabela aparece só quando há itens.</div>
+      </div>
+    </div>
+
+    <!-- OPÇÃO C -->
+    <div class="opt">
+      <div class="opt-tag">
+        <span class="opt-badge">C</span>
+        <div><h2>Duas métricas (Total + Categorias)</h2><div class="desc">Faixa com dois indicadores grandes, sempre visíveis.</div></div>
+      </div>
+      <div class="mock">
+        <div id="mockC"></div>
+        <div class="note"><b>Mais analítico.</b> Dois números fixos — total de cabeças e nº de categorias — no estilo dos indicadores do sistema.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/icons.js"></script>
+  <script>
+    let ESTADO = 'vazio';
+    const CATS = [
+      { nome:'Novilha Rep. 14 meses', qtd:10 },
+      { nome:'Vaca Nelore', qtd:10 },
+    ];
+    function dados(){ return ESTADO==='cheio' ? CATS : []; }
+    function total(){ return dados().reduce((a,c)=>a+c.qtd,0); }
+
+    function quickRow(){
+      return `<div class="li-head">
+          <button class="li-edit" title="Configurar campos">${icon('edit')}</button>
+          Lançamento Rápido
+        </div>
+        <div class="qc-row">
+          <div class="field" style="flex:0 0 150px"><label>Quantidade <span class="req">*</span> <span class="opt">(cab.)</span></label><input placeholder="Ex.: 18"></div>
+          <button class="tag-btn" title="Categoria">${icon('lotes')}</button>
+          <div class="field" style="flex:1"><label>Categoria</label><select><option>Selecione a categoria</option></select></div>
+          <button class="btn primary btn-mais">${icon('plus')} mais</button>
+        </div>`;
+    }
+
+    function catRows(){
+      return dados().map(c=>`<tr>
+        <td class="strong">${c.nome}</td>
+        <td class="num">${c.qtd} cab.</td>
+        <td class="row-actions"><button class="icon-btn">${icon('edit')}</button><button class="icon-btn">${icon('trash')}</button></td>
+      </tr>`).join('');
+    }
+    function emptyRow(){
+      return `<tr class="empty-cat"><td colspan="3">Nenhuma categoria adicionada ainda — o total começa em 0.</td></tr>`;
+    }
+
+    /* OPÇÃO A — tabela sempre presente, total no rodapé */
+    function renderA(){
+      const t = total();
+      document.getElementById('mockA').innerHTML = quickRow() + `
+        <div class="panel" style="margin:6px 0 0;box-shadow:none">
+          <table class="tbl">
+            <thead><tr><th>Categoria</th><th style="width:120px">Quantidade</th><th style="width:90px">Ações</th></tr></thead>
+            <tbody>${dados().length?catRows():emptyRow()}</tbody>
+            <tfoot><tr><td class="strong">Total</td><td class="num strong" style="color:var(--blue)">${t} cab.</td><td></td></tr></tfoot>
+          </table>
+        </div>`;
+    }
+
+    /* OPÇÃO B — cartão de total em destaque + tabela condicional */
+    function renderB(){
+      const t = total(), n = dados().length;
+      document.getElementById('mockB').innerHTML = quickRow() + `
+        <div class="totchip">
+          <span class="tc-ic">${icon('layers')}</span>
+          <div>
+            <div class="tc-num">${t}<small>cab.</small></div>
+            <div class="tc-lbl">Total do lançamento</div>
+          </div>
+          <div class="tc-cats"><b>${n}</b><span>categoria(s)</span></div>
+        </div>
+        ${n ? `<div class="panel" style="margin:0;box-shadow:none">
+          <table class="tbl">
+            <thead><tr><th>Categoria</th><th style="width:120px">Quantidade</th><th style="width:90px">Ações</th></tr></thead>
+            <tbody>${catRows()}</tbody>
+          </table>
+        </div>` : `<div class="note" style="margin-top:0">Adicione categorias com <b>+ mais</b>. O total acima já reflete o que for somando.</div>`}`;
+    }
+
+    /* OPÇÃO C — duas métricas grandes + tabela condicional */
+    function renderC(){
+      const t = total(), n = dados().length;
+      document.getElementById('mockC').innerHTML = quickRow() + `
+        <div class="mstrip">
+          <div class="ms accent"><div class="ms-lbl">Total de cabeças</div><div class="ms-val">${t}</div></div>
+          <div class="ms"><div class="ms-lbl">Categorias</div><div class="ms-val">${n}</div></div>
+        </div>
+        ${n ? `<div class="panel" style="margin:0;box-shadow:none">
+          <table class="tbl">
+            <thead><tr><th>Categoria</th><th style="width:120px">Quantidade</th><th style="width:90px">Ações</th></tr></thead>
+            <tbody>${catRows()}</tbody>
+          </table>
+        </div>` : ''}`;
+    }
+
+    function renderAll(){ renderA(); renderB(); renderC(); }
+    function setEstado(e){
+      ESTADO = e;
+      document.getElementById('t-vazio').classList.toggle('on', e==='vazio');
+      document.getElementById('t-cheio').classList.toggle('on', e==='cheio');
+      renderAll();
+    }
+    renderAll();
+  </script>
+
+  <template id="__bundler_thumbnail" data-bg-color="#2563eb">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#2563eb"/>
+      <g fill="#fff" font-family="Inter,sans-serif" text-anchor="middle">
+        <text x="600" y="430" font-size="280" font-weight="700">0</text>
+        <text x="600" y="540" font-size="70" font-weight="600">cab.</text>
+      </g>
+    </svg>
+  </template>
+</body>
+</html>

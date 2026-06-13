@@ -1,12 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { X, Info, Search, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Info, Loader2 } from 'lucide-react';
 import type { Lote } from '../../../lib/api/lotesClient';
 import {
   TIPOS_LOCAL,
   FASES_REPRO,
   FINALIDADES,
   type CategoriaLookup,
-  type AnimalLite,
   type LoteEventoTipo,
 } from './types';
 import { todayISO } from './util';
@@ -20,14 +19,14 @@ export interface EventoDraft {
   syncFichas?: boolean;
 }
 
-const inputCls =
+export const inputCls =
   'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
-const labelCls = 'mb-1 block text-[12.5px] font-semibold text-gray-700';
+export const labelCls = 'mb-1 block text-[12.5px] font-semibold text-gray-700';
 const reqMark = <span className="text-[#DC2626]">*</span>;
 
 // ── Casca do modal ────────────────────────────────────────────────────────────
 
-const ModalShell: React.FC<{
+export const ModalShell: React.FC<{
   title: string;
   subtitle?: string;
   info?: React.ReactNode;
@@ -35,10 +34,12 @@ const ModalShell: React.FC<{
   children: React.ReactNode;
   footer: React.ReactNode;
   wide?: boolean;
-}> = ({ title, subtitle, info, onClose, children, footer, wide }) => (
+  /** Classe de largura máxima (sobrepõe `wide`). Ex.: 'max-w-5xl'. */
+  maxWidthClass?: string;
+}> = ({ title, subtitle, info, onClose, children, footer, wide, maxWidthClass }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={onClose}>
     <div
-      className={`flex max-h-[90vh] w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl`}
+      className={`flex max-h-[90vh] w-full ${maxWidthClass ?? (wide ? 'max-w-2xl' : 'max-w-lg')} flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl`}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
@@ -103,13 +104,9 @@ export const RemanejarModal: React.FC<{
   lote: Lote;
   lotes: Lote[];
   categorias: CategoriaLookup[];
-  animais: AnimalLite[];
-  animaisLoading?: boolean;
-  modoInicial?: 'grupo' | 'id';
   onClose: () => void;
   onSubmit: (eventos: EventoDraft[]) => Promise<void>;
-}> = ({ lote, lotes, categorias, animais, animaisLoading, modoInicial = 'grupo', onClose, onSubmit }) => {
-  const [modo, setModo] = useState<'grupo' | 'id'>(modoInicial);
+}> = ({ lote, lotes, categorias, onClose, onSubmit }) => {
   const [sentido, setSentido] = useState<'entrada' | 'saida'>('entrada');
   const [outroLoteId, setOutroLoteId] = useState<string>(''); // '' = sem lote (só válido na entrada)
   const [categoriaId, setCategoriaId] = useState('');
@@ -119,69 +116,23 @@ export const RemanejarModal: React.FC<{
   const [resp, setResp] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Modo ID
-  const [busca, setBusca] = useState('');
-  const [soSemLote, setSoSemLote] = useState(true);
-  const [sel, setSel] = useState<Set<string>>(new Set());
-
   const outrosLotes = lotes.filter((l) => l.id !== lote.id);
   const catNome = (id: string | null) => categorias.find((c) => c.id === id)?.nome;
-
-  const animaisFiltrados = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    return animais.filter((a) => {
-      if (soSemLote && a.lote && a.lote.trim()) return false;
-      if (!q) return true;
-      return (
-        a.apelido.toLowerCase().includes(q) ||
-        (a.rfid || '').toLowerCase().includes(q) ||
-        (a.raca || '').toLowerCase().includes(q)
-      );
-    });
-  }, [animais, busca, soSemLote]);
-
-  const toggleSel = (id: string) => {
-    setSel((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
-      return n;
-    });
-  };
 
   const handleSave = async () => {
     if (sentido === 'saida' && !outroLoteId) {
       window.alert('Para "Sair para outro lote", escolha o lote de destino.');
       return;
     }
-    let drafts: EventoDraft[] = [];
-
-    if (modo === 'grupo') {
-      const q = Math.max(0, parseInt(qtd, 10) || 0);
-      if (!categoriaId) { window.alert('Escolha a categoria.'); return; }
-      if (q <= 0) { window.alert('Informe a quantidade.'); return; }
-      const id = Math.max(0, parseInt(ident, 10) || 0);
-      const naoIdent = Math.max(0, q - id);
-      drafts = [{
-        tipo: 'alocacao', data, resp: resp.trim() || null,
-        dados: { sentido, outroLoteId: outroLoteId || null, qtd: q, categoriaId, categoriaNome: catNome(categoriaId), naoIdent, animais: [] },
-      }];
-    } else {
-      const ids = Array.from(sel);
-      if (ids.length === 0) { window.alert('Selecione ao menos um animal.'); return; }
-      // Agrupa por categoria real do animal (um evento por categoria).
-      const grupos = new Map<string, string[]>();
-      for (const id of ids) {
-        const a = animais.find((x) => x.id === id);
-        const key = a?.categoriaId || '';
-        const arr = grupos.get(key) ?? [];
-        arr.push(id);
-        grupos.set(key, arr);
-      }
-      drafts = Array.from(grupos.entries()).map(([catId, animalIds]) => ({
-        tipo: 'alocacao', data, resp: resp.trim() || null, syncFichas: true,
-        dados: { sentido, outroLoteId: outroLoteId || null, qtd: animalIds.length, categoriaId: catId || null, categoriaNome: catNome(catId || null), naoIdent: 0, animais: animalIds },
-      }));
-    }
+    const q = Math.max(0, parseInt(qtd, 10) || 0);
+    if (!categoriaId) { window.alert('Escolha a categoria.'); return; }
+    if (q <= 0) { window.alert('Informe a quantidade.'); return; }
+    const id = Math.max(0, parseInt(ident, 10) || 0);
+    const naoIdent = Math.max(0, q - id);
+    const drafts: EventoDraft[] = [{
+      tipo: 'alocacao', data, resp: resp.trim() || null,
+      dados: { sentido, outroLoteId: outroLoteId || null, qtd: q, categoriaId, categoriaNome: catNome(categoriaId), naoIdent, animais: [] },
+    }];
 
     setSaving(true);
     try {
@@ -195,26 +146,12 @@ export const RemanejarModal: React.FC<{
   return (
     <ModalShell
       title="Remanejar animais"
-      subtitle={`Lote ${lote.codigo || lote.nome} — Movimento de Alocação`}
-      info="Você não edita o saldo: você lança um movimento. O que faltar de identificação vira pendência na Mesa e não bloqueia o lançamento."
+      subtitle={`Lote ${lote.codigo || lote.nome} — Movimento de Alocação por quantidade`}
+      info='Você não edita o saldo: você lança um movimento. O que faltar de identificação vira pendência na Mesa e não bloqueia o lançamento. Para incluir/remover animais específicos, use "Incluir por ID".'
       onClose={onClose}
       wide
       footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} /></>}
     >
-      {/* Modo */}
-      <div className="flex gap-2">
-        {(['grupo', 'id'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setModo(m)}
-            className={`h-9 flex-1 rounded-lg border text-[13px] font-semibold transition-colors ${modo === m ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-          >
-            {m === 'grupo' ? 'Por quantidade (grupo)' : 'Por ID do animal'}
-          </button>
-        ))}
-      </div>
-
       {/* Sentido + outro lote */}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="flex-1">
@@ -236,56 +173,23 @@ export const RemanejarModal: React.FC<{
         </div>
       </div>
 
-      {modo === 'grupo' ? (
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex-1">
-            <label className={labelCls}>Categoria {reqMark}</label>
-            <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className={inputCls}>
-              <option value="">Selecione…</option>
-              {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
-          </div>
-          <div className="sm:w-32">
-            <label className={labelCls}>Quantidade {reqMark}</label>
-            <input type="number" min={0} value={qtd} onChange={(e) => setQtd(e.target.value)} className={inputCls} />
-          </div>
-          <div className="sm:w-36">
-            <label className={labelCls}>Identificados agora</label>
-            <input type="number" min={0} value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="opcional" className={inputCls} />
-          </div>
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex-1">
+          <label className={labelCls}>Categoria {reqMark}</label>
+          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className={inputCls}>
+            <option value="">Selecione…</option>
+            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
         </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por ID, brinco ou raça" className={`${inputCls} pl-9`} />
-            </div>
-            <label className="flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-gray-600">
-              <input type="checkbox" checked={soSemLote} onChange={(e) => setSoSemLote(e.target.checked)} />
-              Só sem lote
-            </label>
-          </div>
-          <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200">
-            {animaisLoading ? (
-              <div className="flex items-center justify-center py-8 text-gray-400"><Loader2 size={18} className="animate-spin" /></div>
-            ) : animaisFiltrados.length === 0 ? (
-              <div className="py-8 text-center text-[12.5px] text-gray-400">Nenhum animal encontrado.</div>
-            ) : (
-              animaisFiltrados.map((a) => (
-                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 border-b border-gray-100 px-3 py-2 last:border-0 hover:bg-gray-50">
-                  <input type="checkbox" checked={sel.has(a.id)} onChange={() => toggleSel(a.id)} />
-                  <span className="font-mono text-[12.5px] font-bold text-gray-800">{a.apelido}</span>
-                  <span className="text-[11.5px] text-gray-500">{catNome(a.categoriaId) || '—'}</span>
-                  {a.raca && <span className="text-[11.5px] text-gray-400">· {a.raca}</span>}
-                  {a.lote && <span className="ml-auto rounded bg-gray-100 px-1.5 py-0.5 text-[10.5px] text-gray-500">{a.lote}</span>}
-                </label>
-              ))
-            )}
-          </div>
-          <p className="text-[12px] font-semibold text-gray-500">{sel.size} selecionado(s)</p>
+        <div className="sm:w-32">
+          <label className={labelCls}>Quantidade {reqMark}</label>
+          <input type="number" min={0} value={qtd} onChange={(e) => setQtd(e.target.value)} className={inputCls} />
         </div>
-      )}
+        <div className="sm:w-36">
+          <label className={labelCls}>Identificados agora</label>
+          <input type="number" min={0} value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="opcional" className={inputCls} />
+        </div>
+      </div>
 
       <DataResp data={data} setData={setData} resp={resp} setResp={setResp} />
     </ModalShell>

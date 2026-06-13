@@ -24,6 +24,7 @@ import PesagemGmdIcon from './PesagemGmdIcon';
 import ComedouroIcon from './ComedouroIcon';
 import ProgenieIcon from './ProgenieIcon';
 import ReprodutivoIcon from './ReprodutivoIcon';
+import UltrassomIcon from './UltrassomIcon';
 import {
   FIELD_BY_ID,
   COLOSTRO,
@@ -65,6 +66,7 @@ type TabId =
   | 'progenies'
   | 'pesagens'
   | 'reprodutivo'
+  | 'ultrassonografia'
   | 'sanitario'
   | 'nutricional'
   | 'melhoramento';
@@ -82,6 +84,7 @@ const TABS: TabDef[] = [
   { id: 'progenies', label: 'Progênies', icon: ProgenieIcon },
   { id: 'pesagens', label: 'Pesagens e GMD', icon: PesagemGmdIcon },
   { id: 'reprodutivo', label: 'Reprodutivo', icon: ReprodutivoIcon },
+  { id: 'ultrassonografia', label: 'Ultrassonografia', icon: UltrassomIcon },
   { id: 'sanitario', label: 'Sanitário', icon: Syringe },
   { id: 'nutricional', label: 'Nutricional', icon: ComedouroIcon },
   { id: 'fotos', label: 'Fotos e vídeos', icon: Images },
@@ -91,6 +94,8 @@ const TABS: TabDef[] = [
 const ALL_TAB_IDS = TABS.map((t) => t.id);
 /** Identificação é sempre visível — guarda a chave (ID Manejo) da ficha. */
 const LOCKED_TAB: TabId = 'identificacao';
+/** Abas adicionadas após o primeiro release — repostas para quem já tem preferência salva. */
+const NEWER_TABS: TabId[] = ['origem', 'ultrassonografia'];
 /** Preferência (por usuário/navegador) de quais abas exibir na Ficha Animal. */
 const TAB_PREF_KEY = 'inttegra:ficha-animal-tabs';
 
@@ -105,8 +110,12 @@ function loadEnabledTabs(): TabId[] {
     const valid = parsed.filter((id): id is TabId => ALL_TAB_IDS.includes(id));
     // Identificação nunca pode ficar de fora.
     const withLocked = valid.includes(LOCKED_TAB) ? valid : [LOCKED_TAB, ...valid];
-    // "Origem" é nova: garante que apareça mesmo para quem já tinha preferência salva.
-    return withLocked.includes('origem') ? withLocked : [...withLocked, 'origem'];
+    // Abas novas: garantem aparição mesmo para quem já tinha preferência salva.
+    const result = [...withLocked];
+    for (const nova of NEWER_TABS) {
+      if (!result.includes(nova)) result.push(nova);
+    }
+    return result;
   } catch {
     return [...ALL_TAB_IDS];
   }
@@ -188,6 +197,24 @@ const ORIGEM_NASC_FIELDS: LrField[] = [
   { id: 'fazendaNascimento', label: 'Fazenda de nascimento', type: 'text', placeholder: 'Fazenda onde nasceu', def: 'dados' },
   { id: 'mae', label: 'Mãe', type: 'text', placeholder: 'Mãe — ID/Nome', def: 'dados' },
   { id: 'parto', label: 'Tipo de parto', type: 'select', options: ['Normal', 'Distócico', 'Assistido', 'Cesárea'], placeholder: 'Tipo de parto', def: 'dados' },
+];
+
+/**
+ * Campos da aba Ultrassonografia — exame de ultrassom de carcaça in vivo, usado
+ * em programas de melhoramento genético. AOL (Área de Olho de Lombo), EGS
+ * (gordura subcutânea), EGP8 (gordura na picanha/P8) e Marmoreio são as
+ * características padrão avaliadas. Chaves novas (prefixo `us`) são persistidas
+ * automaticamente em `extras` — sem coluna dedicada no banco.
+ */
+const ULTRASSOM_FIELDS: LrField[] = [
+  { id: 'usData', label: 'Data do exame', type: 'date', def: 'dados' },
+  { id: 'usPeso', label: 'Peso no exame', type: 'weight', def: 'dados' },
+  { id: 'usAvaliador', label: 'Avaliador / Técnico', type: 'text', placeholder: 'Nome do técnico', def: 'dados' },
+  { id: 'usAol', label: 'AOL — Área de Olho de Lombo (cm²)', type: 'text', placeholder: 'cm²', def: 'dados' },
+  { id: 'usEgs', label: 'EGS — Gordura Subcutânea (mm)', type: 'text', placeholder: 'mm', def: 'dados' },
+  { id: 'usEgp8', label: 'EGP8 — Gordura na Picanha/P8 (mm)', type: 'text', placeholder: 'mm', def: 'dados' },
+  { id: 'usMarmoreio', label: 'Marmoreio (%)', type: 'text', placeholder: '%', def: 'dados' },
+  { id: 'usObs', label: 'Observações', type: 'textarea', placeholder: 'Observações do exame', def: 'dados', span: 3 },
 ];
 
 /** Aba ainda sem campos definidos (o usuário preenche depois). */
@@ -630,6 +657,10 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
                 />
               </div>
             ))}
+          </div>
+        ) : tab === 'ultrassonografia' ? (
+          <div className="flex flex-col gap-5">
+            {renderGroup('Ultrassonografia de Carcaça', UltrassomIcon, ULTRASSOM_FIELDS)}
           </div>
         ) : tab === 'fotos' ? (
           <div className="flex flex-col gap-4">

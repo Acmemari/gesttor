@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Save, Check, Info, List, Tags } from 'lucide-react';
+import { Plus, Save, Check, Info, List, Tags, ChevronDown } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
 import IconCardButton from '../../../components/IconCardButton';
@@ -13,15 +13,17 @@ import {
   addFicha as apiAddFicha,
   type NascimentoMovimentoRow,
 } from '../../../lib/api/nascimentosClient';
-import FieldControl from './FieldControl';
 import CategoriaGrid from './CategoriaGrid';
 import BrincoBovinoIcon from './BrincoBovinoIcon';
 import LoteAnimaisIcon from './LoteAnimaisIcon';
-import LancamentoRapido from './LancamentoRapido';
-import CamposConfigModal from './CamposConfigModal';
+import SanitarioSection from './SanitarioSection';
 import AtribuirIdPanel from './AtribuirIdPanel';
 import LancamentosRecentes from './LancamentosRecentes';
-import { LR_REGISTRY, LOTES_ESTATICOS, DEFAULT_ORDER, FIELD_BY_ID, defaultPlaces, defaultValue } from './fieldRegistry';
+import DefinaCamposPanel, { type DetalheColumn } from '../fichas/DefinaCamposPanel';
+import CamposConfigModal from '../fichas/CamposConfigModal';
+import FullscreenLancamento from '../fichas/FullscreenLancamento';
+import { useFieldConfig } from '../fichas/useFieldConfig';
+import { LR_REGISTRY, LOTES_ESTATICOS, defaultValue } from './fieldRegistry';
 import { getFieldConfig, saveFieldConfig } from '../../../lib/api/nascimentoFieldConfigClient';
 import {
   formatDateBR,
@@ -139,12 +141,27 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   const [entryValues, setEntryValues] = useState<Record<string, string>>(() => buildEntryValues(today));
   const detSeq = useRef(1);
 
-  // ── Configuração de campos ────────────────────────────────────────────────
-  const [places, setPlaces] = useState<FieldPlaces>(() => defaultPlaces());
-  // Ordem global de exibição dos campos (lista de field ids).
-  const [order, setOrder] = useState<string[]>(DEFAULT_ORDER);
-  const [autonum, setAutonum] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
+  // ── Configuração de campos (kit compartilhado, persistida por organização) ──
+  const fieldCfg = useFieldConfig({
+    registry: LR_REGISTRY,
+    organizationId,
+    load: getFieldConfig,
+    save: saveFieldConfig,
+    onError: (m) => onToast?.(m, 'error'),
+  });
+  const {
+    fieldById,
+    places,
+    order,
+    autonum,
+    setAutonum,
+    setOrder,
+    configOpen,
+    setConfigOpen,
+    setPlace,
+    reset: resetPlaces,
+    closeConfig,
+  } = fieldCfg;
   const sanEnabled = (places.sanitario || 'top') === 'top';
 
   // ── Sanitário / Dados adicionais ──────────────────────────────────────────
@@ -195,41 +212,6 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       cancelled = true;
     };
   }, [organizationId, onToast]);
-
-  // Carrega a configuração de campos salva (destino + ordem + Nº auto) por organização.
-  useEffect(() => {
-    if (!organizationId) return;
-    let cancelled = false;
-    getFieldConfig(organizationId)
-      .then((row) => {
-        if (cancelled || !row?.config) return;
-        const cfg = row.config;
-        // places: parte do default e sobrepõe só os ids conhecidos salvos.
-        if (cfg.places && typeof cfg.places === 'object') {
-          setPlaces(() => {
-            const merged = defaultPlaces();
-            for (const id of Object.keys(merged)) {
-              const saved = cfg.places[id];
-              if (saved === 'top' || saved === 'bottom' || saved === 'dados' || saved === 'off') merged[id] = saved;
-            }
-            return merged;
-          });
-        }
-        // order: ids salvos ainda existentes, seguidos dos novos campos do registry.
-        if (Array.isArray(cfg.order)) {
-          const known = cfg.order.filter((id) => FIELD_BY_ID[id]);
-          const missing = DEFAULT_ORDER.filter((id) => !known.includes(id));
-          setOrder([...known, ...missing]);
-        }
-        if (typeof cfg.autonum === 'boolean') setAutonum(cfg.autonum);
-      })
-      .catch(() => {
-        /* sem config salva ou erro de rede: mantém os defaults */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId]);
 
   // Quando há raças cadastradas e a raça atual do formulário não está na lista,
   // ajusta para a primeira disponível (mantém o select coerente com o estado).
@@ -417,33 +399,6 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     if (next === 'historico') setLrExpanded(false);
     setAba(next);
   }, []);
-
-  // ── Configuração de campos ────────────────────────────────────────────────
-  const setPlace = useCallback((id: string, val: FieldPlace) => {
-    setPlaces((prev) => {
-      const field = LR_REGISTRY.find((f) => f.id === id);
-      let target = val;
-      if (field?.locked) target = val === 'off' ? 'off' : 'bottom'; // ID Manejo: só Tabela ou Desativar
-      if (field?.enableOnly) target = val === 'top' || val === 'off' ? val : 'top'; // Sanitário: só Superior/Desativar
-      return { ...prev, [id]: target };
-    });
-  }, []);
-
-  const resetPlaces = useCallback(() => {
-    setPlaces(defaultPlaces());
-    setOrder(DEFAULT_ORDER);
-    setAutonum(false);
-  }, []);
-
-  // Fecha o modal de configuração e persiste destino + ordem + Nº auto (por organização).
-  const closeConfig = useCallback(() => {
-    setConfigOpen(false);
-    if (organizationId) {
-      saveFieldConfig(organizationId, { places, order, autonum }).catch((err: any) =>
-        onToast?.(err?.message || 'Erro ao salvar configuração de campos', 'error'),
-      );
-    }
-  }, [organizationId, places, order, autonum, onToast]);
 
   // ── Salvar ────────────────────────────────────────────────────────────────
   // Habilitado quando há algo a salvar: declarado (cats) e/ou detalhado (detalhe).
@@ -713,12 +668,46 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     </div>
   );
 
-  // Painel de Lançamento Rápido (modo individual): mesmo elemento usado tanto
-  // na visão normal quanto na tela cheia, para não duplicar a lista de props.
+  // Colunas explícitas da tabela de detalhe (mantém o layout original da tela de
+  // Nascimento, independente da ordem/destino configurado).
+  const detalheColumns: DetalheColumn[] = [
+    { fieldId: 'apelido' },
+    { fieldId: 'rfid', label: 'ID Eletrônica' },
+    { fieldId: 'sisbov', label: 'SISBOV' },
+    { fieldId: 'sexo', label: 'Sexo' },
+    { fieldId: 'categoria', label: 'Categoria' },
+    { fieldId: 'porte', label: 'Porte' },
+    { fieldId: 'colostro', label: 'Colostro' },
+    { fieldId: 'peso', label: 'Peso', align: 'right' },
+  ];
+
+  // Sanitário (nível movimento): botão na linha "Repete em todos" + seção abaixo.
+  const sanToggleBtn = sanEnabled ? (
+    <button
+      type="button"
+      onClick={() => setSanOpen((p) => !p)}
+      className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-[13px] font-semibold ${
+        sanOpen ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]' : 'border-[#b7e0c4] bg-white text-[#16a34a] hover:bg-[#e7f6ec]'
+      }`}
+    >
+      <ChevronDown size={16} className={`transition-transform ${sanOpen ? '' : '-rotate-90'}`} />
+      Sanitário
+      {sanItems.length ? (
+        <span className="rounded bg-[#e7f6ec] px-1.5 text-[11px] font-bold text-[#16a34a]">{sanItems.length}</span>
+      ) : null}
+    </button>
+  ) : null;
+  const sanSection = sanEnabled && sanOpen ? (
+    <SanitarioSection items={sanItems} onItemsChange={setSanItems} onToast={onToast} />
+  ) : null;
+
+  // Painel "Defina seus campos" (modo individual): mesmo elemento usado tanto na
+  // visão normal quanto na tela cheia, para não duplicar a lista de props.
   const lancamentoRapidoEl = fromId ? (
-    <LancamentoRapido
-      places={places}
+    <DefinaCamposPanel
+      fieldById={fieldById}
       order={order}
+      places={places}
       categories={categories}
       lotes={lotes}
       optionsOverride={optionsOverride}
@@ -728,18 +717,17 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       onAdd={addDetalhe}
       onRemoveDetalhe={removeDetalhe}
       onOpenConfig={() => setConfigOpen(true)}
-      sanEnabled={sanEnabled}
-      sanOpen={sanOpen}
-      onToggleSan={() => setSanOpen((p) => !p)}
-      sanItems={sanItems}
-      onSanItemsChange={setSanItems}
-      dadosOpen={dadosOpen}
-      onToggleDados={() => setDadosOpen((p) => !p)}
       onToast={onToast}
       onImport={importDetalhe}
       onClose={verColetivo}
       expanded={lrExpanded}
       onToggleExpand={toggleLrExpand}
+      filenamePrefix="modelo-lancamento-nascimento"
+      detalheColumns={detalheColumns}
+      topRowExtra={sanToggleBtn}
+      topBelowExtra={sanSection}
+      dadosOpen={dadosOpen}
+      onToggleDados={() => setDadosOpen((p) => !p)}
     />
   ) : null;
 
@@ -1019,22 +1007,15 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
         </div>
       )}
 
-      {/* Tela cheia do Lançamento Rápido: foco na alocação individual por animal.
-          Mantém visível só o título, as abas e uma linha compacta de dados básicos.
-          z-40 (abaixo dos modais z-50, que continuam aparecendo por cima). */}
+      {/* Tela cheia do Lançamento Rápido: foco na alocação individual por animal. */}
       {fromId && lrExpanded ? (
-        <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-[#f9fafb]">
-          {/* Cabeçalho fixo: título + abas + linha compacta de dados básicos */}
-          <div className="sticky top-0 z-10 border-b border-gray-200 bg-[#f9fafb]/95 px-6 py-3 backdrop-blur-sm md:px-8">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <BrincoBovinoIcon size={22} className="text-[#16a34a]" />
-                <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Nascimentos</h1>
-              </div>
-              {abasToggle}
-            </div>
-            {/* Linha única editável: Data · Proprietário · Fazenda · Retiro (sem Local) */}
-            <div className="mt-3 flex flex-wrap items-end gap-3">
+        <FullscreenLancamento
+          icon={<BrincoBovinoIcon size={22} className="text-[#16a34a]" />}
+          title="Nascimentos"
+          headerRight={abasToggle}
+          onClose={() => setLrExpanded(false)}
+          compactHeader={
+            <>
               <div className="min-w-0" style={{ flex: '0 0 150px' }}>
                 <label className={labelCls}>Data</label>
                 <input type="date" className={`${inputCls} mt-1`} value={data} onChange={(e) => setData(e.target.value)} />
@@ -1079,17 +1060,16 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
                   ))}
                 </select>
               </div>
-            </div>
-          </div>
-          {/* Corpo rolável: só o painel de Lançamento Rápido */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 md:px-8">
-            <div className="mx-auto w-full max-w-[1400px]">{lancamentoRapidoEl}</div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          {lancamentoRapidoEl}
+        </FullscreenLancamento>
       ) : null}
 
       {configOpen ? (
         <CamposConfigModal
+          fieldById={fieldById}
           places={places}
           autonum={autonum}
           order={order}
@@ -1098,6 +1078,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           onReorder={setOrder}
           onReset={resetPlaces}
           onClose={closeConfig}
+          title="Configurar campos do Lançamento Rápido"
+          subtitle="Defina onde cada campo aparece: Linha Superior (repete em todos), Linha Tabela Lançamento (por animal), Dados Adicionais (recolhido) ou Desativado (não aparece). Arraste pela alça para definir a ordem em que aparecem na tela."
         />
       ) : null}
     </div>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Safra derivada — 5 opções</title>
+<style>
+  :root{
+    --blue:#2563eb; --blue-soft:#eef4fe; --line:#e3e7ee; --text:#1f2733;
+    --muted:#8a93a3; --bg:#f4f6f9; --ok:#15803d;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);padding:48px 32px 80px;-webkit-font-smoothing:antialiased;}
+  .head{max-width:1180px;margin:0 auto 36px;}
+  .head h1{font-size:26px;font-weight:700;letter-spacing:-.01em;}
+  .head p{font-size:14.5px;color:var(--muted);margin-top:8px;line-height:1.55;max-width:640px;}
+  .head .calc{display:inline-flex;align-items:center;gap:8px;margin-top:16px;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 14px;}
+  .head .calc b{color:var(--blue);}
+  .grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:22px;}
+  .opt{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px 24px 26px;display:flex;flex-direction:column;}
+  .opt-tag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--blue);background:var(--blue-soft);border-radius:999px;padding:4px 11px;align-self:flex-start;}
+  .opt h2{font-size:16px;font-weight:700;margin:14px 0 4px;}
+  .opt .desc{font-size:13px;color:var(--muted);line-height:1.5;min-height:56px;}
+  .demo{margin-top:20px;background:#fbfcfe;border:1px dashed var(--line);border-radius:12px;padding:26px 22px;display:flex;align-items:flex-end;gap:14px;min-height:128px;}
+
+  /* base field look (matches the app) */
+  .lbl{font-size:13px;font-weight:600;color:#3a4150;margin-bottom:7px;display:block;}
+  .inp{background:#fff;border:1px solid var(--line);border-radius:10px;height:46px;padding:0 14px;font-size:15px;color:var(--text);display:flex;align-items:center;font-variant-numeric:tabular-nums;}
+  .inp.date::after{content:"📅";margin-left:auto;opacity:.5;font-size:13px;}
+  .field{display:flex;flex-direction:column;}
+
+  .pros{margin-top:18px;font-size:12.5px;color:#5a6473;line-height:1.6;}
+  .pros b{color:var(--ok);}
+
+  /* ---- Opção 1: caption abaixo ---- */
+  .o1 .field{flex:1;}
+  .o1 .cap{margin-top:7px;font-size:12.5px;color:var(--muted);}
+  .o1 .cap b{color:var(--blue);font-weight:600;}
+
+  /* ---- Opção 2: chip inline dentro do campo ---- */
+  .o2 .inp{position:relative;gap:10px;}
+  .o2 .chip{margin-left:auto;font-size:12px;font-weight:600;color:var(--blue);background:var(--blue-soft);border-radius:7px;padding:3px 9px;}
+
+  /* ---- Opção 3: legenda contextual acima ---- */
+  .o3 .ctx{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .o3 .ctx b{color:var(--blue);}
+
+  /* ---- Opção 4: dois campos, safra travada ---- */
+  .o4 .demo{gap:12px;}
+  .o4 .inp.locked{background:#f1f3f7;color:#6b7280;border-style:solid;position:relative;}
+  .o4 .auto{position:absolute;top:-9px;right:10px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);background:#fff;padding:0 6px;}
+  .o4 .lock{margin-left:auto;opacity:.45;font-size:12px;}
+
+  /* ---- Opção 5: bloco unificado data+safra ---- */
+  .o5 .stack{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .o5 .stack .top{padding:11px 14px;display:flex;align-items:center;gap:8px;}
+  .o5 .stack .top .v{font-size:15px;font-weight:600;}
+  .o5 .stack .top::after{content:"📅";margin-left:auto;opacity:.5;font-size:13px;}
+  .o5 .stack .bot{border-top:1px solid var(--line);background:#fbfcfe;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);}
+  .o5 .stack .bot b{color:var(--blue);font-weight:600;}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Safra derivada da data</h1>
+    <p>A safra é o período de <b>1º de julho a 30 de junho</b>. Em vez de o usuário escolher a safra, ela é calculada automaticamente a partir da data lançada — então o campo deixa de ser entrada e vira informação. Cinco formas de apresentar isso:</p>
+    <span class="calc">Regra: data <b>04/06/2026</b> (junho) → safra <b>2025/2026</b> · data <b>15/08/2026</b> (agosto) → safra <b>2026/2027</b></span>
+  </div>
+
+  <div class="grid">
+
+    <!-- Opção 1 -->
+    <div class="opt o1">
+      <span class="opt-tag">Opção 1 · recomendada</span>
+      <h2>Safra como legenda abaixo da data</h2>
+      <div class="desc">Um único campo (Data). A safra aparece como texto auxiliar logo abaixo, atualizando sozinha. Menos campos, foco no que se digita.</div>
+      <div class="demo">
+        <div class="field" style="flex:1">
+          <span class="lbl">Data</span>
+          <div class="inp date">04/06/2026</div>
+          <div class="cap">Safra <b>2025/2026</b></div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Mais limpo · <b>+</b> 1 campo só · deixa claro que é derivado</div>
+    </div>
+
+    <!-- Opção 2 -->
+    <div class="opt o2">
+      <span class="opt-tag">Opção 2</span>
+      <h2>Chip de safra dentro do campo</h2>
+      <div class="desc">A safra vira uma etiqueta dentro do próprio campo de data, à direita. Compacto e sempre visível ao digitar.</div>
+      <div class="demo">
+        <div class="field" style="flex:1">
+          <span class="lbl">Data</span>
+          <div class="inp">04/06/2026 <span class="chip">Safra 2025/2026</span></div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Ocupa zero espaço extra · ótimo em telas estreitas</div>
+    </div>
+
+    <!-- Opção 3 -->
+    <div class="opt o3">
+      <span class="opt-tag">Opção 3</span>
+      <h2>Legenda contextual acima</h2>
+      <div class="desc">Uma linha discreta acima do campo anuncia a safra do período. Bom quando a safra contextualiza toda a tela, não só a data.</div>
+      <div class="demo">
+        <div class="field" style="flex:1">
+          <div class="ctx">Safra <b>2025/2026</b></div>
+          <span class="lbl">Data</span>
+          <div class="inp date">04/06/2026</div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Safra ganha destaque de cabeçalho do lançamento</div>
+    </div>
+
+    <!-- Opção 4 -->
+    <div class="opt o4">
+      <span class="opt-tag">Opção 4</span>
+      <h2>Dois campos, safra travada</h2>
+      <div class="desc">Mantém o layout atual (Safra + Data lado a lado), mas o campo Safra fica travado e marcado como “auto”, preenchido pela data.</div>
+      <div class="demo">
+        <div class="field">
+          <span class="lbl">Safra</span>
+          <div class="inp locked"><span class="auto">auto</span>2025/2026 <span class="lock">🔒</span></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Data</span>
+          <div class="inp date">04/06/2026</div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Menor mudança visual · mantém o hábito atual</div>
+    </div>
+
+    <!-- Opção 5 -->
+    <div class="opt o5">
+      <span class="opt-tag">Opção 5</span>
+      <h2>Bloco unificado data + safra</h2>
+      <div class="desc">Data e safra moram num único bloco em duas linhas: a data em cima (editável) e a safra derivada num rodapé sombreado.</div>
+      <div class="demo">
+        <div class="stack">
+          <div class="top"><span class="v">04/06/2026</span></div>
+          <div class="bot">Safra <b>2025/2026</b> · jul/2025 → jun/2026</div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Mostra o período completo · vínculo data↔safra explícito</div>
+    </div>
+
+  </div>
+</body>
+</html>

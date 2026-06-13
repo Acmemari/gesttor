@@ -12,6 +12,7 @@ import {
   Pencil,
   Layers,
   Calendar,
+  MapPin,
 } from 'lucide-react';
 import {
   DndContext,
@@ -30,6 +31,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useClient } from '../contexts/ClientContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useHierarchy } from '../contexts/HierarchyContext';
 import PageHeader from '../components/ui/PageHeader';
 import TabSwitch from '../components/ui/TabSwitch';
 import FormActions from '../components/ui/FormActions';
@@ -66,6 +68,38 @@ const formatDateBR = (iso: string | null | undefined): string => {
 
 /** Finalidades do lote — identidade imutável; "Cria" habilita o card reprodutivo na Gestão de Lotes. */
 const FINALIDADES = ['Cria', 'Recria', 'Terminação', 'Outra Finalidade'] as const;
+
+/** Retiro da fazenda (Cadastro de Áreas / farm_retiros). */
+interface Retiro {
+  id: string;
+  name: string;
+}
+
+/** Lista os retiros de uma fazenda (vazio quando a fazenda não tem retiros). */
+function useRetiros(farmId: string): Retiro[] {
+  const [retiros, setRetiros] = useState<Retiro[]>([]);
+  useEffect(() => {
+    if (!farmId) {
+      setRetiros([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/farm-locations?farmId=${encodeURIComponent(farmId)}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        const rows = (json?.data ?? json) as any[];
+        setRetiros(Array.isArray(rows) ? rows.map((x) => ({ id: x.id, name: x.name })) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRetiros([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+  return retiros;
+}
 
 const inputCls =
   'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
@@ -138,11 +172,12 @@ interface SortableRowProps {
   lote: Lote;
   selected: boolean;
   menuOpen: boolean;
+  local: string;
   onSelect: (l: Lote) => void;
   onMenu: (e: React.MouseEvent, id: string) => void;
 }
 
-const SortableRow: React.FC<SortableRowProps> = ({ lote, selected, menuOpen, onSelect, onMenu }) => {
+const SortableRow: React.FC<SortableRowProps> = ({ lote, selected, menuOpen, local, onSelect, onMenu }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: lote.id,
   });
@@ -175,6 +210,7 @@ const SortableRow: React.FC<SortableRowProps> = ({ lote, selected, menuOpen, onS
       <td className={`p-3 font-semibold ${selected ? 'text-[#16a34a]' : 'text-gray-800'}`}>
         {lote.nome}
       </td>
+      <td className="p-3 text-gray-600">{local}</td>
       <td className="p-3 text-gray-600 whitespace-nowrap">{formatDateBR(lote.dataInicio)}</td>
       <td className="p-3">
         <StatusBadge finalizado={lote.finalizado} />
@@ -201,8 +237,14 @@ const SortableRow: React.FC<SortableRowProps> = ({ lote, selected, menuOpen, onS
 const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
+  const { farms, selectedFarm } = useHierarchy();
 
   const organizationId = selectedClient?.id ?? user?.organizationId ?? '';
+
+  const farmName = useCallback(
+    (id: string | null | undefined) => (id ? farms.find((f) => f.id === id)?.name ?? '—' : '—'),
+    [farms],
+  );
 
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -215,6 +257,8 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [aba, setAba] = useState<'lancar' | 'registros'>('lancar');
 
   // Entrada da aba Lançamentos
+  const [farmId, setFarmId] = useState('');
+  const [retiro, setRetiro] = useState('');
   const [nome, setNome] = useState('');
   const [codigo, setCodigo] = useState('');
   const [finalidade, setFinalidade] = useState('');
@@ -224,9 +268,23 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [descricao, setDescricao] = useState('');
   const nomeRef = useRef<HTMLInputElement>(null);
 
+  const retiros = useRetiros(farmId);
+
+  // Fazenda padrão: a selecionada na hierarquia (ou a única existente).
+  useEffect(() => {
+    setFarmId((prev) => prev || selectedFarm?.id || (farms.length === 1 ? farms[0].id : ''));
+  }, [selectedFarm, farms]);
+
+  // Fazenda com um único retiro: já vem selecionado (não pergunta toda vez).
+  useEffect(() => {
+    if (retiros.length === 1) setRetiro((prev) => (prev === retiros[0].name ? prev : retiros[0].name));
+  }, [retiros]);
+
   // Detalhamento editável (aba Registros)
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = lotes.find((l) => l.id === selectedId) || null;
+  const [editFarmId, setEditFarmId] = useState('');
+  const [editRetiro, setEditRetiro] = useState('');
   const [editNome, setEditNome] = useState('');
   const [editCodigo, setEditCodigo] = useState('');
   const [editFinalidade, setEditFinalidade] = useState('');
@@ -234,6 +292,13 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [editDataInicio, setEditDataInicio] = useState('');
   const [editFinalizado, setEditFinalizado] = useState(false);
   const [editDescricao, setEditDescricao] = useState('');
+
+  const editRetiros = useRetiros(editFarmId);
+
+  // Fazenda do registro com um único retiro: já vem selecionado na edição.
+  useEffect(() => {
+    if (editRetiros.length === 1) setEditRetiro((prev) => (prev === editRetiros[0].name ? prev : editRetiros[0].name));
+  }, [editRetiros]);
 
   // Modo de visualização/edição no detalhamento
   const [modo, setModo] = useState<'visualizar' | 'editar'>('visualizar');
@@ -276,6 +341,8 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
 
   useEffect(() => {
     if (selected) {
+      setEditFarmId(selected.farmId ?? '');
+      setEditRetiro(selected.retiro ?? '');
       setEditNome(selected.nome);
       setEditCodigo(selected.codigo ?? '');
       setEditFinalidade(selected.finalidade ?? '');
@@ -289,6 +356,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   // ── Lançamento ──────────────────────────────────────────────────────────────
 
   const cancelLancamento = useCallback(() => {
+    setRetiro('');
     setNome('');
     setCodigo('');
     setFinalidade('');
@@ -308,6 +376,14 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       onToast?.('Informe a data de início', 'error');
       return;
     }
+    if (!farmId) {
+      onToast?.('Selecione a fazenda do lote', 'error');
+      return;
+    }
+    if (retiros.length > 0 && !retiro) {
+      onToast?.('Selecione o retiro do lote', 'error');
+      return;
+    }
     const lower = clean.toLowerCase();
     if (lotes.some((l) => l.nome.trim().toLowerCase() === lower)) {
       onToast?.('Este lote já está cadastrado', 'warning');
@@ -317,6 +393,8 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     try {
       await createLote({
         nome: clean,
+        farmId: farmId || null,
+        retiro: retiro || null,
         codigo: codigo.trim() || null,
         finalidade: finalidade || null,
         sistema: sistema.trim() || null,
@@ -334,12 +412,14 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [nome, codigo, finalidade, sistema, dataInicio, finalizado, descricao, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
+  }, [nome, farmId, retiro, retiros, codigo, finalidade, sistema, dataInicio, finalizado, descricao, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
 
   // ── Edição (detalhamento da aba Registros) ──────────────────────────────────
 
   const cancelarEdicao = useCallback(() => {
     if (selected) {
+      setEditFarmId(selected.farmId ?? '');
+      setEditRetiro(selected.retiro ?? '');
       setEditNome(selected.nome);
       setEditCodigo(selected.codigo ?? '');
       setEditFinalidade(selected.finalidade ?? '');
@@ -362,10 +442,20 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       onToast?.('Informe a data de início', 'error');
       return;
     }
+    if (!editFarmId) {
+      onToast?.('Selecione a fazenda do lote', 'error');
+      return;
+    }
+    if (editRetiros.length > 0 && !editRetiro) {
+      onToast?.('Selecione o retiro do lote', 'error');
+      return;
+    }
     setSaving(true);
     try {
       await updateLote(selectedId, {
         nome: clean,
+        farmId: editFarmId || null,
+        retiro: editRetiro || null,
         codigo: editCodigo.trim() || null,
         finalidade: editFinalidade || null,
         sistema: editSistema.trim() || null,
@@ -380,7 +470,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [selectedId, editNome, editCodigo, editFinalidade, editSistema, editDataInicio, editFinalizado, editDescricao, onToast, loadLotes]);
+  }, [selectedId, editFarmId, editRetiro, editRetiros, editNome, editCodigo, editFinalidade, editSistema, editDataInicio, editFinalizado, editDescricao, onToast, loadLotes]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
@@ -503,6 +593,46 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       {aba === 'lancar' ? (
         /* ── Aba Lançamentos: cadastro direto de um lote ─────────────────────── */
         <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5">
+          {/* Localização: o lote pertence a uma Fazenda; e a um Retiro quando houver. */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
+                Fazenda <span className="text-[#DC2626]">*</span>
+              </label>
+              <select
+                value={farmId}
+                onChange={(e) => {
+                  setFarmId(e.target.value);
+                  setRetiro('');
+                }}
+                className={inputCls}
+              >
+                <option value="">Selecione…</option>
+                {farms.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
+                Retiro {retiros.length > 0 && <span className="text-[#DC2626]">*</span>}
+              </label>
+              <select
+                value={retiro}
+                onChange={(e) => setRetiro(e.target.value)}
+                disabled={!farmId || retiros.length === 0}
+                className={`${inputCls} disabled:bg-gray-50 disabled:text-gray-400`}
+              >
+                <option value="">
+                  {!farmId ? 'Selecione a fazenda' : retiros.length === 0 ? 'Fazenda sem retiros' : '—'}
+                </option>
+                {retiros.map((r) => (
+                  <option key={r.id} value={r.name}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
@@ -624,6 +754,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                   <tr className="bg-[#fcfcfd] text-[11px] uppercase tracking-wide text-gray-500">
                     <th className="w-8 p-3" />
                     <th className="p-3 font-bold">Nome</th>
+                    <th className="p-3 font-bold">Fazenda / Retiro</th>
                     <th className="p-3 font-bold">Data Início</th>
                     <th className="p-3 font-bold">Situação</th>
                     <th className="p-3 text-center font-bold">Ações</th>
@@ -637,6 +768,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                         lote={lote}
                         selected={selectedId === lote.id}
                         menuOpen={menu?.id === lote.id}
+                        local={lote.farmId ? `${farmName(lote.farmId)}${lote.retiro ? ` · ${lote.retiro}` : ''}` : '—'}
                         onSelect={handleSelectLote}
                         onMenu={toggleMenu}
                       />
@@ -687,6 +819,18 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                         <h3 className="text-base font-bold text-gray-900 leading-tight">{selected.nome}</h3>
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-500">
+                        {selected.farmId && (
+                          <>
+                            <span className="inline-flex items-center gap-1.5">
+                              <MapPin size={13} className="text-[#16a34a]" />
+                              <span className="text-gray-700">
+                                {farmName(selected.farmId)}
+                                {selected.retiro ? ` · ${selected.retiro}` : ''}
+                              </span>
+                            </span>
+                            <span className="text-gray-300">|</span>
+                          </>
+                        )}
                         {selected.finalidade && (
                           <>
                             <span className="rounded-full bg-[#EFF6FF] px-2 py-0.5 text-[#2563EB]">{selected.finalidade}</span>
@@ -725,6 +869,46 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 <div className="flex flex-1 flex-col gap-4 p-5 animate-in fade-in duration-200">
                   <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                     <h3 className="text-base font-bold text-gray-900 leading-tight">Editar Lote</h3>
+                  </div>
+
+                  {/* Localização: o lote pertence a uma Fazenda; e a um Retiro quando houver. */}
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
+                        Fazenda <span className="text-[#DC2626]">*</span>
+                      </label>
+                      <select
+                        value={editFarmId}
+                        onChange={(e) => {
+                          setEditFarmId(e.target.value);
+                          setEditRetiro('');
+                        }}
+                        className={inputCls}
+                      >
+                        <option value="">Selecione…</option>
+                        {farms.map((f) => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
+                        Retiro {editRetiros.length > 0 && <span className="text-[#DC2626]">*</span>}
+                      </label>
+                      <select
+                        value={editRetiro}
+                        onChange={(e) => setEditRetiro(e.target.value)}
+                        disabled={!editFarmId || editRetiros.length === 0}
+                        className={`${inputCls} disabled:bg-gray-50 disabled:text-gray-400`}
+                      >
+                        <option value="">
+                          {!editFarmId ? 'Selecione a fazenda' : editRetiros.length === 0 ? 'Fazenda sem retiros' : '—'}
+                        </option>
+                        {editRetiros.map((r) => (
+                          <option key={r.id} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-end">

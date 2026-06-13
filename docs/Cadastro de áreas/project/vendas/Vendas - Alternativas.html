@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendas — Alternativas de layout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="vendas.css">
+<style>
+  html,body{height:100%;margin:0;background:#eceef1;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#16a34a"/>
+    <g fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M50 28v44M62 38H45a6 6 0 0 0 0 12h10a6 6 0 0 1 0 12H38"/>
+    </g>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="vd-data.jsx"></script>
+<script type="text/babel" src="vd-variants-1.jsx"></script>
+<script type="text/babel" src="vd-variants-2.jsx"></script>
+
+<script type="text/babel">
+const { DesignCanvas, DCSection, DCArtboard } = window;
+
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="ref" title="Tela atual" subtitle="Referência — recriação da versão em produção, com os pontos de atrito anotados">
+        <DCArtboard id="atual" label="Atual · em produção" width={1180} height={840}>
+          <VendasAtual/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="alts" title="Alternativas" subtitle="Três direções para tornar o lançamento mais eficiente. A grade (A) é a recomendada.">
+        <DCArtboard id="a" label="A · Grade editável + totais fixos  ★ recomendada" width={1180} height={680}>
+          <VendasGrade/>
+        </DCArtboard>
+        <DCArtboard id="b" label="B · Linha de lançamento + tabela full-width" width={1180} height={760}>
+          <VendasEmpilhado/>
+        </DCArtboard>
+        <DCArtboard id="c" label="C · Cards de categoria + resumo lateral" width={1180} height={680}>
+          <VendasCards/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

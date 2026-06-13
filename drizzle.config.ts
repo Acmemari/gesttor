@@ -27,6 +27,8 @@ export default defineConfig({
     'saved_questionnaires', 'questionnaire_questions', 'saved_feedbacks', 'support_tickets',
     'support_ticket_messages', 'support_ticket_reads', 'support_ticket_attachments',
     'consulting_firms', 'app_settings', 'animal_categories',
+    // Fazenda: hierarquia de localização (Retiro › Setor › Local) + config de níveis
+    'farm_setores', 'farm_location_levels',
     // Gestão Orçamentária
     'plano_contas', 'orcamentos', 'orcamento_farms', 'orcamento_colaboradores',
     'orcamento_versoes', 'premissas', 'log_auditoria_orcamento',
@@ -41,5 +43,11 @@ export default defineConfig({
     'venda_movimentos', 'venda_itens', 'venda_fichas',
     // Movimentação › Compras
     'compra_movimentos', 'compra_itens', 'compra_fichas',
+    // Movimentação › Desmame
+    'desmame_movimentos', 'desmame_fichas',
+    // Movimentação › Mudança de Categoria
+    'mudanca_categoria_movimentos', 'mudanca_categoria_fichas',
+    // Configuração de campos genérica (Compra/Venda/Morte)
+    'movimento_field_configs',
   ],
 });

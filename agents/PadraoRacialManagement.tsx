@@ -61,9 +61,19 @@ interface DraftPadrao {
 }
 
 /** Padrão Racial — opções exclusivas (selecione apenas uma). */
-const CLASSIFICACOES = ['PO', 'PC', 'LA', 'Comercial'] as const;
+const CLASSIFICACOES = ['PO', 'PC', 'PA', 'LA', 'Comercial'] as const;
 /** Classificações "puras", que permitem CEIP e assumem Grau de Sangue "Puro" por padrão. */
-const CLASSIF_PURO = ['PO', 'PC', 'LA'];
+const CLASSIF_PURO = ['PO', 'PC', 'PA', 'LA'];
+
+/** Significado de cada padrão racial — exibido como dica ao passar o mouse. */
+const PADRAO_RACIAL_INFO: Record<string, string> = {
+  PO: 'Puro de Origem: genealogia conhecida e registrada conforme as regras da ABCZ.',
+  PC: 'Puro Controlado: categoria intermediária, com controle genealógico, podendo em certos cruzamentos evoluir para PO.',
+  PA: 'Puro por Avaliação: animal aprovado por avaliação racial, normalmente sem genealogia completa para ser PO.',
+  LA: 'Livro Aberto: termo tradicional para animais aceitos em registro mesmo sem origem completa conhecida. Em muitos contextos, é usado informalmente como PA.',
+  Comercial: 'Animal sem registro genealógico, classificado apenas para fins comerciais.',
+  CEIP: 'Programa oficial de melhoramento genético reconhecido pelo MAPA, que certifica animais de corte com desempenho superior dentro de uma população avaliada, por meio do Certificado Especial de Identificação e Produção. Indica mérito genético e produtivo, independentemente de registro genealógico. Pode ser marcado sozinho ou junto de PO, PC, PA ou LA, mas nunca com Comercial.',
+};
 /** Grau de Sangue — opções da lista suspensa. */
 const GRAU_SANGUE_OPTS = [
   'Puro',
@@ -122,6 +132,9 @@ const PadraoRacialField: React.FC<{
 }> = ({ value, ceip, onChange, size = 'md' }) => {
   const box = 'h-4 w-4 rounded border-gray-300 text-[#16a34a] focus:ring-[#16a34a] disabled:opacity-40';
   const txt = size === 'sm' ? 'text-[13px]' : 'text-sm';
+  const labelCls = `group relative flex items-center gap-2 ${txt} font-semibold text-gray-700 cursor-pointer select-none`;
+  const tipCls =
+    'pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-72 rounded-lg bg-[#0F172A] px-3 py-2 text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100';
 
   const toggle = (c: string) => {
     if (value === c) {
@@ -145,29 +158,26 @@ const PadraoRacialField: React.FC<{
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
       {CLASSIFICACOES.map((c) => (
-        <label
-          key={c}
-          className={`flex items-center gap-2 ${txt} font-semibold text-gray-700 cursor-pointer select-none`}
-        >
+        <label key={c} className={labelCls}>
           <input
             type="checkbox"
             checked={value === c}
             onChange={() => toggle(c)}
             className={box}
           />
-          {c}
+          <span className="border-b border-dotted border-gray-300">{c}</span>
+          <span role="tooltip" className={tipCls}>{PADRAO_RACIAL_INFO[c]}</span>
         </label>
       ))}
-      <label
-        className={`flex items-center gap-2 ${txt} font-semibold text-gray-700 cursor-pointer select-none`}
-      >
+      <label className={labelCls}>
         <input
           type="checkbox"
           checked={ceip}
           onChange={(e) => toggleCeip(e.target.checked)}
           className={box}
         />
-        CEIP
+        <span className="border-b border-dotted border-gray-300">CEIP</span>
+        <span role="tooltip" className={tipCls}>{PADRAO_RACIAL_INFO.CEIP}</span>
       </label>
     </div>
   );
@@ -741,7 +751,7 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
               onChange={(v, c) => aplicarPadraoRacial(v, c, setClassificacao, setCeip, setGrauSangue)}
             />
             <p className="mt-1.5 text-[11px] text-gray-400">
-              Selecione apenas um padrão racial (PO, PC, LA ou Comercial). O CEIP pode ser marcado sozinho ou junto de PO, PC ou LA, mas nunca com Comercial.
+              Selecione apenas um padrão racial (PO, PC, PA, LA ou Comercial). O CEIP pode ser marcado sozinho ou junto de PO, PC, PA ou LA, mas nunca com Comercial. Passe o mouse sobre cada opção para ver o significado.
             </p>
           </div>
 

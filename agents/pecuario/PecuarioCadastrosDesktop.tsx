@@ -231,6 +231,7 @@ const CadastroTitle: React.FC<{ entity: string; theme?: 'light' | 'dark' }> = ({
 interface PecuarioCadastrosDesktopProps {
   onSelectEstoquePartida: () => void;
   onSelectMapao?: () => void;
+  onSelectAreas?: () => void;
   onSelectAnimalCategories?: () => void;
   onSelectAnimalBreeds?: () => void;
   onSelectPadraoRacial?: () => void;
@@ -241,6 +242,7 @@ interface PecuarioCadastrosDesktopProps {
   onSelectLotes?: () => void;
   onSelectPessoas?: () => void;
   onSelectFichaAnimal?: () => void;
+  onSelectPropriedades?: () => void;
   theme?: 'light' | 'dark';
   /** Aba solicitada externamente (ex.: "Ver todos os cadastros" no sidebar). */
   initialTab?: CadastroTab;
@@ -251,6 +253,7 @@ interface PecuarioCadastrosDesktopProps {
 const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectEstoquePartida,
   onSelectMapao,
+  onSelectAreas,
   onSelectAnimalCategories,
   onSelectAnimalBreeds,
   onSelectPadraoRacial,
@@ -261,10 +264,12 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectLotes,
   onSelectPessoas,
   onSelectFichaAnimal,
+  onSelectPropriedades,
   theme = 'light',
   initialTab,
   tabNonce,
 }) => {
+
   const isDark = theme === 'dark';
   const { favorites, recents, isFavorite, toggleFavorite, recordRecent } = useCadastroFavorites();
   const [activeTab, setActiveTab] = useState<CadastroTab>(initialTab ?? 'favoritos');
@@ -406,6 +411,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
           },
         ]
       : []),
+    ...(onSelectAreas
+      ? [
+          {
+            id: 'areas',
+            label: 'Cadastro de Áreas',
+            title: <CadastroTitle entity="Áreas" theme={theme} />,
+            description: 'Desenhe ou importe (KMZ/KML) o perímetro da propriedade em camadas: Fazenda › Retiros › Setores › Locais.',
+            onClick: onSelectAreas,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Áreas define o território da propriedade em um mapa interativo, organizado em quatro camadas hierárquicas encaixadas: Fazenda › Retiros › Setores › Locais. Essa hierarquia geográfica é a base de localização de todo o sistema — lotes, animais e movimentações "moram" em um Local que pertence a um Setor, Retiro e Fazenda.',
+              steps: [
+                {
+                  title: 'Escolher a Camada',
+                  desc: 'Selecione o nível (Fazenda, Retiro, Setor ou Local) no seletor do mapa. A camada ativa filtra o mapa e define o nível do que você vai desenhar ou importar.',
+                },
+                {
+                  title: 'Desenhar ou Importar',
+                  desc: 'Use "Desenhar" para marcar o polígono direto no mapa ou "Importar KMZ/KML" para trazer áreas de um arquivo. O sistema calcula a área em hectares e sugere o vínculo hierárquico pela posição.',
+                },
+                {
+                  title: 'Organizar as Camadas',
+                  desc: 'No painel à direita, navegue por Fazenda › Retiros › Setores › Locais, ajuste nomes/vínculos, mostre/oculte e centralize cada área no mapa.',
+                },
+              ],
+              proTip: 'Comece sempre pelo perímetro da Fazenda. Retiros e Setores são opcionais ("quando houver"); o Local é onde o gado fica e deve sempre existir.',
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As áreas cadastradas servem de base de localização para lotes, animais e movimentações.',
+              impact: 'A hierarquia geográfica garante consistência na localização do rebanho em todo o sistema.',
+              actionLabel: 'Abrir Cadastro de Áreas',
+            },
+          },
+        ]
+      : []),
     ...(onSelectAnimalCategories
       ? [
           {
@@ -486,12 +528,12 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
             id: 'padrao-racial',
             label: 'Padrão Racial e Grau de Sangue',
             title: <CadastroTitle entity="Padrão Racial e Grau de Sangue" theme={theme} />,
-            description: 'Cadastre os padrões raciais (PO, PC, LA, CEIP, Comercial) usados na classificação genealógica do rebanho.',
+            description: 'Cadastre os padrões raciais (PO, PC, PA, LA, CEIP, Comercial) usados na classificação genealógica do rebanho.',
             onClick: onSelectPadraoRacial,
             active: true,
             alertColor: 'green' as const,
             instructions: {
-              intro: 'O Cadastro de Padrão Racial e Grau de Sangue centraliza as classificações genealógicas do rebanho. Para cada registro você define o padrão racial (PO, PC, LA ou Comercial) e, quando aplicável, o CEIP. Os padrões aqui cadastrados ficam disponíveis para seleção nas telas de lançamento, garantindo padronização da informação em todo o sistema.',
+              intro: 'O Cadastro de Padrão Racial e Grau de Sangue centraliza as classificações genealógicas do rebanho. Para cada registro você define o padrão racial (PO, PC, PA, LA ou Comercial) e, quando aplicável, o CEIP. Os padrões aqui cadastrados ficam disponíveis para seleção nas telas de lançamento, garantindo padronização da informação em todo o sistema.',
               steps: [
                 {
                   title: 'Cadastrar Padrão Racial',
@@ -499,14 +541,14 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
                 },
                 {
                   title: 'Definir o Padrão Racial',
-                  desc: 'Selecione apenas um padrão entre PO, PC, LA e Comercial. O CEIP pode ser marcado em conjunto com PO, PC ou LA.',
+                  desc: 'Selecione apenas um padrão entre PO, PC, PA, LA e Comercial. O CEIP pode ser marcado em conjunto com PO, PC, PA ou LA.',
                 },
                 {
                   title: 'Ordenar e Ativar',
                   desc: 'Arraste os registros para ordená-los e mantenha ativos apenas os padrões em uso. Registros inativos deixam de aparecer nos lançamentos sem perder o histórico.',
                 },
               ],
-              proTip: 'O padrão racial indica a classificação genealógica do animal. Use o CEIP apenas em conjunto com animais PO, PC ou LA, conforme a certificação.'
+              proTip: 'O padrão racial indica a classificação genealógica do animal. Use o CEIP apenas em conjunto com animais PO, PC, PA ou LA, conforme a certificação.'
             },
             alert: {
               status: 'Módulo Regularizado',
@@ -735,6 +777,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'O cadastro de pessoas está sincronizado com os perfis de acesso e fazendas do ambiente.',
               impact: 'Garante que os colaboradores e parceiros cadastrados tenham acesso e visibilidade corretos no sistema.',
               actionLabel: 'Gerenciar Pessoas',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectPropriedades
+      ? [
+          {
+            id: 'propriedades',
+            label: 'Cadastro de Fazendas',
+            title: <CadastroTitle entity="Cadastro de Fazendas" theme={theme} />,
+            description: 'Cadastre e gerencie propriedades rurais, dados da fazenda e configurações por organização.',
+            onClick: onSelectPropriedades,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Fazendas permite gerenciar as propriedades rurais, dados da fazenda e configurações por organização. É a base onde as safras, locais e animais estão vinculados.',
+              steps: [
+                {
+                  title: 'Cadastrar Propriedade',
+                  desc: 'Informe o Nome da Fazenda, Sistema de Produção, Localização (Cidade e Estado) e a Área Total.',
+                },
+                {
+                  title: 'Definir Sub-áreas',
+                  desc: 'Insira os dados de pastagem, agricultura e reserva legal. O sistema valida se a soma das sub-áreas fecha com a área total.',
+                },
+                {
+                  title: 'Associar Valores',
+                  desc: 'Configure o valor da propriedade e do rebanho para os relatórios de avaliação financeira e patrimonial.',
+                },
+              ],
+              proTip: 'A soma das sub-áreas deve fechar com a área total cadastrada para garantir relatórios patrimoniais precisos.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As propriedades cadastradas servem de base para a divisão geográfica de locais e pastos.',
+              impact: 'Permite o controle e a divisão correta das áreas da propriedade zootécnica.',
+              actionLabel: 'Gerenciar Fazendas',
             }
           },
         ]

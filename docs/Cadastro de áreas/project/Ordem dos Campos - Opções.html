@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de ordem dos campos — opções</title>
+<style>
+  :root{
+    --blue:#2563eb; --blue-soft:#eef4fe; --line:#e3e7ee; --text:#1f2733; --muted:#8a93a3;
+    --bg:#f4f6f9; --green:#15803d; --green-soft:#e9f7ee; --green-line:#bfe6cd;
+    --amber:#b7791f; --amber-soft:#fdf4e3; --amber-line:#f0dcae;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);padding:48px 32px 90px;-webkit-font-smoothing:antialiased;}
+  .head{max-width:1240px;margin:0 auto 34px;}
+  .head h1{font-size:26px;font-weight:700;letter-spacing:-.01em;}
+  .head p{font-size:14.5px;color:var(--muted);margin-top:8px;line-height:1.55;max-width:720px;}
+  .grid{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:22px;align-items:start;}
+  .opt{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;display:flex;flex-direction:column;}
+  .opt-tag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--blue);background:var(--blue-soft);border-radius:999px;padding:4px 11px;align-self:flex-start;}
+  .opt h2{font-size:16px;font-weight:700;margin:14px 0 4px;}
+  .opt .desc{font-size:13px;color:var(--muted);line-height:1.5;min-height:54px;}
+  .demo{margin-top:18px;background:#fbfcfe;border:1px dashed var(--line);border-radius:12px;padding:16px;}
+  .pros{margin-top:16px;font-size:12.5px;color:#5a6473;line-height:1.6;}
+  .pros b{color:var(--green);}
+
+  /* shared row look */
+  .row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13.5px;font-weight:500;}
+  .row + .row{margin-top:8px;}
+  .req{color:#e0524d;font-size:11px;}
+  .pos{font-variant-numeric:tabular-nums;}
+  .chipzone{margin-left:auto;font-size:11px;font-weight:600;border-radius:7px;padding:3px 9px;}
+  .z-tab{color:var(--green);background:var(--green-soft);}
+  .z-sup{color:var(--amber);background:var(--amber-soft);}
+
+  /* A: drag handle */
+  .handle{color:#b6bdc9;cursor:grab;display:inline-flex;letter-spacing:-2px;font-size:17px;line-height:1;}
+  .row.ghost{opacity:.5;border-style:dashed;}
+  .row.lift{box-shadow:0 8px 20px rgba(30,40,60,.12);border-color:var(--blue);}
+
+  /* B: arrows */
+  .arrows{margin-left:auto;display:inline-flex;flex-direction:column;gap:2px;}
+  .arrows button{border:1px solid var(--line);background:#fff;border-radius:6px;width:24px;height:17px;display:grid;place-items:center;cursor:pointer;color:#6b7280;font-size:9px;padding:0;}
+  .arrows button:hover{background:var(--blue-soft);color:var(--blue);border-color:#cdddfa;}
+  .arrows button:disabled{opacity:.35;cursor:default;}
+
+  /* C: order number */
+  .ordnum{width:42px;height:32px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:13.5px;font-weight:600;color:var(--blue);font-variant-numeric:tabular-nums;}
+
+  /* D: kanban by zone */
+  .kb{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .kbcol{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;}
+  .kbcol h4{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
+  .kbcol.sup h4{color:var(--amber);}
+  .kbcol.tab h4{color:var(--green);}
+  .kbcard{display:flex;align-items:center;gap:8px;background:#fbfcfe;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12.5px;font-weight:500;}
+  .kbcard + .kbcard{margin-top:6px;}
+  .kbcard .handle{font-size:14px;}
+  .kbnum{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;width:14px;}
+
+  /* E: live preview */
+  .prev{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .prev .pv-lbl{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .pv-field{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12.5px;display:flex;align-items:center;gap:8px;}
+  .pv-field + .pv-field{margin-top:7px;}
+  .pv-row{display:flex;gap:7px;}
+  .pv-row .pv-field{flex:1;}
+  .pv-hint{font-size:11.5px;color:var(--muted);margin-top:10px;display:flex;align-items:center;gap:6px;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--blue);}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Quem define a <em>ordem</em> dos campos</h1>
+    <p>Hoje o usuário escolhe <b>onde</b> cada campo aparece (Superior · Tabela · Adicionais · Desativado). Estas são 5 formas de também deixá-lo controlar <b>em que ordem</b> os campos aparecem dentro de cada zona.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- A: drag handle -->
+    <div class="opt">
+      <span class="opt-tag">Opção A · recomendada</span>
+      <h2>Arrastar pela alça (drag &amp; drop)</h2>
+      <div class="desc">Cada linha ganha uma alça <b>⠿</b>. O usuário arrasta a linha para cima/baixo e a posição vertical define a ordem. A forma mais natural e rápida.</div>
+      <div class="demo">
+        <div class="row"><span class="handle">⠿</span> Categoria <span class="req">✱</span> <span class="chipzone z-tab">Tabela</span></div>
+        <div class="row lift"><span class="handle">⠿</span> Sexo <span class="req">✱</span> <span class="chipzone z-tab">Tabela</span></div>
+        <div class="row ghost"><span class="handle">⠿</span> Porte <span class="chipzone z-tab">Tabela</span></div>
+        <div class="row"><span class="handle">⠿</span> ID Eletrônica <span class="chipzone z-tab">Tabela</span></div>
+      </div>
+      <div class="pros"><b>+</b> Intuitivo · rápido para listas longas · padrão moderno</div>
+    </div>
+
+    <!-- B: arrows -->
+    <div class="opt">
+      <span class="opt-tag">Opção B</span>
+      <h2>Setas mover ↑ ↓ por linha</h2>
+      <div class="desc">Botões de subir/descer em cada linha. Sem arrastar — bom para uso no campo, em celular, ou quando precisão importa mais que velocidade.</div>
+      <div class="demo">
+        <div class="row">Categoria <span class="req">✱</span> <span class="arrows"><button disabled>▲</button><button>▼</button></span></div>
+        <div class="row">Sexo <span class="req">✱</span> <span class="arrows"><button>▲</button><button>▼</button></span></div>
+        <div class="row">Porte <span class="arrows"><button>▲</button><button disabled>▼</button></span></div>
+      </div>
+      <div class="pros"><b>+</b> Acessível · funciona no toque · zero risco de “derrubar” errado</div>
+    </div>
+
+    <!-- C: order number -->
+    <div class="opt">
+      <span class="opt-tag">Opção C</span>
+      <h2>Número de ordem editável</h2>
+      <div class="desc">Um campo de posição (1, 2, 3…) por linha. O usuário digita a ordem; a lista se reorganiza. Explícito, porém mais manual.</div>
+      <div class="demo">
+        <div class="row"><input class="ordnum" value="1"> Categoria <span class="req">✱</span></div>
+        <div class="row"><input class="ordnum" value="2"> Sexo <span class="req">✱</span></div>
+        <div class="row"><input class="ordnum" value="3"> Porte</div>
+      </div>
+      <div class="pros"><b>+</b> Preciso para muitas linhas · bom para quem pensa “por número”</div>
+    </div>
+
+    <!-- D: kanban by zone -->
+    <div class="opt">
+      <span class="opt-tag">Opção D</span>
+      <h2>Colunas por zona (arrastável)</h2>
+      <div class="desc">Em vez da matriz, cada zona vira uma coluna. Arrastar o cartão entre colunas muda <i>onde</i>; a posição na coluna muda <i>a ordem</i> — tudo num gesto.</div>
+      <div class="demo">
+        <div class="kb">
+          <div class="kbcol sup"><h4>▦ Superior</h4>
+            <div class="kbcard"><span class="kbnum">1</span><span class="handle">⠿</span> Data</div>
+            <div class="kbcard"><span class="kbnum">2</span><span class="handle">⠿</span> Raça</div>
+            <div class="kbcard"><span class="kbnum">3</span><span class="handle">⠿</span> Lote</div>
+          </div>
+          <div class="kbcol tab"><h4>▤ Tabela</h4>
+            <div class="kbcard"><span class="kbnum">1</span><span class="handle">⠿</span> Categoria</div>
+            <div class="kbcard"><span class="kbnum">2</span><span class="handle">⠿</span> Sexo</div>
+            <div class="kbcard"><span class="kbnum">3</span><span class="handle">⠿</span> Porte</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Onde + ordem num só lugar · visão clara de cada zona</div>
+    </div>
+
+    <!-- E: live preview -->
+    <div class="opt">
+      <span class="opt-tag">Opção E</span>
+      <h2>Pré-visualização editável (WYSIWYG)</h2>
+      <div class="desc">A configuração mostra um espelho do formulário real. O usuário arrasta os campos no próprio preview — vê exatamente como vai ficar a tela de lançamento.</div>
+      <div class="demo">
+        <div class="prev">
+          <div class="pv-lbl">Linha superior</div>
+          <div class="pv-row">
+            <div class="pv-field"><span class="handle">⠿</span> Data</div>
+            <div class="pv-field"><span class="handle">⠿</span> Raça</div>
+          </div>
+          <div class="pv-lbl" style="margin-top:12px">Tabela de lançamento</div>
+          <div class="pv-field"><span class="handle">⠿</span> Categoria</div>
+          <div class="pv-field"><span class="handle">⠿</span> Sexo</div>
+          <div class="pv-hint"><span class="dot"></span> Arraste para reordenar — é assim que a tela vai aparecer</div>
+        </div>
+      </div>
+      <div class="pros"><b>+</b> Zero abstração · o usuário vê o resultado · ótimo para leigos</div>
+    </div>
+
+  </div>
+</body>
+</html>

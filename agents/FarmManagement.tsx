@@ -149,6 +149,7 @@ const FarmCard: React.FC<FarmCardProps> = ({
 interface FarmManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   isInttegra?: boolean;
+  onBack?: () => void;
 }
 
 // Estados brasileiros
@@ -182,7 +183,7 @@ const BRAZILIAN_STATES = [
   'Tocantins',
 ];
 
-const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = false }) => {
+const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = false, onBack }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
   const {
@@ -1025,7 +1026,21 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
       <>
         <div className={`h-full flex flex-col p-4 md:p-6 ${isInttegra ? 'bg-[#F7F8FA] min-h-screen' : ''}`}>
           <div className="flex items-center justify-between mb-6">
-            <div>
+            <div className="flex items-center gap-3">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className={`p-2 -ml-2 rounded-lg transition-colors ${
+                    isInttegra 
+                      ? 'hover:bg-gray-200/80 text-gray-600 hover:text-gray-900' 
+                      : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-label="Voltar"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              )}
               {isInttegra ? (
                 <div className="space-y-0.5 animate-in fade-in duration-300">
                   <span className="text-[13px] font-bold text-[#22C55E] tracking-[0.08em] uppercase">

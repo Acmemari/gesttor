@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastro de Fazenda — INTTEGRA Pecuário</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="fazenda.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar"></aside>
+  <div class="main">
+    <header class="topbar"></header>
+    <main class="content fz-content">
+      <div class="fz-screen" data-screen-label="Cadastro de Fazenda">
+        <div class="fz-head">
+          <div class="ph-text">
+            <h1 class="page-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg>Cadastro de Fazenda</h1>
+            <p class="page-sub">Desenhe o perímetro direto no mapa ou importe um <b>KMZ/KML</b>, organizando a propriedade em camadas — <b>Fazenda › Retiros › Setores › Locais</b>. Cada nível pode ser controlado de forma independente.</p>
+          </div>
+          <div class="ph-actions">
+            <button class="btn">Cancelar</button>
+            <button class="btn primary" onclick="toast({title:'Cadastro salvo',msg:'Perímetro e camadas da Fazenda Natura 1 gravados.'})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5V4Z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg> Salvar cadastro</button>
+          </div>
+        </div>
+
+        <div class="fz-body">
+          <div class="fz-map-wrap">
+            <div id="fz-map"></div>
+
+            <div class="fz-tools">
+              <div class="fz-card fz-tools-row">
+                <span class="fz-tlabel">Camada</span>
+                <div class="fz-seg" id="fz-seg">
+                  <button data-lvl="fazenda"><span class="sw" style="background:#16a34a"></span>Fazenda</button>
+                  <button data-lvl="retiro"><span class="sw" style="background:#2563eb"></span>Retiro</button>
+                  <button data-lvl="setor"><span class="sw" style="background:#d97706"></span>Setor</button>
+                  <button data-lvl="local"><span class="sw" style="background:#0d9488"></span>Local</button>
+                </div>
+              </div>
+              <div class="fz-card fz-tools-row">
+                <button class="fz-tbtn primary" id="fz-draw-btn" onclick="startDraw()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m14.5 5.5 4 4"/></svg>Desenhar</button>
+                <button class="fz-tbtn" onclick="pickFile()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Importar KMZ/KML</button>
+                <button class="fz-tbtn" id="fz-editshape-btn" onclick="toggleEditShape()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>Editar forma</button>
+              </div>
+              <div class="fz-card fz-hintbar" id="fz-hint"></div>
+            </div>
+
+            <div class="fz-card fz-basemap">
+              <button data-bm="sat" class="on" onclick="setBasemap('sat')">Satélite</button>
+              <button data-bm="osm" onclick="setBasemap('osm')">Mapa</button>
+            </div>
+
+            <div class="fz-card fz-legend">
+              <div class="lg-row"><span class="lg-sw" style="background:#16a34a"></span>Fazenda</div>
+              <div class="lg-row"><span class="lg-sw" style="background:#2563eb"></span>Retiro</div>
+              <div class="lg-row"><span class="lg-sw" style="background:#d97706"></span>Setor</div>
+              <div class="lg-row"><span class="lg-sw" style="background:#0d9488"></span>Local</div>
+            </div>
+          </div>
+
+          <aside class="fz-panel">
+            <div class="fz-panel-head">
+              <div class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>Camadas da propriedade</div>
+              <div class="s">Clique para abrir o próximo nível e destacar no mapa · use o olho para mostrar/ocultar.</div>
+            </div>
+            <div class="fz-panel-scroll" id="fz-panel-scroll"></div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<input type="file" id="fz-file" accept=".kml,.kmz" style="display:none" onchange="onFile(this)">
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#16a34a"/>
+    <g fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round">
+      <path d="M38 26 26 32v42l12-6 24 8 12-6V28L62 34 38 26Z"/>
+      <path d="M38 26v42M62 34v40"/>
+    </g>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="icons.js"></script>
+<script src="fazenda-seed.js"></script>
+
+<script>
+/* ---- monta sidebar + topbar do INTTEGRA ---- */
+(function(){
+  const NAV=[
+    {label:'CADASTROS', items:[
+      {ic:'categoria', t:'Categoria animal'},
+      {ic:'local', t:'Local'},
+      {ic:'lotes', t:'Lotes'},
+      {ic:'estoquePartida', t:'Estoque de partida'},
+      {ic:'mapa', t:'Cadastro de Fazenda', active:true},
+      {ic:'ficha', t:'Ficha Animal'},
+    ]},
+    {label:'MOVIMENTAÇÃO', items:[
+      {ic:'nascimento', t:'Nascimento'},
+      {ic:'compra', t:'Compra'},
+      {ic:'venda', t:'Venda'},
+      {ic:'morte', t:'Morte'},
+      {ic:'gestaoLotes', t:'Gestão de Lotes'},
+      {ic:'pesagens', t:'Pesagens'},
+      {ic:'reproducao', t:'Reprodução'},
+      {ic:'mesa', t:'Mesa de Conciliação', badge:3},
+    ]},
+    {label:'RELATÓRIOS', items:[
+      {ic:'relMov', t:'Relatório por movimento'},
+      {ic:'relPeso', t:'Ganho de peso'},
+      {ic:'relReprod', t:'Reprodutivo'},
+    ]},
+  ];
+  const nav = NAV.map(g=>`<div class="sb-group-label">${g.label}</div>`+g.items.map(it=>
+    `<button class="sb-item ${it.active?'active':''}">${icon(it.ic)}<span class="label">${it.t}</span>${it.badge?`<span class="badge-count">${it.badge}</span>`:''}</button>`
+  ).join('')).join('');
+  document.querySelector('.sidebar').innerHTML=`
+    <div class="sb-brand">
+      <span class="sb-logo">${icon('cow')}</span>
+      <span class="name">Gesttor</span>
+      <button class="sb-collapse" onclick="document.querySelector('.app').classList.toggle('collapsed')">${icon('collapse')}</button>
+    </div>
+    <nav class="sb-nav">${nav}</nav>
+    <div class="sb-user">
+      <span class="sb-avatar">A</span>
+      <div class="u-meta"><div class="u-name">Antonio C Admin</div><div class="u-role">Administrador</div><div class="u-ver">V1.5.89 SAAS</div></div>
+    </div>`;
+  document.querySelector('.topbar').innerHTML=`
+    <div class="tb-context">
+      <button class="tb-drop"><span class="sub">Analista</span> Antonio Chaker ${icon('chevDown')}</button>
+      <span class="tb-sep">/</span>
+      <button class="tb-drop"><span class="sub">Cliente</span> Reunidas Floresta ${icon('chevDown')}</button>
+      <span class="tb-sep">/</span>
+      <button class="tb-drop"><span class="sub">Fazenda</span> Natura 1 ${icon('chevDown')}</button>
+    </div>
+    <div class="tb-right"><button class="tb-support">${icon('help')} Suporte<span class="dot"></span></button></div>`;
+  // segmento de camada
+  document.querySelectorAll('#fz-seg button').forEach(b=>b.addEventListener('click',()=>setActive(b.dataset.lvl)));
+})();
+</script>
+<script src="fazenda-app.js"></script>
+</body>
+</html>

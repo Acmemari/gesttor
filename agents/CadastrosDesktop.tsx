@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, MapPin } from 'lucide-react';
+import { Users, UserCircle, ClipboardList, TrendingUp, Settings2, Briefcase, MapPin } from 'lucide-react';
 
 interface CadastroCardProps {
   title: React.ReactNode;
@@ -38,7 +38,7 @@ const ProgramWorkIcon: React.FC = () => (
 
 interface CadastrosDesktopProps {
   onSelectProjeto?: () => void;
-  onSelectFazendas: () => void;
+  onSelectFazendas?: () => void;
   onSelectLocais: () => void;
   onSelectClientes?: () => void;
   onSelectPessoas: () => void;
@@ -50,7 +50,6 @@ interface CadastrosDesktopProps {
 
 const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
   onSelectProjeto,
-  onSelectFazendas,
   onSelectLocais,
   onSelectClientes,
   onSelectPessoas,
@@ -71,13 +70,7 @@ const CadastrosDesktop: React.FC<CadastrosDesktopProps> = ({
           },
         ]
       : []),
-    {
-      id: 'fazendas',
-      title: <CadastroTitle entity="Fazendas" />,
-      description: 'Gerencie propriedades rurais, dados da fazenda e configurações por organização.',
-      icon: <Building2 size={24} />,
-      onClick: onSelectFazendas,
-    },
+
     {
       id: 'locais',
       title: <CadastroTitle entity="Locais" />,

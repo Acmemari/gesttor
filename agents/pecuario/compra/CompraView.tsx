@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Save, Info, List, Tags, Receipt, DollarSign, Tag, Cpu, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Save, Info, List, Tags, Receipt, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
 import IconCardButton from '../../../components/IconCardButton';
@@ -14,10 +14,19 @@ import {
   deleteMovimento as apiDeleteMovimento,
   type CompraMovimentoRow,
 } from '../../../lib/api/comprasClient';
+import { getFieldConfig, saveFieldConfig } from '../../../lib/api/movimentoFieldConfigClient';
 import CompraCategoriaGrid from './CompraCategoriaGrid';
 import CompraLancamentosRecentes from './CompraLancamentosRecentes';
+import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
+import CamposConfigModal from '../fichas/CamposConfigModal';
+import FullscreenLancamento from '../fichas/FullscreenLancamento';
+import { useFieldConfig } from '../fichas/useFieldConfig';
+import { buildEntryValues } from '../fichas/fieldConfig';
+import { proximoApelido } from '../fichas/util';
+import { COMPRA_FIELDS } from './fields';
 import { todayISO, formatDateBR, safraDaData, parseBRL, computeCompra, fmtNum, fmtBRL, numToInput } from './util';
 import type { LookupItem, MovimentoCompra, CompraCat, CompraFicha } from './types';
+import type { FichaDetalhe } from '../fichas/types';
 
 const PANEL_MAX_W = '100%';
 
@@ -121,12 +130,11 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const [valorArrobaStr, setValorArrobaStr] = useState('');
   const [itens, setItens] = useState<CompraCat[]>([]);
 
-  const [detalhe, setDetalhe] = useState<CompraFicha[]>([]);
-  const [entIdManejo, setEntIdManejo] = useState('');
-  const [entIdEletronico, setEntIdEletronico] = useState('');
-  const [entCategoria, setEntCategoria] = useState('');
-  const [entPesoVivoStr, setEntPesoVivoStr] = useState('');
-  const [entValorArrobaStr, setEntValorArrobaStr] = useState('');
+  // Detalhamento por animal (painel "Defina seus campos"): valores keyed por field id.
+  const [detalhe, setDetalhe] = useState<FichaDetalhe[]>([]);
+  const [entryValues, setEntryValues] = useState<Record<string, string>>(() => buildEntryValues(COMPRA_FIELDS, today));
+  const [dadosOpen, setDadosOpen] = useState(false);
+  const [lrExpanded, setLrExpanded] = useState(false);
 
   const [valoresAberto, setValoresAberto] = useState(false);
   const [obsAberto, setObsAberto] = useState(false);
@@ -134,6 +142,15 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const [movimentos, setMovimentos] = useState<MovimentoCompra[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
+
+  // Configuração de campos do painel (persistida por organização, tipo 'compra').
+  const fieldCfg = useFieldConfig({
+    registry: COMPRA_FIELDS,
+    organizationId,
+    load: (id) => getFieldConfig(id, 'compra'),
+    save: (id, cfg) => saveFieldConfig(id, 'compra', cfg),
+    onError: (m) => onToast?.(m, 'error'),
+  });
 
   useEffect(() => {
     if (!organizationId) {
@@ -290,10 +307,14 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
 
   const removeCat = useCallback((id: number) => setItens((prev) => prev.filter((x) => x.id !== id)), []);
 
+  const setEntryValue = useCallback((fieldId: string, value: string) => {
+    setEntryValues((prev) => ({ ...prev, [fieldId]: value }));
+  }, []);
+
   const addDetalhe = useCallback(() => {
-    const idManejo = entIdManejo.trim();
-    const idEletronico = entIdEletronico.trim();
-    if (!entCategoria) {
+    const idManejo = (entryValues.idManejo || '').trim();
+    const idEletronico = (entryValues.idEletronico || '').trim();
+    if (!entryValues.categoria) {
       onToast?.('Selecione a categoria do animal', 'error');
       return;
     }
@@ -301,26 +322,31 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
       onToast?.('Informe o ID de Manejo ou o ID Eletrônico', 'error');
       return;
     }
-    setDetalhe((prev) => [
-      ...prev,
-      {
-        id: nextFichaId(),
-        idManejo,
-        idEletronico,
-        catId: entCategoria,
-        pesoVivoKg: parsePesoVivo(entPesoVivoStr),
-        pesoMortoKg: null,
-        valorArroba: parseBRL(entValorArrobaStr) ?? parseBRL(valorArrobaStr),
-      },
-    ]);
-    setEntIdManejo('');
-    setEntIdEletronico('');
-    setEntPesoVivoStr('');
-    setEntValorArrobaStr('');
+    const snapshot = { ...entryValues, idManejo, idEletronico };
+    setDetalhe((prev) => [...prev, { id: nextFichaId(), values: snapshot }]);
+    // Próxima entrada: preserva os campos do bloco "repete em todos" (top), reseta o resto.
+    setEntryValues((prev) => {
+      const reset = buildEntryValues(COMPRA_FIELDS, today);
+      for (const f of COMPRA_FIELDS) {
+        if (fieldCfg.places[f.id] === 'top') reset[f.id] = prev[f.id] ?? reset[f.id];
+      }
+      reset.idManejo = fieldCfg.autonum ? proximoApelido(idManejo) : '';
+      return reset;
+    });
     onToast?.(`Animal adicionado · ${idManejo || idEletronico}`, 'success');
-  }, [entCategoria, entIdManejo, entIdEletronico, entPesoVivoStr, entValorArrobaStr, valorArrobaStr, onToast]);
+  }, [entryValues, fieldCfg.places, fieldCfg.autonum, today, onToast]);
 
   const removeDetalhe = useCallback((id: number) => setDetalhe((prev) => prev.filter((d) => d.id !== id)), []);
+
+  // Importação em massa: linhas conformes da planilha viram animais detalhados.
+  const importDetalhe = useCallback(
+    (rows: Record<string, string>[]) => {
+      if (!rows.length) return;
+      setDetalhe((prev) => [...prev, ...rows.map((values) => ({ id: nextFichaId(), values }))]);
+      onToast?.(`${rows.length} ${rows.length === 1 ? 'animal importado' : 'animais importados'} da planilha`, 'success');
+    },
+    [onToast],
+  );
 
   const totalComId = detalhe.length;
   const totalGeral = itens.reduce((a, it) => a + (it.qtd || 0), 0) + totalComId;
@@ -343,16 +369,14 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
     setValorArrobaStr('');
     setDescontoStr('');
     setDetalhe([]);
-    setEntIdManejo('');
-    setEntIdEletronico('');
-    setEntCategoria('');
-    setEntPesoVivoStr('');
-    setEntValorArrobaStr('');
+    setEntryValues(buildEntryValues(COMPRA_FIELDS, today));
+    setDadosOpen(false);
+    setLrExpanded(false);
     setModoIndividual(false);
     setObs('');
     setCliente(null);
     setEditingId(null);
-  }, []);
+  }, [today]);
 
   const salvar = useCallback(async () => {
     if (!organizationId) {
@@ -411,12 +435,12 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
         desconto: it.desconto,
       })),
       fichas: detalhe.map((d) => ({
-        categoriaId: d.catId || null,
-        idManejo: d.idManejo || null,
-        idEletronico: d.idEletronico || null,
-        pesoVivoKg: d.pesoVivoKg,
+        categoriaId: d.values.categoria || null,
+        idManejo: d.values.idManejo || null,
+        idEletronico: d.values.idEletronico || null,
+        pesoVivoKg: parsePesoVivo(d.values.pesoVivo || ''),
         pesoMortoKg: null,
-        valorArroba: d.valorArroba,
+        valorArroba: parseBRL(d.values.valor || '') ?? parseBRL(valorArrobaStr),
       })),
     };
 
@@ -453,16 +477,26 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
       setObs(m.obs || '');
       setDescontoStr(numToInput(m.desconto));
       setItens(m.itens.map((it) => ({ ...it, id: nextCatId(), catNome: catName(it.catId) })));
-      setDetalhe(m.fichas.map((f) => ({ ...f, id: nextFichaId() })));
+      setDetalhe(
+        m.fichas.map((f) => ({
+          id: nextFichaId(),
+          values: {
+            idManejo: f.idManejo || '',
+            idEletronico: f.idEletronico || '',
+            categoria: f.catId || '',
+            pesoVivo: numToInput(f.pesoVivoKg),
+            valor: numToInput(f.valorArroba),
+            data: m.data,
+          },
+        })),
+      );
       setCatSel('');
       setQtdStr('');
       setPesoVivoStr('');
       setValorArrobaStr('');
-      setEntIdManejo('');
-      setEntIdEletronico('');
-      setEntCategoria('');
-      setEntPesoVivoStr('');
-      setEntValorArrobaStr('');
+      setEntryValues(buildEntryValues(COMPRA_FIELDS, m.data));
+      setDadosOpen(false);
+      setLrExpanded(false);
       setModoIndividual(m.fichas.length > 0);
       setEditingId(movId);
       setAba('lancar');
@@ -507,6 +541,114 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
     </div>
   );
 
+  // Abas (Lançamentos / Registros): reusado no cabeçalho normal e no da tela cheia.
+  const abasToggle = (
+    <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
+      <button
+        type="button"
+        onClick={() => setAba('lancar')}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <Plus size={16} /> Lançamentos
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setLrExpanded(false);
+          setAba('historico');
+        }}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <List size={16} /> Registros
+        {movimentos.length ? (
+          <span
+            className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
+              aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {movimentos.length}
+          </span>
+        ) : null}
+      </button>
+    </div>
+  );
+
+  // Linha compacta de dados básicos (cabeçalho da tela cheia).
+  const compactHeader = (
+    <>
+      <div className="min-w-0" style={{ flex: '0 0 150px' }}>
+        <label className={labelCls}>Data</label>
+        <input type="date" className={`${inputCls} mt-1`} value={data} onChange={(e) => setData(e.target.value)} />
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 180px' }}>
+        <label className={labelCls}>Proprietário</label>
+        <PessoaSelector
+          organizationId={organizationId}
+          value={proprietario}
+          onChange={setProprietario}
+          filterTipo="proprietario"
+          placeholder="Selecionar proprietário..."
+          className="mt-1 h-10 w-full"
+        />
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 180px' }}>
+        <label className={labelCls}>Fornecedor <span className="text-red-500">*</span></label>
+        <PessoaSelector
+          organizationId={organizationId}
+          value={cliente}
+          onChange={setCliente}
+          filterTipo="fornecedor"
+          placeholder="Selecionar fornecedor..."
+          className="mt-1 h-10 w-full"
+        />
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 140px' }}>
+        <label className={labelCls}>Fazenda</label>
+        <select className={`${inputCls} mt-1`} value={fazenda} onChange={(e) => setFazenda(e.target.value)}>
+          <option value="">—</option>
+          {farms.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+
+  // Painel "Defina seus campos" (detalhamento por animal). Mesmo elemento na
+  // visão normal e na tela cheia, para não duplicar a lista de props.
+  const painelEl = modoIndividual ? (
+    <DefinaCamposPanel
+      fieldById={fieldCfg.fieldById}
+      order={fieldCfg.order}
+      places={fieldCfg.places}
+      categories={categories}
+      lotes={[]}
+      values={entryValues}
+      onValueChange={setEntryValue}
+      detalhe={detalhe}
+      onAdd={addDetalhe}
+      onRemoveDetalhe={removeDetalhe}
+      onOpenConfig={() => fieldCfg.setConfigOpen(true)}
+      onToast={onToast}
+      onImport={importDetalhe}
+      onClose={() => {
+        setModoIndividual(false);
+        setLrExpanded(false);
+      }}
+      expanded={lrExpanded}
+      onToggleExpand={() => setLrExpanded((p) => !p)}
+      filenamePrefix="modelo-compra"
+      dadosOpen={dadosOpen}
+      onToggleDados={() => setDadosOpen((p) => !p)}
+    />
+  ) : null;
+
   return (
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -515,38 +657,12 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
           <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Compras</h1>
         </div>
 
-        <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setAba('lancar')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Plus size={16} /> Lançamentos
-          </button>
-          <button
-            type="button"
-            onClick={() => setAba('historico')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <List size={16} /> Registros
-            {movimentos.length ? (
-              <span
-                className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
-                  aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {movimentos.length}
-              </span>
-            ) : null}
-          </button>
-        </div>
+        {abasToggle}
       </div>
 
       {aba === 'lancar' ? (
+        <>
+        {!lrExpanded ? (
         <div className="@container" style={{ maxWidth: PANEL_MAX_W }}>
           <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-gray-200 bg-white @min-[1180px]:grid-cols-[minmax(0,1fr)_400px]">
             <div className="p-5">
@@ -606,13 +722,13 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
                   />
                 </div>
                 <div className="min-w-0" style={{ flex: '1 1 150px' }}>
-                  <label className={labelCls}>Cliente <span className="text-red-500">*</span></label>
+                  <label className={labelCls}>Fornecedor <span className="text-red-500">*</span></label>
                   <PessoaSelector
                     organizationId={organizationId}
                     value={cliente}
                     onChange={setCliente}
-                    filterTipo="cliente"
-                    placeholder="Selecionar cliente..."
+                    filterTipo="fornecedor"
+                    placeholder="Selecionar fornecedor..."
                     className="mt-1.5 h-10 w-full"
                   />
                 </div>
@@ -851,123 +967,26 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
           </div>
 
           {modoIndividual ? (
-            <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
-              <h3 className="mb-1 flex items-center gap-2 text-[13px] font-bold text-gray-700">
-                <BrincoBovinoIcon size={18} className="text-[#16a34a]" /> Compra individual por ID
-              </h3>
-              <p className="mb-3 text-[11.5px] text-gray-400">
-                O Valor/kg de cada animal já vem preenchido com o valor do lote (acima) — edite se necessário.
-              </p>
-
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-0" style={{ flex: '1 1 130px' }}>
-                  <label className={`${labelCls} inline-flex items-center gap-1`}>
-                    <Tag size={13} className="text-[#16a34a]" /> ID Manejo
-                  </label>
-                  <input
-                    type="text"
-                    className={`${inputCls} mt-1.5`}
-                    placeholder="504A"
-                    value={entIdManejo}
-                    onChange={(e) => setEntIdManejo(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-0" style={{ flex: '1 1 150px' }}>
-                  <label className={`${labelCls} inline-flex items-center gap-1`}>
-                    <Cpu size={13} className="text-[#16a34a]" /> ID Eletrônico
-                  </label>
-                  <input
-                    type="text"
-                    className={`${inputCls} mt-1.5`}
-                    placeholder="982000123456789"
-                    value={entIdEletronico}
-                    onChange={(e) => setEntIdEletronico(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-0" style={{ flex: '0 0 190px' }}>
-                  <label className={labelCls}>Categoria <span className="text-red-500">*</span></label>
-                  <select className={`${inputCls} mt-1.5`} value={entCategoria} onChange={(e) => setEntCategoria(e.target.value)}>
-                    <option value="">Selecione a categoria</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ flex: '0 0 100px' }}>
-                  <label className={`${labelCls} whitespace-nowrap`}>Peso vivo <span className="text-[10px] font-medium text-gray-400">(kg)</span></label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={`${inputCls} mt-1.5`}
-                    placeholder="480"
-                    value={entPesoVivoStr}
-                    onChange={(e) => setEntPesoVivoStr(e.target.value)}
-                  />
-                </div>
-                <div style={{ flex: '0 0 110px' }}>
-                  <label className={`${labelCls} whitespace-nowrap`}>Valor/kg <span className="text-[10px] font-medium text-gray-400">(R$)</span></label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={`${inputCls} mt-1.5`}
-                    placeholder={valorArrobaStr || 'Ex.: 12,00'}
-                    value={entValorArrobaStr || valorArrobaStr}
-                    onChange={(e) => setEntValorArrobaStr(e.target.value)}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={addDetalhe}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#16a34a] px-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d]"
-                >
-                  <Plus size={16} /> add
-                </button>
-              </div>
-
-              <div className="mt-3 overflow-auto" style={{ maxHeight: 240 }}>
-                {detalhe.length ? (
-                  detalhe.map((d) => (
-                    <div
-                      key={d.id}
-                      className="flex items-center justify-between gap-2 border-t border-gray-100 py-2 text-[13px] first:border-t-0"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-gray-800">{d.idManejo || d.idEletronico || '—'}</div>
-                        <div className="truncate text-[11px] text-gray-500">
-                          {catName(d.catId)}
-                          {d.idManejo && d.idEletronico ? ` · ${d.idEletronico}` : ''}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2.5">
-                        <span className="tabular-nums text-[11px] text-gray-500">
-                          {d.pesoVivoKg != null ? `${fmtNum(d.pesoVivoKg, 0)} kg` : '—'}
-                        </span>
-                        <span className="tabular-nums text-[11px] text-[#16a34a] font-semibold">
-                          {d.valorArroba != null ? fmtBRL(d.valorArroba) : '—'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeDetalhe(d.id)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"
-                          title="Remover"
-                          aria-label="Remover"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="py-3 text-center text-[12.5px] text-gray-400">
-                    Nenhum animal detalhado — informe o ID e os pesos e clique em “add”.
-                  </p>
-                )}
-              </div>
+            <div className="mt-6" style={{ maxWidth: PANEL_MAX_W }}>
+              {painelEl}
             </div>
           ) : null}
         </div>
+        ) : null}
+
+        {/* Tela cheia do painel "Defina seus campos" (detalhamento por animal) */}
+        {modoIndividual && lrExpanded ? (
+          <FullscreenLancamento
+            icon={<Receipt size={22} className="text-[#16a34a]" />}
+            title="Compras"
+            headerRight={abasToggle}
+            compactHeader={compactHeader}
+            onClose={() => setLrExpanded(false)}
+          >
+            {painelEl}
+          </FullscreenLancamento>
+        ) : null}
+        </>
       ) : (
         <div style={{ maxWidth: PANEL_MAX_W }}>
           <div className="mb-4">
@@ -985,6 +1004,20 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
           />
         </div>
       )}
+
+      {fieldCfg.configOpen ? (
+        <CamposConfigModal
+          fieldById={fieldCfg.fieldById}
+          places={fieldCfg.places}
+          autonum={fieldCfg.autonum}
+          order={fieldCfg.order}
+          onSetPlace={fieldCfg.setPlace}
+          onToggleAutonum={fieldCfg.setAutonum}
+          onReorder={fieldCfg.setOrder}
+          onReset={fieldCfg.reset}
+          onClose={fieldCfg.closeConfig}
+        />
+      ) : null}
     </div>
   );
 };

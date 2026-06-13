@@ -1,0 +1,45 @@
+/* ===== Cadastro de Áreas — overrides específicos do Leaflet =====
+ * Mantém o restante do estilo via Tailwind; aqui ficam só as classes que o
+ * Leaflet injeta diretamente no DOM (tooltips e a barra do leaflet-draw).
+ */
+
+/* Não usamos a barra padrão do leaflet-draw (controlamos por botões próprios). */
+.leaflet-draw.leaflet-control {
+  display: none;
+}
+
+.leaflet-container {
+  font-family: 'Inter', sans-serif;
+  background: #0b1f2a;
+}
+.leaflet-control-attribution {
+  font-size: 10px;
+}
+
+/* Rótulo permanente (tooltip) de cada polígono, colorido pelo nível. */
+.fz-poly-label {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f2937;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+.fz-poly-label.lvl-fazenda {
+  color: #166534;
+}
+.fz-poly-label.lvl-retiro {
+  color: #1d4ed8;
+}
+.fz-poly-label.lvl-setor {
+  color: #b45309;
+}
+.fz-poly-label.lvl-local {
+  color: #0f766e;
+}
+.leaflet-tooltip.fz-poly-label::before {
+  display: none;
+}

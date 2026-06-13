@@ -69,8 +69,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const dadosObj = dados && typeof dados === 'object' ? dados : {};
 
-      // Regra de negócio: "saída" exige um lote de destino (outroLoteId).
-      if (tipo === 'alocacao' && dadosObj.sentido === 'saida' && !dadosObj.outroLoteId) {
+      // Regra de negócio: "saída" exige um lote de destino (outroLoteId), EXCETO
+      // quando há animais individuais — saída por ID sem destino = remover do lote
+      // (o animal fica "sem lote"). Ver "Incluir por ID" na Gestão de Lotes.
+      const temAnimais = Array.isArray(dadosObj.animais) && dadosObj.animais.length > 0;
+      if (tipo === 'alocacao' && dadosObj.sentido === 'saida' && !dadosObj.outroLoteId && !temAnimais) {
         jsonError(res, 'Alocação de saída exige um lote de destino', { status: 400 });
         return;
       }

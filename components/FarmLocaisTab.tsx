@@ -1,25 +1,53 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Trash2, Pencil, Check, X, MapPin, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+  Layers,
+  ChevronRight,
+} from 'lucide-react';
+import { useHierarchy } from '../contexts/HierarchyContext';
+
+/* ===== Hierarquia da fazenda: Fazenda › Retiro › Setor › Local =====
+ * A 1ª coluna lista as FAZENDAS do contexto; clicar numa delas faz o drill para
+ * Retiro › Setor › Local daquela fazenda. Os níveis intermediários/folha são
+ * opcionais e ativados por fazenda (toggles). Só a Fazenda é obrigatória (raiz).
+ * Um Local ancora no nível ATIVO mais profundo acima dele (setor ?? retiro ?? fazenda).
+ */
 
 interface Retiro {
   id: string;
-  farm_id: string;
+  farmId: string;
   name: string;
-  total_area: string | null;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
+  totalArea: string | null;
+  isDefault: boolean;
 }
-
-interface Local {
+interface Setor {
   id: string;
-  retiro_id: string;
-  farm_id: string;
+  farmId: string;
+  retiroId: string | null;
   name: string;
   area: string | null;
-  created_at: string;
-  updated_at: string;
 }
+interface Local {
+  id: string;
+  farmId: string;
+  retiroId: string | null;
+  setorId: string | null;
+  name: string;
+  area: string | null;
+}
+interface Levels {
+  retiro: boolean;
+  setor: boolean;
+  local: boolean;
+}
+
+type LevelKey = 'retiro' | 'setor' | 'local';
+type ColKey = 'fazenda' | LevelKey;
 
 interface FarmLocaisTabProps {
   farmId: string;
@@ -37,517 +65,643 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return json.data ?? json;
 }
 
-const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, pastureArea, readOnly }) => {
+function postJson<T>(body: unknown): Promise<T> {
+  return fetchJson<T>(API_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+function patchJson<T>(body: unknown): Promise<T> {
+  return fetchJson<T>(API_BASE, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+interface LevelStyle {
+  label: string;
+  plural: string;
+  dot: string;
+  text: string;
+  selRow: string;
+  accent: string;
+  addBox: string;
+}
+
+const FAZENDA_STYLE: LevelStyle = {
+  label: 'Fazenda', plural: 'Fazendas',
+  dot: 'bg-slate-600', text: 'text-slate-700',
+  selRow: 'border-slate-400 bg-slate-50', accent: 'text-slate-700',
+  addBox: 'border-slate-300 bg-slate-50',
+};
+
+const LEVELS: { key: LevelKey; s: LevelStyle }[] = [
+  {
+    key: 'retiro',
+    s: {
+      label: 'Retiro', plural: 'Retiros',
+      dot: 'bg-emerald-500', text: 'text-emerald-600',
+      selRow: 'border-emerald-400 bg-emerald-50', accent: 'text-emerald-600',
+      addBox: 'border-emerald-300 bg-emerald-50',
+    },
+  },
+  {
+    key: 'setor',
+    s: {
+      label: 'Setor', plural: 'Setores',
+      dot: 'bg-amber-500', text: 'text-amber-600',
+      selRow: 'border-amber-400 bg-amber-50', accent: 'text-amber-600',
+      addBox: 'border-amber-300 bg-amber-50',
+    },
+  },
+  {
+    key: 'local',
+    s: {
+      label: 'Local', plural: 'Locais',
+      dot: 'bg-blue-500', text: 'text-blue-600',
+      selRow: 'border-blue-400 bg-blue-50', accent: 'text-blue-600',
+      addBox: 'border-blue-300 bg-blue-50',
+    },
+  },
+];
+
+function fmtArea(area: string | null): string | null {
+  if (!area) return null;
+  const n = parseFloat(String(area).replace(',', '.'));
+  if (isNaN(n)) return null;
+  return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`;
+}
+
+const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, readOnly }) => {
+  const { farms, loading: hierarchyLoading } = useHierarchy();
+
+  // Fazenda selecionada na 1ª coluna (default = fazenda em edição).
+  const [selFarmId, setSelFarmId] = useState<string>(farmId);
+  useEffect(() => setSelFarmId(farmId), [farmId]);
+
+  const [levels, setLevels] = useState<Levels>({ retiro: true, setor: false, local: true });
   const [retiros, setRetiros] = useState<Retiro[]>([]);
+  const [setores, setSetores] = useState<Setor[]>([]);
   const [locais, setLocais] = useState<Local[]>([]);
-  const [selectedRetiroId, setSelectedRetiroId] = useState<string | null>(null);
+
+  const [selRetiro, setSelRetiro] = useState<string | null>(null);
+  const [selSetor, setSelSetor] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [noRetiro, setNoRetiro] = useState(false);
-
-  // Inline editing states
-  const [editingRetiroId, setEditingRetiroId] = useState<string | null>(null);
-  const [editRetiroName, setEditRetiroName] = useState('');
-  const [editRetiroArea, setEditRetiroArea] = useState('');
-  const [newRetiroName, setNewRetiroName] = useState('');
-  const [newRetiroArea, setNewRetiroArea] = useState('');
-  const [addingRetiro, setAddingRetiro] = useState(false);
-
-  const [editingLocalId, setEditingLocalId] = useState<string | null>(null);
-  const [editLocalName, setEditLocalName] = useState('');
-  const [editLocalArea, setEditLocalArea] = useState('');
-  const [newLocalName, setNewLocalName] = useState('');
-  const [newLocalArea, setNewLocalArea] = useState('');
-  const [addingLocal, setAddingLocal] = useState(false);
-
   const [saving, setSaving] = useState(false);
+  const [togglingKey, setTogglingKey] = useState<LevelKey | null>(null);
 
-  // ── Load data ──────────────────────────────────────────────────────────────
-  const loadRetiros = useCallback(async () => {
-    try {
-      const rows = await fetchJson<Retiro[]>(`${API_BASE}?farmId=${farmId}`);
-      setRetiros(rows);
-      // Check if there's a single default retiro
-      if (rows.length === 1 && rows[0].is_default) {
-        setNoRetiro(true);
-      } else if (rows.length === 0) {
-        setNoRetiro(false);
-      }
-      // Auto-select first retiro
-      if (rows.length > 0 && !selectedRetiroId) {
-        setSelectedRetiroId(rows[0].id);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar retiros:', err);
-    }
-  }, [farmId, selectedRetiroId]);
+  const [adding, setAdding] = useState<{ key: LevelKey; name: string; area: string } | null>(null);
+  const [editing, setEditing] = useState<{ key: LevelKey; id: string; name: string; area: string } | null>(null);
 
-  const loadLocais = useCallback(async () => {
-    if (!selectedRetiroId) {
-      setLocais([]);
-      return;
-    }
-    try {
-      const rows = await fetchJson<Local[]>(`${API_BASE}?retiroId=${selectedRetiroId}`);
-      setLocais(rows);
-    } catch (err) {
-      console.error('Erro ao carregar locais:', err);
-    }
-  }, [selectedRetiroId]);
-
+  // ── Carrega o bundle da fazenda selecionada ─────────────────────────────────
   useEffect(() => {
+    if (!selFarmId) return;
+    let cancelled = false;
     setLoading(true);
-    loadRetiros().finally(() => setLoading(false));
-  }, [loadRetiros]);
+    setAdding(null);
+    setEditing(null);
+    fetchJson<{ retiros: Retiro[]; setores: Setor[]; locais: Local[]; levels: Levels }>(
+      `${API_BASE}?bundle=${selFarmId}`,
+    )
+      .then((b) => {
+        if (cancelled) return;
+        setRetiros(b.retiros);
+        setSetores(b.setores);
+        setLocais(b.locais);
+        setLevels(b.levels);
+        setSelRetiro(b.retiros[0]?.id ?? null);
+        setSelSetor(null);
+      })
+      .catch((err) => console.error('Erro ao carregar locais:', err))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selFarmId]);
 
-  useEffect(() => {
-    loadLocais();
-  }, [loadLocais]);
+  // ── Seleção efetiva (derivada) ──────────────────────────────────────────────
+  const effRetiro = retiros.some((r) => r.id === selRetiro) ? selRetiro : (retiros[0]?.id ?? null);
+  const setoresVisible = useMemo(
+    () => (levels.retiro ? setores.filter((s) => s.retiroId === effRetiro) : setores),
+    [levels.retiro, setores, effRetiro],
+  );
+  const effSetor = setoresVisible.some((s) => s.id === selSetor) ? selSetor : (setoresVisible[0]?.id ?? null);
+  const locaisVisible = useMemo(() => {
+    if (levels.setor) return locais.filter((l) => l.setorId === effSetor);
+    if (levels.retiro) return locais.filter((l) => l.retiroId === effRetiro);
+    return locais;
+  }, [levels.setor, levels.retiro, locais, effSetor, effRetiro]);
 
-  // ── Toggle "sem retiro" ────────────────────────────────────────────────────
-  const handleToggleNoRetiro = async () => {
-    if (readOnly) return;
+  const activeLevels = LEVELS.filter((l) => levels[l.key]);
+
+  // ── Toggle de nível (persiste em farm_location_levels da fazenda) ───────────
+  const toggleLevel = useCallback(
+    async (key: LevelKey) => {
+      if (readOnly || togglingKey) return;
+      const next = { ...levels, [key]: !levels[key] };
+      setLevels(next);
+      setTogglingKey(key);
+      setAdding(null);
+      setEditing(null);
+      try {
+        await postJson({ type: 'levels', farmId: selFarmId, ...next });
+      } catch (err) {
+        console.error('Erro ao salvar níveis:', err);
+        setLevels(levels);
+      } finally {
+        setTogglingKey(null);
+      }
+    },
+    [levels, selFarmId, readOnly, togglingKey],
+  );
+
+  // ── CRUD (sempre na fazenda selecionada) ────────────────────────────────────
+  const commitAdd = async () => {
+    if (!adding || !adding.name.trim()) return;
+    const { key, name, area } = adding;
     setSaving(true);
     try {
-      if (!noRetiro) {
-        // Ativar "sem retiro": apagar retiros existentes e criar default
-        for (const r of retiros) {
-          await fetchJson(`${API_BASE}?retiroId=${r.id}`, { method: 'DELETE' });
-        }
-        const defaultRetiro = await fetchJson<Retiro>(API_BASE, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            farmId,
-            name: farmName,
-            totalArea: pastureArea != null ? String(pastureArea) : null,
-            isDefault: true,
-          }),
+      if (key === 'retiro') {
+        const row = await postJson<Retiro>({ farmId: selFarmId, name: name.trim(), totalArea: area.trim() || null });
+        setRetiros((p) => [...p, row]);
+        setSelRetiro(row.id);
+        setSelSetor(null);
+      } else if (key === 'setor') {
+        const row = await postJson<Setor>({
+          type: 'setor', farmId: selFarmId,
+          retiroId: levels.retiro ? effRetiro : null,
+          name: name.trim(), area: area.trim() || null,
         });
-        setRetiros([defaultRetiro]);
-        setSelectedRetiroId(defaultRetiro.id);
-        setNoRetiro(true);
+        setSetores((p) => [...p, row]);
+        setSelSetor(row.id);
       } else {
-        // Desativar "sem retiro": apagar o default
-        for (const r of retiros.filter(r => r.is_default)) {
-          await fetchJson(`${API_BASE}?retiroId=${r.id}`, { method: 'DELETE' });
-        }
-        setRetiros(prev => prev.filter(r => !r.is_default));
-        setSelectedRetiroId(null);
-        setLocais([]);
-        setNoRetiro(false);
+        const row = await postJson<Local>({
+          type: 'local', farmId: selFarmId,
+          retiroId: levels.retiro ? effRetiro : null,
+          setorId: levels.setor ? effSetor : null,
+          name: name.trim(), area: area.trim() || null,
+        });
+        setLocais((p) => [...p, row]);
+      }
+      setAdding(null);
+    } catch (err) {
+      console.error('Erro ao adicionar:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const commitEdit = async () => {
+    if (!editing || !editing.name.trim()) return;
+    const { key, id, name, area } = editing;
+    setSaving(true);
+    try {
+      if (key === 'retiro') {
+        const row = await patchJson<Retiro>({ id, name: name.trim(), totalArea: area.trim() || null });
+        setRetiros((p) => p.map((r) => (r.id === id ? row : r)));
+      } else if (key === 'setor') {
+        const row = await patchJson<Setor>({ type: 'setor', id, name: name.trim(), area: area.trim() || null });
+        setSetores((p) => p.map((s) => (s.id === id ? row : s)));
+      } else {
+        const row = await patchJson<Local>({ type: 'local', id, name: name.trim(), area: area.trim() || null });
+        setLocais((p) => p.map((l) => (l.id === id ? row : l)));
+      }
+      setEditing(null);
+    } catch (err) {
+      console.error('Erro ao atualizar:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeItem = async (key: LevelKey, id: string) => {
+    const label = key === 'retiro' ? 'retiro' : key === 'setor' ? 'setor' : 'local';
+    const extra =
+      key === 'retiro'
+        ? ' Os setores e locais ligados a ele também serão removidos.'
+        : key === 'setor'
+          ? ' Os locais ligados a ele perderão o vínculo de setor.'
+          : '';
+    if (!window.confirm(`Excluir este ${label}?${extra}`)) return;
+    setSaving(true);
+    try {
+      const param = key === 'retiro' ? 'retiroId' : key === 'setor' ? 'setorId' : 'localId';
+      await fetchJson(`${API_BASE}?${param}=${id}`, { method: 'DELETE' });
+      if (key === 'retiro') {
+        setRetiros((p) => p.filter((r) => r.id !== id));
+        setSetores((p) => p.filter((s) => s.retiroId !== id));
+        setLocais((p) => p.filter((l) => l.retiroId !== id));
+        if (selRetiro === id) setSelRetiro(null);
+      } else if (key === 'setor') {
+        setSetores((p) => p.filter((s) => s.id !== id));
+        setLocais((p) => p.map((l) => (l.setorId === id ? { ...l, setorId: null } : l)));
+        if (selSetor === id) setSelSetor(null);
+      } else {
+        setLocais((p) => p.filter((l) => l.id !== id));
       }
     } catch (err) {
-      console.error('Erro ao alternar retiro padrão:', err);
+      console.error('Erro ao excluir:', err);
     } finally {
       setSaving(false);
     }
   };
 
-  // ── Retiro CRUD ────────────────────────────────────────────────────────────
-  const handleAddRetiro = async () => {
-    if (!newRetiroName.trim()) return;
-    setSaving(true);
-    try {
-      const row = await fetchJson<Retiro>(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ farmId, name: newRetiroName.trim(), totalArea: newRetiroArea || null }),
-      });
-      setRetiros(prev => [...prev, row]);
-      setSelectedRetiroId(row.id);
-      setNewRetiroName('');
-      setNewRetiroArea('');
-      setAddingRetiro(false);
-    } catch (err) {
-      console.error('Erro ao criar retiro:', err);
-    } finally {
-      setSaving(false);
+  const onSelect = (key: ColKey, id: string) => {
+    if (key === 'fazenda') {
+      setSelFarmId(id);
+      setSelRetiro(null);
+      setSelSetor(null);
+    } else if (key === 'retiro') {
+      setSelRetiro(id);
+      setSelSetor(null);
+    } else if (key === 'setor') {
+      setSelSetor(id);
     }
+    setEditing(null);
   };
 
-  const handleUpdateRetiro = async (id: string) => {
-    setSaving(true);
-    try {
-      const row = await fetchJson<Retiro>(API_BASE, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name: editRetiroName, totalArea: editRetiroArea || null }),
-      });
-      setRetiros(prev => prev.map(r => (r.id === id ? row : r)));
-      setEditingRetiroId(null);
-    } catch (err) {
-      console.error('Erro ao atualizar retiro:', err);
-    } finally {
-      setSaving(false);
+  // ── Descrição de cada coluna ────────────────────────────────────────────────
+  const fazendaRows = useMemo(
+    () =>
+      farms.map((f) => ({
+        id: f.id,
+        name: f.name,
+        area:
+          (f as any).pastureArea != null
+            ? String((f as any).pastureArea)
+            : (f as any).totalArea != null
+              ? String((f as any).totalArea)
+              : null,
+      })),
+    [farms],
+  );
+
+  const columnFor = (key: ColKey) => {
+    if (key === 'fazenda') {
+      return { rows: fazendaRows, selId: selFarmId, parentChosen: true, drillable: true, colReadOnly: true };
     }
+    if (key === 'retiro') {
+      return {
+        rows: retiros.map((r) => ({ id: r.id, name: r.name, area: r.totalArea })),
+        selId: effRetiro,
+        parentChosen: !!selFarmId,
+        drillable: true,
+        colReadOnly: !!readOnly,
+      };
+    }
+    if (key === 'setor') {
+      return {
+        rows: setoresVisible.map((s) => ({ id: s.id, name: s.name, area: s.area })),
+        selId: effSetor,
+        parentChosen: !levels.retiro || effRetiro != null,
+        drillable: true,
+        colReadOnly: !!readOnly,
+      };
+    }
+    return {
+      rows: locaisVisible.map((l) => ({ id: l.id, name: l.name, area: l.area })),
+      selId: null as string | null,
+      parentChosen: levels.setor ? effSetor != null : levels.retiro ? effRetiro != null : true,
+      drillable: false,
+      colReadOnly: !!readOnly,
+    };
   };
 
-  const handleDeleteRetiro = async (id: string) => {
-    setSaving(true);
-    try {
-      await fetchJson(`${API_BASE}?retiroId=${id}`, { method: 'DELETE' });
-      const updated = retiros.filter(r => r.id !== id);
-      setRetiros(updated);
-      if (selectedRetiroId === id) {
-        setSelectedRetiroId(updated[0]?.id ?? null);
-      }
-    } catch (err) {
-      console.error('Erro ao excluir retiro:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── Local CRUD ─────────────────────────────────────────────────────────────
-  const handleAddLocal = async () => {
-    if (!newLocalName.trim() || !selectedRetiroId) return;
-    setSaving(true);
-    try {
-      const row = await fetchJson<Local>(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'local', retiroId: selectedRetiroId, farmId, name: newLocalName.trim(), area: newLocalArea || null }),
-      });
-      setLocais(prev => [...prev, row]);
-      setNewLocalName('');
-      setNewLocalArea('');
-      setAddingLocal(false);
-    } catch (err) {
-      console.error('Erro ao criar local:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUpdateLocal = async (id: string) => {
-    setSaving(true);
-    try {
-      const row = await fetchJson<Local>(API_BASE, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'local', id, name: editLocalName, area: editLocalArea || null }),
-      });
-      setLocais(prev => prev.map(l => (l.id === id ? row : l)));
-      setEditingLocalId(null);
-    } catch (err) {
-      console.error('Erro ao atualizar local:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteLocal = async (id: string) => {
-    setSaving(true);
-    try {
-      await fetchJson(`${API_BASE}?localId=${id}`, { method: 'DELETE' });
-      setLocais(prev => prev.filter(l => l.id !== id));
-    } catch (err) {
-      console.error('Erro ao excluir local:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-emerald-600" />
-        <span className="ml-2 text-sm text-gray-500">Carregando locais...</span>
-      </div>
-    );
-  }
-
-  const selectedRetiro = retiros.find(r => r.id === selectedRetiroId);
+  const cols: { key: ColKey; style: LevelStyle }[] = [
+    { key: 'fazenda', style: FAZENDA_STYLE },
+    ...activeLevels.map((l) => ({ key: l.key as ColKey, style: l.s })),
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Toggle "Sem retiro" */}
-      <div
-        onClick={readOnly ? undefined : handleToggleNoRetiro}
-        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-          readOnly ? 'opacity-60 cursor-default' : 'cursor-pointer hover:bg-gray-50'
-        } ${noRetiro ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 bg-white'}`}
-      >
-        {noRetiro ? (
-          <ToggleRight size={24} className="text-emerald-600 shrink-0" />
-        ) : (
-          <ToggleLeft size={24} className="text-gray-400 shrink-0" />
-        )}
-        <div>
-          <span className="text-sm font-medium text-gray-700">Esta fazenda não possui retiros</span>
-          {noRetiro && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              Um retiro padrão "{farmName}" foi criado com a área de pastagem ({pastureArea ?? 0} ha)
-            </p>
-          )}
+      {/* ── Seletores de nível ──────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-3.5">
+        <div className="flex items-center gap-2 mb-3">
+          <Layers size={15} className="text-gray-400" />
+          <span className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+            Níveis de localização
+          </span>
+          <span className="text-[11px] text-gray-400 normal-case font-normal">
+            · a Fazenda é a raiz (sempre ativa) · ative os níveis que esta fazenda usa
+          </span>
         </div>
-        {saving && <Loader2 size={14} className="animate-spin text-gray-400 ml-auto" />}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-slate-600" />
+            <span className="text-xs font-semibold text-slate-700">Fazenda</span>
+          </div>
+          {LEVELS.map((lvl) => {
+            const on = levels[lvl.key];
+            const busy = togglingKey === lvl.key;
+            return (
+              <React.Fragment key={lvl.key}>
+                <ChevronRight size={14} className="text-gray-300 shrink-0" />
+                <button
+                  type="button"
+                  disabled={readOnly || !!togglingKey || loading}
+                  onClick={() => toggleLevel(lvl.key)}
+                  className={`group inline-flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors disabled:cursor-not-allowed ${
+                    on ? 'border-gray-300 bg-white shadow-sm' : 'border-dashed border-gray-200 bg-gray-50/60'
+                  } ${readOnly ? 'opacity-70' : 'hover:border-gray-400'}`}
+                  title={on ? `Desativar nível ${lvl.s.label}` : `Ativar nível ${lvl.s.label}`}
+                >
+                  <span
+                    className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                      on ? lvl.s.dot : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                        on ? 'translate-x-3.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                  <span className={`text-xs font-semibold ${on ? 'text-gray-800' : 'text-gray-400'}`}>
+                    {lvl.s.label}
+                  </span>
+                  {busy && <Loader2 size={12} className="animate-spin text-gray-400" />}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Layout lado a lado */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* ── Coluna Esquerda: Retiros ── */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-wider text-gray-500 uppercase flex items-center gap-1.5">
-              <MapPin size={13} className="text-emerald-600" />
-              Retiros
-            </h3>
-            {!noRetiro && !readOnly && (
-              <button
-                type="button"
-                onClick={() => setAddingRetiro(true)}
-                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"
-              >
-                <Plus size={12} />
-                Adicionar
-              </button>
-            )}
-          </div>
-
-          {/* Inline add retiro */}
-          {addingRetiro && !noRetiro && (
-            <div className="flex gap-2 items-center rounded-lg border border-emerald-300 bg-emerald-50 p-2">
-              <input
-                autoFocus
-                type="text"
-                placeholder="Nome do retiro"
-                value={newRetiroName}
-                onChange={e => setNewRetiroName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddRetiro(); if (e.key === 'Escape') setAddingRetiro(false); }}
-                className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Área (ha)"
-                value={newRetiroArea}
-                onChange={e => setNewRetiroArea(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddRetiro(); if (e.key === 'Escape') setAddingRetiro(false); }}
-                className="w-24 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
-              />
-              <button type="button" onClick={handleAddRetiro} disabled={saving} className="p-1 text-emerald-600 hover:text-emerald-700">
-                <Check size={16} />
-              </button>
-              <button type="button" onClick={() => { setAddingRetiro(false); setNewRetiroName(''); setNewRetiroArea(''); }} className="p-1 text-gray-400 hover:text-gray-600">
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* Retiro list */}
-          <div className="space-y-1 max-h-[50vh] overflow-y-auto">
-            {retiros.map(retiro => (
+      {/* ── Drill-down: Fazendas › níveis ativos ────────────────────────────── */}
+      <div className="flex gap-3 overflow-x-auto pb-1">
+        {cols.map(({ key, style }) => {
+          const col = columnFor(key);
+          // Enquanto carrega o bundle, mostra spinner nas colunas de nível
+          // (a coluna de Fazendas permanece navegável).
+          if (key !== 'fazenda' && loading) {
+            return (
               <div
-                key={retiro.id}
-                onClick={() => { setSelectedRetiroId(retiro.id); setEditingRetiroId(null); }}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
-                  retiro.id === selectedRetiroId
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-gray-200 bg-white hover:border-emerald-300'
-                }`}
+                key={key}
+                className="flex w-[240px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white py-12"
               >
-                {editingRetiroId === retiro.id ? (
-                  <>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={editRetiroName}
-                      onChange={e => setEditRetiroName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleUpdateRetiro(retiro.id); if (e.key === 'Escape') setEditingRetiroId(null); }}
-                      onClick={e => e.stopPropagation()}
-                      className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white"
-                    />
-                    <input
-                      type="text"
-                      value={editRetiroArea}
-                      onChange={e => setEditRetiroArea(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleUpdateRetiro(retiro.id); if (e.key === 'Escape') setEditingRetiroId(null); }}
-                      onClick={e => e.stopPropagation()}
-                      placeholder="Área"
-                      className="w-20 text-sm border border-gray-200 rounded px-2 py-1 bg-white"
-                    />
-                    <button type="button" onClick={e => { e.stopPropagation(); handleUpdateRetiro(retiro.id); }} className="p-1 text-emerald-600 hover:text-emerald-700">
-                      <Check size={14} />
-                    </button>
-                    <button type="button" onClick={e => { e.stopPropagation(); setEditingRetiroId(null); }} className="p-1 text-gray-400 hover:text-gray-600">
-                      <X size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-gray-800 truncate block">{retiro.name}</span>
-                      {retiro.total_area && (
-                        <span className="text-xs text-gray-500">{retiro.total_area} ha</span>
-                      )}
-                    </div>
-                    {!readOnly && !retiro.is_default && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation();
-                            setEditingRetiroId(retiro.id);
-                            setEditRetiroName(retiro.name);
-                            setEditRetiroArea(retiro.total_area ?? '');
-                          }}
-                          className="shrink-0 p-1 text-gray-400 hover:text-emerald-600"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={e => { e.stopPropagation(); handleDeleteRetiro(retiro.id); }}
-                          className="shrink-0 p-1 text-gray-400 hover:text-red-500"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
+                <Loader2 size={18} className="animate-spin text-gray-300" />
               </div>
-            ))}
-            {retiros.length === 0 && (
-              <div className="text-center py-6 text-sm text-gray-400">
-                Nenhum retiro cadastrado
-              </div>
-            )}
+            );
+          }
+          return (
+            <LevelColumn
+              key={key}
+              colKey={key}
+              style={style}
+              rows={col.rows}
+              selId={col.selId}
+              drillable={col.drillable}
+              parentChosen={col.parentChosen}
+              readOnly={col.colReadOnly}
+              emptyHint={
+                key === 'fazenda'
+                  ? hierarchyLoading.farms
+                    ? 'Carregando fazendas...'
+                    : 'Nenhuma fazenda no contexto.'
+                  : undefined
+              }
+              saving={saving}
+              adding={key !== 'fazenda' && adding?.key === key ? adding : null}
+              editing={key !== 'fazenda' && editing?.key === key ? editing : null}
+              onStartAdd={() => {
+                setEditing(null);
+                setAdding({ key: key as LevelKey, name: '', area: '' });
+              }}
+              onChangeAdd={(name, area) => setAdding({ key: key as LevelKey, name, area })}
+              onCommitAdd={commitAdd}
+              onCancelAdd={() => setAdding(null)}
+              onStartEdit={(id, name, area) => {
+                setAdding(null);
+                setEditing({ key: key as LevelKey, id, name, area: area ?? '' });
+              }}
+              onChangeEdit={(name, area) => setEditing((e) => (e ? { ...e, name, area } : e))}
+              onCommitEdit={commitEdit}
+              onCancelEdit={() => setEditing(null)}
+              onSelect={(id) => onSelect(key, id)}
+              onDelete={(id) => removeItem(key as LevelKey, id)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ===== Coluna de um nível ===== */
+interface Row {
+  id: string;
+  name: string;
+  area: string | null;
+}
+interface LevelColumnProps {
+  colKey: ColKey;
+  style: LevelStyle;
+  rows: Row[];
+  selId: string | null;
+  drillable: boolean;
+  parentChosen: boolean;
+  readOnly: boolean;
+  emptyHint?: string;
+  saving: boolean;
+  adding: { name: string; area: string } | null;
+  editing: { id: string; name: string; area: string } | null;
+  onStartAdd: () => void;
+  onChangeAdd: (name: string, area: string) => void;
+  onCommitAdd: () => void;
+  onCancelAdd: () => void;
+  onStartEdit: (id: string, name: string, area: string | null) => void;
+  onChangeEdit: (name: string, area: string) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const LevelColumn: React.FC<LevelColumnProps> = ({
+  colKey,
+  style,
+  rows,
+  selId,
+  drillable,
+  parentChosen,
+  readOnly,
+  emptyHint,
+  saving,
+  adding,
+  editing,
+  onStartAdd,
+  onChangeAdd,
+  onCommitAdd,
+  onCancelAdd,
+  onStartEdit,
+  onChangeEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onSelect,
+  onDelete,
+}) => {
+  const totalArea = rows.reduce((s, r) => {
+    const n = r.area ? parseFloat(String(r.area).replace(',', '.')) : 0;
+    return s + (isNaN(n) ? 0 : n);
+  }, 0);
+
+  return (
+    <div className="flex w-[240px] shrink-0 flex-col rounded-xl border border-gray-200 bg-white">
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2.5">
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${style.dot}`} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-600">{style.plural}</div>
+          <div className="text-[10.5px] tabular-nums text-gray-400">
+            {rows.length}
+            {totalArea > 0 && ` · ${totalArea.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`}
           </div>
         </div>
+        {!readOnly && parentChosen && (
+          <button
+            type="button"
+            onClick={onStartAdd}
+            className={`inline-flex items-center gap-1 text-[11px] font-semibold ${style.text} hover:opacity-80`}
+          >
+            <Plus size={12} /> Adicionar
+          </button>
+        )}
+      </div>
 
-        {/* ── Coluna Direita: Locais ── */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-wider text-gray-500 uppercase flex items-center gap-1.5">
-              <MapPin size={13} className="text-blue-600" />
-              Locais
-              {selectedRetiro && (
-                <span className="normal-case tracking-normal font-medium text-emerald-600 ml-1">
-                  — {selectedRetiro.name}
-                </span>
-              )}
-            </h3>
-            {selectedRetiroId && !readOnly && (
-              <button
-                type="button"
-                onClick={() => setAddingLocal(true)}
-                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-              >
-                <Plus size={12} />
-                Adicionar
-              </button>
-            )}
+      {/* Inline add */}
+      {adding && (
+        <div className={`m-1.5 flex items-center gap-1.5 rounded-lg border p-1.5 ${style.addBox}`}>
+          <input
+            autoFocus
+            type="text"
+            placeholder={`Nome do ${style.label.toLowerCase()}`}
+            value={adding.name}
+            onChange={(e) => onChangeAdd(e.target.value, adding.area)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCommitAdd();
+              if (e.key === 'Escape') onCancelAdd();
+            }}
+            className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          />
+          <input
+            type="text"
+            placeholder="ha"
+            value={adding.area}
+            onChange={(e) => onChangeAdd(adding.name, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCommitAdd();
+              if (e.key === 'Escape') onCancelAdd();
+            }}
+            className="w-14 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+          />
+          <button type="button" onClick={onCommitAdd} disabled={saving || !adding.name.trim()} className={`p-1 ${style.text} disabled:opacity-40`}>
+            <Check size={16} />
+          </button>
+          <button type="button" onClick={onCancelAdd} className="p-1 text-gray-400 hover:text-gray-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* List */}
+      <div className="flex max-h-[46vh] min-h-[60px] flex-col gap-1 overflow-y-auto p-1.5">
+        {rows.length === 0 && !adding ? (
+          <div className="px-2 py-6 text-center text-[11.5px] italic text-gray-400">
+            {emptyHint
+              ? emptyHint
+              : parentChosen
+                ? `Nenhum ${style.label.toLowerCase()} cadastrado.`
+                : `Selecione um item à esquerda.`}
           </div>
-
-          {/* Inline add local */}
-          {addingLocal && selectedRetiroId && (
-            <div className="flex gap-2 items-center rounded-lg border border-blue-300 bg-blue-50 p-2">
-              <input
-                autoFocus
-                type="text"
-                placeholder="Nome do local"
-                value={newLocalName}
-                onChange={e => setNewLocalName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddLocal(); if (e.key === 'Escape') setAddingLocal(false); }}
-                className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Área (ha)"
-                value={newLocalArea}
-                onChange={e => setNewLocalArea(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddLocal(); if (e.key === 'Escape') setAddingLocal(false); }}
-                className="w-24 text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
-              />
-              <button type="button" onClick={handleAddLocal} disabled={saving} className="p-1 text-blue-600 hover:text-blue-700">
-                <Check size={16} />
-              </button>
-              <button type="button" onClick={() => { setAddingLocal(false); setNewLocalName(''); setNewLocalArea(''); }} className="p-1 text-gray-400 hover:text-gray-600">
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* Local list */}
-          <div className="space-y-1 max-h-[50vh] overflow-y-auto">
-            {locais.map(local => (
+        ) : (
+          rows.map((row) => {
+            const isEditing = editing?.id === row.id;
+            const selected = selId === row.id;
+            if (isEditing && editing) {
+              return (
+                <div key={row.id} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white p-1.5">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editing.name}
+                    onChange={(e) => onChangeEdit(e.target.value, editing.area)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') onCommitEdit();
+                      if (e.key === 'Escape') onCancelEdit();
+                    }}
+                    className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={editing.area}
+                    placeholder="ha"
+                    onChange={(e) => onChangeEdit(editing.name, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') onCommitEdit();
+                      if (e.key === 'Escape') onCancelEdit();
+                    }}
+                    className="w-14 rounded border border-gray-200 px-2 py-1 text-sm"
+                  />
+                  <button type="button" onClick={onCommitEdit} disabled={saving || !editing.name.trim()} className={`p-1 ${style.text} disabled:opacity-40`}>
+                    <Check size={14} />
+                  </button>
+                  <button type="button" onClick={onCancelEdit} className="p-1 text-gray-400 hover:text-gray-600">
+                    <X size={14} />
+                  </button>
+                </div>
+              );
+            }
+            return (
               <div
-                key={local.id}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2"
+                key={row.id}
+                onClick={() => drillable && onSelect(row.id)}
+                className={`group flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
+                  drillable ? 'cursor-pointer' : ''
+                } ${selected ? style.selRow : 'border-gray-200 bg-white hover:border-gray-300'}`}
               >
-                {editingLocalId === local.id ? (
-                  <>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={editLocalName}
-                      onChange={e => setEditLocalName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleUpdateLocal(local.id); if (e.key === 'Escape') setEditingLocalId(null); }}
-                      className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white"
-                    />
-                    <input
-                      type="text"
-                      value={editLocalArea}
-                      onChange={e => setEditLocalArea(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleUpdateLocal(local.id); if (e.key === 'Escape') setEditingLocalId(null); }}
-                      placeholder="Área"
-                      className="w-20 text-sm border border-gray-200 rounded px-2 py-1 bg-white"
-                    />
-                    <button type="button" onClick={() => handleUpdateLocal(local.id)} className="p-1 text-blue-600 hover:text-blue-700">
-                      <Check size={14} />
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-800">{row.name}</span>
+                  {fmtArea(row.area) && <span className="text-[11px] text-gray-500">{fmtArea(row.area)}</span>}
+                </div>
+                {!readOnly && (
+                  <span className="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartEdit(row.id, row.name, row.area);
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-700"
+                      title="Editar"
+                    >
+                      <Pencil size={13} />
                     </button>
-                    <button type="button" onClick={() => setEditingLocalId(null)} className="p-1 text-gray-400 hover:text-gray-600">
-                      <X size={14} />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(row.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-500"
+                      title="Excluir"
+                    >
+                      <Trash2 size={13} />
                     </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-gray-800 truncate block">{local.name}</span>
-                      {local.area && (
-                        <span className="text-xs text-gray-500">{local.area} ha</span>
-                      )}
-                    </div>
-                    {!readOnly && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingLocalId(local.id);
-                            setEditLocalName(local.name);
-                            setEditLocalArea(local.area ?? '');
-                          }}
-                          className="shrink-0 p-1 text-gray-400 hover:text-blue-600"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteLocal(local.id)}
-                          className="shrink-0 p-1 text-gray-400 hover:text-red-500"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    )}
-                  </>
+                  </span>
+                )}
+                {drillable && (
+                  <ChevronRight
+                    size={14}
+                    className={`shrink-0 ${selected ? style.accent : 'text-gray-300'}`}
+                  />
                 )}
               </div>
-            ))}
-            {selectedRetiroId && locais.length === 0 && (
-              <div className="text-center py-6 text-sm text-gray-400">
-                Nenhum local cadastrado neste retiro
-              </div>
-            )}
-            {!selectedRetiroId && (
-              <div className="text-center py-6 text-sm text-gray-400">
-                Selecione um retiro para ver seus locais
-              </div>
-            )}
-          </div>
-        </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

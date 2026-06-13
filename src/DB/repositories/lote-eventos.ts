@@ -86,15 +86,23 @@ export async function create(input: LoteEventoInput) {
       });
     }
 
-    // 3) Sincroniza o vínculo do animal na ficha (campo texto `lote` = nome do lote destino).
-    if (input.syncFichas && destinoLoteId && animais.length > 0) {
-      const [dest] = await tx.select({ nome: lotes.nome })
-        .from(lotes)
-        .where(eq(lotes.id, destinoLoteId as any));
-      const destNome = dest?.nome ?? null;
-      if (destNome) {
+    // 3) Sincroniza o vínculo do animal na ficha (campo texto `lote`).
+    //    - entrada / saída com destino → grava o nome do lote destino;
+    //    - saída SEM destino (remoção por ID) → limpa o vínculo (lote = null).
+    if (input.syncFichas && tipo === 'alocacao' && animais.length > 0) {
+      const isRemocao = sentido === 'saida' && !outroLoteId;
+      let novoLote: string | null = null;
+      let aplicar = isRemocao; // remoção sempre aplica (limpa para null)
+      if (!isRemocao && destinoLoteId) {
+        const [dest] = await tx.select({ nome: lotes.nome })
+          .from(lotes)
+          .where(eq(lotes.id, destinoLoteId as any));
+        novoLote = dest?.nome ?? null;
+        aplicar = !!novoLote; // só aplica se o lote destino foi encontrado
+      }
+      if (aplicar) {
         await tx.update(fichasAnimal)
-          .set({ lote: destNome, updatedAt: new Date() })
+          .set({ lote: novoLote, updatedAt: new Date() })
           .where(and(
             eq(fichasAnimal.organizationId, organizationId as any),
             inArray(fichasAnimal.id, animais as any),

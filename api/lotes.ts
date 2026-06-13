@@ -2,9 +2,9 @@
  * API route for lotes.
  *
  *   GET    ?organizationId=xxx                                  — list lotes for org
- *   POST   { organizationId, nome, dataInicio, finalizado?, descricao? } — create
+ *   POST   { organizationId, nome, dataInicio, farmId?, retiro?, finalizado?, descricao? } — create
  *   POST   { action: 'reorder', items: [{id, ordem}] }          — reorder
- *   PATCH  { id, nome?, dataInicio?, finalizado?, descricao? }   — update
+ *   PATCH  { id, nome?, dataInicio?, farmId?, retiro?, finalizado?, descricao? } — update
  *   DELETE ?id=xxx                                              — delete
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Create
-      const { organizationId, nome, codigo, finalidade, sistema, dataInicio, finalizado, descricao } = req.body ?? {};
+      const { organizationId, farmId, retiro, nome, codigo, finalidade, sistema, dataInicio, finalizado, descricao } = req.body ?? {};
       if (!organizationId || !nome || !String(nome).trim()) {
         jsonError(res, 'Campos obrigatórios: organizationId, nome', { status: 400 });
         return;
@@ -76,6 +76,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const row = await create({
         organizationId,
+        farmId: optTxt(farmId),
+        retiro: optTxt(retiro),
         nome: String(nome).trim(),
         codigo: optTxt(codigo),
         finalidade: optTxt(finalidade),
@@ -90,13 +92,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, nome, codigo, finalidade, sistema, dataInicio, finalizado, descricao } = req.body ?? {};
+      const { id, farmId, retiro, nome, codigo, finalidade, sistema, dataInicio, finalizado, descricao } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
       }
 
       const payload: Record<string, any> = {};
+      if (farmId !== undefined) payload.farmId = farmId === null ? null : (String(farmId).trim() || null);
+      if (retiro !== undefined) payload.retiro = retiro === null ? null : (String(retiro).trim() || null);
       if (nome !== undefined) {
         if (!String(nome).trim()) {
           jsonError(res, 'nome não pode ser vazio', { status: 400 });

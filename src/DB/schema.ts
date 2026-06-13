@@ -576,7 +576,14 @@ export const farmMaps = pgTable('farm_maps', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// ── Farm Retiros & Locais ─────────────────────────────────────────────────────
+// ── Farm: Retiros › Setores › Locais ──────────────────────────────────────────
+// Hierarquia geográfica da fazenda em até 4 níveis encaixados:
+//   Fazenda › Retiro › Setor › Local.
+// Os níveis intermediários (Retiro, Setor) são opcionais e ativados por fazenda
+// em `farm_location_levels`. Por isso `retiro_id`/`setor_id` são anuláveis: um
+// Local ancora no nível ATIVO mais profundo acima dele (setor ?? retiro ?? fazenda).
+// O Local continua sendo a folha onde animais/lotes "moram" (referenciado como
+// local_id em todo o sistema) — nunca deixa de existir.
 
 export const farmRetiros = pgTable('farm_retiros', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -590,9 +597,25 @@ export const farmRetiros = pgTable('farm_retiros', {
   index('idx_farm_retiros_farm_id').on(t.farmId),
 ]);
 
+export const farmSetores = pgTable('farm_setores', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  // Nulo quando o nível Retiro está desativado (setor ancora direto na fazenda).
+  retiroId: uuid('retiro_id').references(() => farmRetiros.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  area: numeric('area'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_farm_setores_farm_id').on(t.farmId),
+  index('idx_farm_setores_retiro_id').on(t.retiroId),
+]);
+
 export const farmLocais = pgTable('farm_locais', {
   id: uuid('id').primaryKey().defaultRandom(),
-  retiroId: uuid('retiro_id').notNull().references(() => farmRetiros.id, { onDelete: 'cascade' }),
+  // Anuláveis: o Local ancora no nível ativo mais profundo acima dele.
+  retiroId: uuid('retiro_id').references(() => farmRetiros.id, { onDelete: 'cascade' }),
+  setorId: uuid('setor_id').references(() => farmSetores.id, { onDelete: 'set null' }),
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   area: numeric('area'),
@@ -600,8 +623,20 @@ export const farmLocais = pgTable('farm_locais', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_farm_locais_retiro_id').on(t.retiroId),
+  index('idx_farm_locais_setor_id').on(t.setorId),
   index('idx_farm_locais_farm_id').on(t.farmId),
 ]);
+
+// Quais níveis intermediários estão ativos para cada fazenda. A Fazenda é sempre
+// ativa (raiz). 1 linha por fazenda; ausência ⇒ defaults (retiro on, setor off,
+// local on) calculados na leitura.
+export const farmLocationLevels = pgTable('farm_location_levels', {
+  farmId: text('farm_id').primaryKey().references(() => farms.id, { onDelete: 'cascade' }),
+  retiro: boolean('retiro').notNull().default(true),
+  setor: boolean('setor').notNull().default(false),
+  local: boolean('local').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
 
 // ── AI / Agents ────────────────────────────────────────────────────────────────
 
@@ -1352,6 +1387,23 @@ export const nascimentoFieldConfigs = pgTable('nascimento_field_configs', {
   uniqueIndex('nascimento_field_config_org_uidx').on(t.organizationId),
 ]);
 
+// Configuração dos campos do "Defina seus campos" das demais movimentações
+// (Compra, Venda, Morte) por organização — 1 linha por (org, tipo). Mesmo blob
+// { places, order, autonum } do Nascimento, discriminado por `tipo`. O Nascimento
+// continua usando sua própria tabela (nascimento_field_configs).
+export const movimentoFieldConfigs = pgTable('movimento_field_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  // 'compra' | 'venda' | 'morte'
+  tipo: text('tipo').notNull(),
+  // { places: Record<fieldId, place>, order: string[], autonum: boolean }
+  config: jsonb('config').notNull().default('{}'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('movimento_field_config_org_tipo_uidx').on(t.organizationId, t.tipo),
+]);
+
 // ── Morte (Movimentação › Mortes) ───────────────────────────────────────────────
 // Espelha o modelo de Nascimento: cada movimento é uma baixa por morte. catDecl
 // (jsonb) guarda as linhas coletivas declaradas por categoria (com motivo); as
@@ -1395,6 +1447,103 @@ export const morteFichas = pgTable('morte_fichas', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_morte_fichas_mov').on(t.movimentoId),
+]);
+
+// ── Desmame (Movimentação › Desmame) ─────────────────────────────────────────────
+// Diferente das demais movimentações, o Desmame opera sobre animais que JÁ existem
+// no rebanho: lista os bezerros do grupo `bezerros_mamando` e, por animal, muda a
+// categoria atual (upsert em fichas_animal) registrando o evento aqui. Cada
+// movimento agrupa os desmames de uma sessão (mesma data/fazenda/retiro/proprietário);
+// catDecl (jsonb) guarda o tally por categoria de DESTINO [{ catId, qtd }]. Não há
+// baixa coletiva: todo desmame é por animal identificado (sem nao_identificados/status).
+export const desmameMovimentos = pgTable('desmame_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  qtd: integer('qtd').notNull().default(0),
+  // [{ catId, qtd }] — tally por categoria de destino dos animais desmamados.
+  catDecl: jsonb('cat_decl').default('[]'),
+  obs: text('obs'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_desmame_mov_org').on(t.organizationId),
+  index('idx_desmame_mov_farm').on(t.farmId),
+]);
+
+export const desmameFichas = pgTable('desmame_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => desmameMovimentos.id, { onDelete: 'cascade' }),
+  // Identificação do animal desmamado: ID Manejo (apelido) e/ou ID Eletrônico (rfid).
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  // Categoria de onde saiu (bezerros mamando) e para onde foi (destino).
+  categoriaOrigemId: uuid('categoria_origem_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  categoriaDestinoId: uuid('categoria_destino_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  // Peso de desmama (kg).
+  peso: numeric('peso', { precision: 8, scale: 2 }),
+  obs: text('obs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_desmame_fichas_mov').on(t.movimentoId),
+]);
+
+// ── Mudança de Categoria (Movimentação › Mudança de Categoria) ───────────────────
+// Como o Desmame, opera sobre o rebanho que JÁ existe: move animais de uma
+// categoria de SAÍDA (origem) para uma de ENTRADA (destino). Há dois caminhos,
+// como nas demais movimentações:
+//   • coletivo  — declara uma quantidade (apelido NULL, qtd N), informando
+//     peso/cabeça e valor/cabeça; NÃO altera fichas_animal (não identifica).
+//   • por animal — lista os animais da categoria de saída e muda a categoria
+//     atual (upsert em fichas_animal), registrando o evento aqui (qtd 1).
+// Cada movimento agrupa as mudanças de uma sessão (mesma data/fazenda/retiro/
+// proprietário); catDecl (jsonb) guarda o tally por categoria de DESTINO.
+export const mudancaCategoriaMovimentos = pgTable('mudanca_categoria_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  qtd: integer('qtd').notNull().default(0),
+  // [{ catId, qtd }] — tally por categoria de destino (entrada) dos animais movidos.
+  catDecl: jsonb('cat_decl').default('[]'),
+  obs: text('obs'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_mudcat_mov_org').on(t.organizationId),
+  index('idx_mudcat_mov_farm').on(t.farmId),
+]);
+
+export const mudancaCategoriaFichas = pgTable('mudanca_categoria_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => mudancaCategoriaMovimentos.id, { onDelete: 'cascade' }),
+  // Identificação do animal (no modo por animal): ID Manejo (apelido) / ID Eletrônico (rfid).
+  // No modo coletivo, apelido/rfid ficam NULL e qtd > 1.
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  // Categoria de onde saiu (origem) e para onde foi (destino).
+  categoriaOrigemId: uuid('categoria_origem_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  categoriaDestinoId: uuid('categoria_destino_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  // Quantidade de cabeças desta linha (1 quando identificada; N quando coletiva).
+  qtd: integer('qtd').notNull().default(1),
+  // Peso por cabeça (kg) e valor por cabeça (R$).
+  peso: numeric('peso', { precision: 8, scale: 2 }),
+  valor: numeric('valor', { precision: 14, scale: 2 }),
+  obs: text('obs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_mudcat_fichas_mov').on(t.movimentoId),
 ]);
 
 // ── Venda (Movimentação › Vendas) ───────────────────────────────────────────────
@@ -1645,6 +1794,11 @@ export const lotes = pgTable('lotes', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull()
     .references(() => organizations.id, { onDelete: 'cascade' }),
+  // Localização do lote: sempre vinculado a uma Fazenda; e ao Retiro quando a
+  // fazenda tiver retiros cadastrados (senão fica só no nível Fazenda). `retiro`
+  // é o NOME do retiro (texto), espelhando o padrão de nascimento/compra/venda.
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  retiro: text('retiro'),
   nome: text('nome').notNull(),
   // Identidade do lote (Gestão de Lotes): codigo (ex.: "RC-01") e finalidade
   // (Cria | Recria | Terminação | Outra Finalidade) — a finalidade não muda
@@ -1660,6 +1814,7 @@ export const lotes = pgTable('lotes', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_lotes_org_id').on(t.organizationId),
+  index('idx_lotes_farm_id').on(t.farmId),
 ]);
 
 // ── Lote Eventos ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Save, Check, Info, List, Tags, Trash2, Tag, Cpu } from 'lucide-react';
+import { Plus, Save, Check, Info, List, Tags } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
 import IconCardButton from '../../../components/IconCardButton';
@@ -15,12 +15,21 @@ import {
   type MorteMovimentoRow,
 } from '../../../lib/api/mortesClient';
 import { listMovimentos as listNascimentos, type NascimentoMovimentoRow } from '../../../lib/api/nascimentosClient';
+import { getFieldConfig, saveFieldConfig } from '../../../lib/api/movimentoFieldConfigClient';
 import CategoriaGrid from '../nascimento/CategoriaGrid';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
 import MorteLancamentosRecentes from './MorteLancamentosRecentes';
-import { formatDateBR, safraDaData, somaCategorias, statusFrom, tallyPorCategoria, todayISO } from './util';
-import type { ConsolidatedRow, LookupItem, MorteCat, MorteDetalhe, MovimentoMorte } from './types';
+import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
+import CamposConfigModal from '../fichas/CamposConfigModal';
+import FullscreenLancamento from '../fichas/FullscreenLancamento';
+import { useFieldConfig } from '../fichas/useFieldConfig';
+import { buildEntryValues } from '../fichas/fieldConfig';
+import { proximoApelido } from '../fichas/util';
+import { MORTE_FIELDS } from './fields';
+import { formatDateBR, safraDaData, somaCategorias, statusFrom, todayISO } from './util';
+import type { ConsolidatedRow, LookupItem, MorteCat, MovimentoMorte } from './types';
+import type { FichaDetalhe } from '../fichas/types';
 
 // Painéis fluidos: preenchem 100% da área de conteúdo (espelha a tela de Nascimento).
 const PANEL_MAX_W = '100%';
@@ -141,19 +150,31 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
   const [catSel, setCatSel] = useState('');
   const [catMotivoSel, setCatMotivoSel] = useState('');
 
-  // ── Modo individual: detalhamento por ID ──────────────────────────────────
-  const [detalhe, setDetalhe] = useState<MorteDetalhe[]>([]);
-  const [entIdManejo, setEntIdManejo] = useState('');
-  const [entIdEletronico, setEntIdEletronico] = useState('');
-  const [entCategoria, setEntCategoria] = useState('');
-  const [entMotivo, setEntMotivo] = useState('');
-  const [entObs, setEntObs] = useState('');
+  // ── Modo individual: detalhamento por animal (painel "Defina seus campos") ──
+  const [detalhe, setDetalhe] = useState<FichaDetalhe[]>([]);
+  const [entryValues, setEntryValues] = useState<Record<string, string>>(() => buildEntryValues(MORTE_FIELDS, today));
+  const [dadosOpen, setDadosOpen] = useState(false);
+  const [lrExpanded, setLrExpanded] = useState(false);
   const detSeq = useRef(1);
 
   // ── Movimentos salvos ─────────────────────────────────────────────────────
   const [movimentos, setMovimentos] = useState<MovimentoMorte[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
+
+  // Configuração de campos do painel (persistida por organização, tipo 'morte').
+  const fieldCfg = useFieldConfig({
+    registry: MORTE_FIELDS,
+    organizationId,
+    load: (id) => getFieldConfig(id, 'morte'),
+    save: (id, cfg) => saveFieldConfig(id, 'morte', cfg),
+    onError: (m) => onToast?.(m, 'error'),
+  });
+  // Lista dinâmica de motivos para o campo 'motivo' (type 'lookup') do painel.
+  const morteLookups = useMemo<Record<string, LookupItem[]>>(
+    () => ({ motivo: motivos.map((m) => ({ id: m.id, nome: m.nome })) }),
+    [motivos],
+  );
 
   const total = parseInt(totalStr, 10) || 0;
 
@@ -262,69 +283,76 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
   // Índice de animais por identificador, derivado dos nascimentos persistidos.
   const animalIndex = useMemo(() => buildAnimalIndex(nascimentos), [nascimentos]);
 
-  // ── Entrada individual (modo por ID) ──────────────────────────────────────
+  // ── Entrada individual (painel "Defina seus campos") ──────────────────────
+  // "Preenche um, carrega o outro": ao informar o ID de Manejo resolve o ID
+  // Eletrônico e a categoria (e vice-versa) a partir do cadastro do animal.
+  const setEntryValue = useCallback(
+    (fieldId: string, value: string) => {
+      setEntryValues((prev) => {
+        const next = { ...prev, [fieldId]: value };
+        const v = value.trim();
+        if (fieldId === 'idManejo' && v) {
+          const found = animalIndex.byManejo.get(normId(v));
+          if (found) {
+            if (found.idEletronico && !(next.idEletronico || '').trim()) next.idEletronico = found.idEletronico;
+            if (found.categoria && !next.categoria) next.categoria = found.categoria;
+          }
+        } else if (fieldId === 'idEletronico' && v) {
+          const found = animalIndex.byEletronico.get(normId(v));
+          if (found) {
+            if (found.idManejo && !(next.idManejo || '').trim()) next.idManejo = found.idManejo;
+            if (found.categoria && !next.categoria) next.categoria = found.categoria;
+          }
+        }
+        return next;
+      });
+    },
+    [animalIndex],
+  );
+
   const addDetalhe = useCallback(() => {
-    const idManejo = entIdManejo.trim();
-    const idEletronico = entIdEletronico.trim();
+    const idManejo = (entryValues.idManejo || '').trim();
+    const idEletronico = (entryValues.idEletronico || '').trim();
     if (!idManejo && !idEletronico) {
       onToast?.('Informe o ID de Manejo ou o ID Eletrônico', 'error');
       return;
     }
-    if (!entCategoria) {
+    if (!entryValues.categoria) {
       onToast?.('Selecione a categoria', 'error');
       return;
     }
-    if (!entMotivo) {
+    if (!entryValues.motivo) {
       onToast?.('Selecione o motivo da morte', 'error');
       return;
     }
-    setDetalhe((prev) => [
-      ...prev,
-      { id: detSeq.current++, idManejo, idEletronico, categoria: entCategoria, motivoId: entMotivo, obs: entObs.trim() },
-    ]);
-    // Próxima entrada: limpa os IDs e a observação; mantém categoria/motivo
-    // (mesmo lote de baixa costuma ter a mesma causa).
-    setEntIdManejo('');
-    setEntIdEletronico('');
-    setEntObs('');
-  }, [entIdManejo, entIdEletronico, entCategoria, entMotivo, entObs, onToast]);
+    const snapshot = { ...entryValues, idManejo, idEletronico };
+    setDetalhe((prev) => [...prev, { id: detSeq.current++, values: snapshot }]);
+    // Próxima entrada: preserva top (data) + categoria/motivo (mesma causa costuma
+    // se repetir no mesmo lote de baixa); limpa os IDs e a observação.
+    setEntryValues((prev) => {
+      const reset = buildEntryValues(MORTE_FIELDS, today);
+      for (const f of MORTE_FIELDS) {
+        if (fieldCfg.places[f.id] === 'top') reset[f.id] = prev[f.id] ?? reset[f.id];
+      }
+      reset.categoria = prev.categoria ?? '';
+      reset.motivo = prev.motivo ?? '';
+      reset.idManejo = fieldCfg.autonum ? proximoApelido(idManejo) : '';
+      return reset;
+    });
+  }, [entryValues, fieldCfg.places, fieldCfg.autonum, today, onToast]);
 
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
   }, []);
 
-  // "Preenche um, carrega o outro": ao informar o ID de Manejo, resolve o ID
-  // Eletrônico e a categoria a partir do cadastro do animal. Roda já na digitação
-  // (onChange) para a categoria carregar automaticamente, sem preciso sair do campo.
-  const autofillFromManejo = useCallback(
-    (raw: string) => {
-      const v = raw.trim();
-      if (!v) return;
-      const found = animalIndex.byManejo.get(normId(v));
-      if (!found) return;
-      if (found.idEletronico && !entIdEletronico.trim()) setEntIdEletronico(found.idEletronico);
-      if (found.categoria && !entCategoria) setEntCategoria(found.categoria);
+  // Importação em massa: linhas conformes da planilha viram animais detalhados.
+  const importDetalhe = useCallback(
+    (rows: Record<string, string>[]) => {
+      if (!rows.length) return;
+      setDetalhe((prev) => [...prev, ...rows.map((values) => ({ id: detSeq.current++, values }))]);
+      onToast?.(`${rows.length} ${rows.length === 1 ? 'animal importado' : 'animais importados'} da planilha`, 'success');
     },
-    [animalIndex, entIdEletronico, entCategoria],
-  );
-
-  // Idem, no sentido inverso: a partir do ID Eletrônico carrega o Manejo.
-  const autofillFromEletronico = useCallback(
-    (raw: string) => {
-      const v = raw.trim();
-      if (!v) return;
-      const found = animalIndex.byEletronico.get(normId(v));
-      if (!found) return;
-      if (found.idManejo && !entIdManejo.trim()) setEntIdManejo(found.idManejo);
-      if (found.categoria && !entCategoria) setEntCategoria(found.categoria);
-    },
-    [animalIndex, entIdManejo, entCategoria],
-  );
-
-  const onManejoBlur = useCallback(() => autofillFromManejo(entIdManejo), [autofillFromManejo, entIdManejo]);
-  const onEletronicoBlur = useCallback(
-    () => autofillFromEletronico(entIdEletronico),
-    [autofillFromEletronico, entIdEletronico],
+    [onToast],
   );
 
   // ── Categorias declaradas (modo coletivo) ─────────────────────────────────
@@ -369,7 +397,10 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
 
   // ── Toggle individual/coletivo ────────────────────────────────────────────
   const toggleFromId = useCallback(() => setFromId((prev) => !prev), []);
-  const verColetivo = useCallback(() => setFromId(false), []);
+  const verColetivo = useCallback(() => {
+    setFromId(false);
+    setLrExpanded(false);
+  }, []);
 
   // ── Salvar ────────────────────────────────────────────────────────────────
   const salvarHabilitado = somaCategorias(cats) > 0 || detalhe.length > 0 || (!!catSel && !!catMotivoSel && total > 0);
@@ -380,15 +411,13 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
     setCatSel('');
     setCatMotivoSel('');
     setDetalhe([]);
-    setEntIdManejo('');
-    setEntIdEletronico('');
-    setEntCategoria('');
-    setEntMotivo('');
-    setEntObs('');
+    setEntryValues(buildEntryValues(MORTE_FIELDS, today));
+    setDadosOpen(false);
+    setLrExpanded(false);
     setObs('');
     setFromId(false);
     setEditingId(null);
-  }, []);
+  }, [today]);
 
   const salvar = useCallback(async () => {
     if (!organizationId) {
@@ -409,11 +438,11 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
     }
 
     const fichas = detalhe.map((d) => ({
-      apelido: d.idManejo || null,
-      rfid: d.idEletronico || null,
-      catId: d.categoria || null,
-      motivoId: d.motivoId || null,
-      obs: d.obs || null,
+      apelido: d.values.idManejo || null,
+      rfid: d.values.idEletronico || null,
+      catId: d.values.categoria || null,
+      motivoId: d.values.motivo || null,
+      obs: d.values.obs || null,
     }));
 
     const catDecl = declaradas.map((c) => ({ catId: c.catId, qtd: c.qtd, motivoId: c.motivoId || null }));
@@ -470,13 +499,16 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
       setLocal(m.local || '');
       setProprietario(m.proprietario || null);
       setObs(m.obs || '');
-      const novoDetalhe: MorteDetalhe[] = m.fichas.map((f) => ({
+      const novoDetalhe: FichaDetalhe[] = m.fichas.map((f) => ({
         id: detSeq.current++,
-        idManejo: f.idManejo,
-        idEletronico: f.idEletronico,
-        categoria: f.catId,
-        motivoId: f.motivoId,
-        obs: f.obs,
+        values: {
+          idManejo: f.idManejo || '',
+          idEletronico: f.idEletronico || '',
+          categoria: f.catId || '',
+          motivo: f.motivoId || '',
+          obs: f.obs || '',
+          data: m.data,
+        },
       }));
       const novasCats: MorteCat[] = m.catDecl
         .filter((d) => d.qtd > 0)
@@ -486,6 +518,9 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
       setCatSel('');
       setCatMotivoSel('');
       setTotalStr('');
+      setEntryValues(buildEntryValues(MORTE_FIELDS, m.data));
+      setDadosOpen(false);
+      setLrExpanded(false);
       setFromId(novoDetalhe.length > 0);
       setEditingId(movId);
       setAba('lancar');
@@ -537,7 +572,15 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
   );
 
   // ── Derivações de exibição ────────────────────────────────────────────────
-  const derivedTally = useMemo(() => tallyPorCategoria(detalhe), [detalhe]);
+  // Detalhados por categoria (catId → nº), a partir dos valores do painel.
+  const derivedTally = useMemo(() => {
+    const t: Record<string, number> = {};
+    for (const d of detalhe) {
+      const catId = d.values.categoria;
+      if (catId) t[catId] = (t[catId] || 0) + 1;
+    }
+    return t;
+  }, [detalhe]);
   const totalDeclarado = somaCategorias(cats);
   const totalDetalhado = detalhe.length;
   const totalGeral = totalDeclarado + totalDetalhado;
@@ -566,6 +609,119 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
 
+  // Abas (Lançamentos / Registros): reusado no cabeçalho normal e no da tela cheia.
+  const abasToggle = (
+    <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
+      <button
+        type="button"
+        onClick={() => setAba('lancar')}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <Plus size={16} /> Lançamentos
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setLrExpanded(false);
+          setAba('historico');
+        }}
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+          aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <List size={16} /> Registros
+        {movimentos.length ? (
+          <span
+            className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
+              aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {movimentos.length}
+          </span>
+        ) : null}
+      </button>
+    </div>
+  );
+
+  // Linha compacta de dados básicos (cabeçalho da tela cheia).
+  const compactHeader = (
+    <>
+      <div className="min-w-0" style={{ flex: '0 0 150px' }}>
+        <label className={labelCls}>Data</label>
+        <input type="date" className={`${inputCls} mt-1`} value={data} onChange={(e) => setData(e.target.value)} />
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 200px' }}>
+        <label className={labelCls}>Proprietário</label>
+        <PessoaSelector
+          organizationId={organizationId}
+          value={proprietario}
+          onChange={setProprietario}
+          filterTipo="proprietario"
+          placeholder="Selecionar proprietário..."
+          className="mt-1 h-10 w-full"
+        />
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 160px' }}>
+        <label className={labelCls}>Fazenda</label>
+        <select className={`${inputCls} mt-1`} value={fazenda} onChange={(e) => setFazenda(e.target.value)}>
+          <option value="">—</option>
+          {farms.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="min-w-0" style={{ flex: '1 1 160px' }}>
+        <label className={labelCls}>Retiro</label>
+        <select
+          className={`${inputCls} mt-1`}
+          value={retiro}
+          onChange={(e) => {
+            setRetiro(e.target.value);
+            setLocal('');
+          }}
+        >
+          <option value="">—</option>
+          {retiros.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+
+  // Painel "Defina seus campos" (detalhamento por animal). Mesmo elemento na
+  // visão normal e na tela cheia.
+  const painelEl = fromId ? (
+    <DefinaCamposPanel
+      fieldById={fieldCfg.fieldById}
+      order={fieldCfg.order}
+      places={fieldCfg.places}
+      categories={categories}
+      lotes={[]}
+      lookups={morteLookups}
+      values={entryValues}
+      onValueChange={setEntryValue}
+      detalhe={detalhe}
+      onAdd={addDetalhe}
+      onRemoveDetalhe={removeDetalhe}
+      onOpenConfig={() => fieldCfg.setConfigOpen(true)}
+      onToast={onToast}
+      onImport={importDetalhe}
+      onClose={verColetivo}
+      expanded={lrExpanded}
+      onToggleExpand={() => setLrExpanded((p) => !p)}
+      filenamePrefix="modelo-morte"
+      dadosOpen={dadosOpen}
+      onToggleDados={() => setDadosOpen((p) => !p)}
+    />
+  ) : null;
+
   return (
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
       {/* Cabeçalho + abas */}
@@ -575,38 +731,12 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
           <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Mortes</h1>
         </div>
 
-        <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setAba('lancar')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'lancar' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Plus size={16} /> Lançamentos
-          </button>
-          <button
-            type="button"
-            onClick={() => setAba('historico')}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              aba === 'historico' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <List size={16} /> Registros
-            {movimentos.length ? (
-              <span
-                className={`ml-0.5 rounded-full px-1.5 text-[11px] font-bold ${
-                  aba === 'historico' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {movimentos.length}
-              </span>
-            ) : null}
-          </button>
-        </div>
+        {abasToggle}
       </div>
 
       {aba === 'lancar' ? (
+      <>
+      {!lrExpanded ? (
       <>
       <div className="@container" style={{ maxWidth: PANEL_MAX_W }}>
         <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-gray-200 bg-white @min-[1180px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
@@ -814,136 +944,26 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
         </div>
       </div>
 
-      {/* Entrada individual por ID */}
+      {/* Painel "Defina seus campos" (detalhamento por animal) */}
       {fromId ? (
-        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5" style={{ maxWidth: PANEL_MAX_W }}>
-          <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold text-gray-700">
-            <BrincoBovinoIcon size={18} className="text-[#16a34a]" /> Baixa individual por ID
-          </h3>
-
-          <div className="flex flex-wrap items-end gap-3">
-            {/* ID de Manejo — preenche um, carrega o outro */}
-            <div className="min-w-[150px] flex-1">
-              <label className={`${labelCls} inline-flex items-center gap-1.5`}>
-                <Tag size={14} className="text-[#16a34a]" /> ID de Manejo
-              </label>
-              <input
-                type="text"
-                className={`${inputCls} mt-1.5`}
-                placeholder="Ex.: 504A"
-                value={entIdManejo}
-                onChange={(e) => {
-                  setEntIdManejo(e.target.value);
-                  autofillFromManejo(e.target.value);
-                }}
-                onBlur={onManejoBlur}
-              />
-            </div>
-            {/* ID Eletrônico (RFID) */}
-            <div className="min-w-[150px] flex-1">
-              <label className={`${labelCls} inline-flex items-center gap-1.5`}>
-                <Cpu size={14} className="text-[#16a34a]" /> ID Eletrônico
-              </label>
-              <input
-                type="text"
-                className={`${inputCls} mt-1.5`}
-                placeholder="Ex.: 982000123456789"
-                value={entIdEletronico}
-                onChange={(e) => {
-                  setEntIdEletronico(e.target.value);
-                  autofillFromEletronico(e.target.value);
-                }}
-                onBlur={onEletronicoBlur}
-              />
-            </div>
-            {/* Categoria — carregada automaticamente pelo ID; editável manualmente */}
-            <div className="min-w-[150px] flex-1">
-              <label className={labelCls}>Categoria <span className="text-red-500">*</span></label>
-              <select className={`${inputCls} mt-1.5`} value={entCategoria} onChange={(e) => setEntCategoria(e.target.value)}>
-                <option value="">Selecione a categoria</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Motivo */}
-            <div className="min-w-[150px] flex-1">
-              <label className={labelCls}>Motivo da morte <span className="text-red-500">*</span></label>
-              <select className={`${inputCls} mt-1.5`} value={entMotivo} onChange={(e) => setEntMotivo(e.target.value)}>
-                <option value="">Selecione o motivo</option>
-                {motivos.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {/* Obs */}
-            <div className="min-w-[150px] flex-1">
-              <label className={labelCls}>Observação</label>
-              <input
-                type="text"
-                className={`${inputCls} mt-1.5`}
-                placeholder="Opcional"
-                value={entObs}
-                onChange={(e) => setEntObs(e.target.value)}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addDetalhe}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#16a34a] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d]"
-            >
-              <Plus size={16} /> Adicionar
-            </button>
-          </div>
-
-          {/* Lista de animais detalhados */}
-          {detalhe.length ? (
-            <div className="mt-4 overflow-hidden rounded-xl border border-gray-200">
-              <table className="w-full border-collapse text-[13px]">
-                <thead>
-                  <tr className="bg-[#fcfcfd] text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                    <th className="border-b border-gray-200 px-3 py-2.5">ID Manejo</th>
-                    <th className="border-b border-gray-200 px-3 py-2.5">ID Eletrônico</th>
-                    <th className="border-b border-gray-200 px-3 py-2.5">Categoria</th>
-                    <th className="border-b border-gray-200 px-3 py-2.5">Motivo</th>
-                    <th className="border-b border-gray-200 px-3 py-2.5">Observação</th>
-                    <th className="w-[60px] border-b border-gray-200 px-3 py-2.5 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detalhe.map((d) => (
-                    <tr key={d.id} className="hover:bg-[#fafbfc]">
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 font-semibold text-gray-800">{d.idManejo || '—'}</td>
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 font-mono text-[11px] text-gray-500">{d.idEletronico || '—'}</td>
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 text-gray-600">{catName(d.categoria)}</td>
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 text-gray-600">{motivoName(d.motivoId)}</td>
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 text-gray-500">{d.obs || '—'}</td>
-                      <td className="border-b border-[#f1f2f4] px-3 py-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeDetalhe(d.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"
-                          title="Remover"
-                          aria-label="Remover"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="mt-4 text-[12.5px] text-gray-400">
-              Nenhum animal detalhado ainda — informe o ID de Manejo e/ou Eletrônico, a categoria e o motivo, e clique em “Adicionar”.
-            </p>
-          )}
+        <div className="mt-6" style={{ maxWidth: PANEL_MAX_W }}>
+          {painelEl}
         </div>
+      ) : null}
+      </>
+      ) : null}
+
+      {/* Tela cheia do painel "Defina seus campos" (detalhamento por animal) */}
+      {fromId && lrExpanded ? (
+        <FullscreenLancamento
+          icon={<MotivoMorteIcon size={22} className="text-[#16a34a]" />}
+          title="Mortes"
+          headerRight={abasToggle}
+          compactHeader={compactHeader}
+          onClose={() => setLrExpanded(false)}
+        >
+          {painelEl}
+        </FullscreenLancamento>
       ) : null}
       </>
       ) : (
@@ -968,6 +988,20 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
           />
         </div>
       )}
+
+      {fieldCfg.configOpen ? (
+        <CamposConfigModal
+          fieldById={fieldCfg.fieldById}
+          places={fieldCfg.places}
+          autonum={fieldCfg.autonum}
+          order={fieldCfg.order}
+          onSetPlace={fieldCfg.setPlace}
+          onToggleAutonum={fieldCfg.setAutonum}
+          onReorder={fieldCfg.setOrder}
+          onReset={fieldCfg.reset}
+          onClose={fieldCfg.closeConfig}
+        />
+      ) : null}
     </div>
   );
 };

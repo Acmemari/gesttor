@@ -316,6 +316,9 @@ app.all('/api/mapao', (req, res) => handleApiRoute('./api/mapao.ts', req, res));
 app.all('/api/nascimentos', (req, res) => handleApiRoute('./api/nascimentos.ts', req, res));
 app.all('/api/nascimento-field-config', (req, res) => handleApiRoute('./api/nascimento-field-config.ts', req, res));
 
+// Configuração de campos genérica das movimentações (Compra/Venda/Morte)
+app.all('/api/movimento-field-config', (req, res) => handleApiRoute('./api/movimento-field-config.ts', req, res));
+
 // Movimentação › Mortes
 app.all('/api/mortes', (req, res) => handleApiRoute('./api/mortes.ts', req, res));
 
@@ -324,6 +327,12 @@ app.all('/api/vendas', (req, res) => handleApiRoute('./api/vendas.ts', req, res)
 
 // Movimentação › Compras
 app.all('/api/compras', (req, res) => handleApiRoute('./api/compras.ts', req, res));
+
+// Movimentação › Desmame
+app.all('/api/desmames', (req, res) => handleApiRoute('./api/desmames.ts', req, res));
+
+// Movimentação › Mudança de Categoria
+app.all('/api/mudanca-categoria', (req, res) => handleApiRoute('./api/mudanca-categoria.ts', req, res));
 
 // Pecuário › Cadastros › Ficha Animal
 app.all('/api/fichas-animal', (req, res) => handleApiRoute('./api/fichas-animal.ts', req, res));

@@ -6,6 +6,8 @@ export type Finalidade = 'Cria' | 'Recria' | 'Terminação' | 'Outra Finalidade'
 export interface Lote {
   id: string;
   organizationId: string;
+  farmId: string | null;   // nível Fazenda (sempre vinculado)
+  retiro: string | null;   // nível Retiro (nome) — quando a fazenda tiver retiros
   nome: string;
   codigo: string | null;
   finalidade: string | null; // Finalidade
@@ -31,6 +33,8 @@ export async function listLotes(organizationId: string, signal?: AbortSignal): P
 
 export async function createLote(data: {
   organizationId: string;
+  farmId?: string | null;
+  retiro?: string | null;
   nome: string;
   codigo?: string | null;
   finalidade?: string | null;
@@ -47,6 +51,8 @@ export async function createLote(data: {
 }
 
 export async function updateLote(id: string, data: {
+  farmId?: string | null;
+  retiro?: string | null;
   nome?: string;
   codigo?: string | null;
   finalidade?: string | null;

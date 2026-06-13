@@ -88,7 +88,7 @@ const CompraLancamentosRecentes: React.FC<CompraLancamentosRecentesProps> = ({
             <th className="w-[36px] border-b border-gray-200 px-3 py-3" />
             <th className="border-b border-gray-200 px-4 py-3">Data</th>
             <th className="border-b border-gray-200 px-4 py-3">Categorias</th>
-            <th className="border-b border-gray-200 px-4 py-3">Cliente</th>
+            <th className="border-b border-gray-200 px-4 py-3">Fornecedor</th>
             <th className="border-b border-gray-200 px-4 py-3 text-right">Cabeças</th>
             <th className="border-b border-gray-200 px-4 py-3 text-right">Peso/cab</th>
             <th className="border-b border-gray-200 px-4 py-3 text-right">Valor total</th>
@@ -148,7 +148,7 @@ const CompraLancamentosRecentes: React.FC<CompraLancamentosRecentesProps> = ({
                         ) : null}
                         {m.cliente ? (
                           <span className="inline-flex items-center rounded-full bg-[#e8f5e9] px-2.5 py-1 font-semibold text-[#65C04A]">
-                            Cliente: {pessoaName(m.cliente)}
+                            Fornecedor: {pessoaName(m.cliente)}
                           </span>
                         ) : null}
                       </div>

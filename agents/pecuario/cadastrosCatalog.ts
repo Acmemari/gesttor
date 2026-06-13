@@ -9,6 +9,7 @@ export const PECUARIO_CADASTROS: CadastroRef[] = [
   { id: 'estoque-partida', label: 'Estoque de Partida' },
   { id: 'ficha-animal', label: 'Ficha Animal' },
   { id: 'mapao', label: 'Mapa Rebanho - Mapão' },
+  { id: 'areas', label: 'Cadastro de Áreas' },
   { id: 'animal-categories', label: 'Categoria Animal' },
   { id: 'animal-breeds', label: 'Raças' },
   { id: 'padrao-racial', label: 'Padrão Racial e Grau de Sangue' },
@@ -18,4 +19,6 @@ export const PECUARIO_CADASTROS: CadastroRef[] = [
   { id: 'tipos-chifre', label: 'Tipo de Chifre - Aspas' },
   { id: 'lotes', label: 'Cadastro de Lotes' },
   { id: 'people', label: 'Cadastro de Pessoas' },
+  { id: 'propriedades', label: 'Cadastro de Fazendas' },
 ];
+

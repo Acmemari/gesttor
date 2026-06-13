@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurar campos — zonas + arrastar</title>
+<style>
+  :root{
+    --blue:#2563eb; --blue-soft:#eef4fe; --line:#e3e7ee; --text:#1f2733; --muted:#8a93a3;
+    --bg:#f4f6f9; --green:#15803d; --green-soft:#e9f7ee; --green-line:#bfe6cd;
+    --amber:#b7791f; --amber-soft:#fdf4e3; --amber-line:#f0dcae;
+    --slate:#475569; --slate-soft:#eef1f5;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);padding:40px 28px 90px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  .head h1{font-size:24px;font-weight:700;letter-spacing:-.01em;}
+  .head p{font-size:14px;color:var(--muted);margin-top:7px;line-height:1.55;max-width:760px;}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;font-size:12.5px;color:var(--muted);}
+  .legend span{display:inline-flex;align-items:center;gap:7px;}
+  .legend i{width:12px;height:12px;border-radius:4px;display:inline-block;}
+
+  .board{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px;}
+  @media(max-width:820px){.board{grid-template-columns:1fr;}}
+
+  .zone{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 16px 18px;transition:box-shadow .15s,border-color .15s;}
+  .zone.drop-active{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft);}
+  .zone-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:13px;}
+  .zone-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex-shrink:0;}
+  .zone-title{font-size:14.5px;font-weight:700;line-height:1.25;}
+  .zone-sub{font-size:11.5px;color:var(--muted);font-weight:500;line-height:1.3;margin-top:1px;}
+  .zone-count{margin-left:auto;margin-top:3px;font-size:12px;font-weight:700;color:var(--muted);background:var(--slate-soft);border-radius:999px;padding:3px 10px;font-variant-numeric:tabular-nums;}
+
+  .z-sup .zone-ic{background:var(--amber-soft);color:var(--amber);}
+  .z-tab .zone-ic{background:var(--green-soft);color:var(--green);}
+  .z-add .zone-ic{background:var(--blue-soft);color:var(--blue);}
+  .z-off .zone-ic{background:var(--slate-soft);color:var(--slate);}
+  .z-off{background:#fbfcfd;}
+
+  .list{min-height:46px;display:flex;flex-direction:column;gap:8px;}
+  .list.empty-hint{justify-content:center;align-items:center;border:1.5px dashed var(--line);border-radius:10px;min-height:60px;color:#aab2bf;font-size:12.5px;font-style:italic;}
+
+  .fld{display:flex;align-items:center;gap:11px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:500;cursor:default;user-select:none;transition:box-shadow .12s,opacity .12s,transform .05s;}
+  .fld .handle{color:#c2c8d2;cursor:grab;display:inline-flex;letter-spacing:-2px;font-size:18px;line-height:1;touch-action:none;}
+  .fld .handle:active{cursor:grabbing;}
+  .fld .pos{font-size:11px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;width:16px;text-align:center;}
+  .fld .name{flex:1;}
+  .fld .req{color:#e0524d;font-size:11px;margin-left:2px;}
+  .fld .lock{font-size:12px;opacity:.5;}
+  .fld.dragging{opacity:.4;border-style:dashed;}
+  .fld.float{position:fixed;z-index:999;box-shadow:0 12px 30px rgba(25,35,55,.18);border-color:var(--blue);pointer-events:none;width:auto;background:#fff;}
+  .placeholder{border:1.5px dashed var(--blue);background:var(--blue-soft);border-radius:10px;height:42px;}
+
+  .zone-foot{margin-top:11px;font-size:11.5px;color:#9aa2af;display:flex;align-items:center;gap:6px;}
+
+  .note{margin-top:24px;display:flex;gap:11px;align-items:flex-start;font-size:13px;color:#5a6473;line-height:1.55;background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 17px;}
+  .note b{color:var(--text);}
+  .note .ic{flex-shrink:0;color:var(--blue);font-size:16px;margin-top:1px;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>Configurar campos — Nascimento</h1>
+      <p>Cada campo vive em uma <b>zona</b>. <b>Arraste pela alça ⠿</b> para reordenar dentro da zona, ou solte em outra zona para mudar onde ele aparece. A numeração mostra a ordem em que serão exibidos.</p>
+      <div class="legend">
+        <span><i style="background:var(--amber)"></i> Linha superior — cabeçalho do lançamento</span>
+        <span><i style="background:var(--green)"></i> Tabela de lançamento — colunas da grade</span>
+        <span><i style="background:var(--blue)"></i> Dados adicionais — seção recolhível</span>
+        <span><i style="background:var(--slate)"></i> Desativados — fora da tela</span>
+      </div>
+    </div>
+
+    <div class="board" id="board">
+      <div class="zone z-sup" data-zone="sup">
+        <div class="zone-head">
+          <span class="zone-ic">▦</span>
+          <div><div class="zone-title">Linha superior</div><div class="zone-sub">Aparece no topo, antes da grade</div></div>
+          <span class="zone-count" data-count></span>
+        </div>
+        <div class="list" data-list></div>
+        <div class="zone-foot">⠿ arraste para reordenar · solte aqui para mover</div>
+      </div>
+
+      <div class="zone z-tab" data-zone="tab">
+        <div class="zone-head">
+          <span class="zone-ic">▤</span>
+          <div><div class="zone-title">Tabela de lançamento</div><div class="zone-sub">Vira coluna da grade</div></div>
+          <span class="zone-count" data-count></span>
+        </div>
+        <div class="list" data-list></div>
+        <div class="zone-foot">a ordem aqui = ordem das colunas</div>
+      </div>
+
+      <div class="zone z-add" data-zone="add">
+        <div class="zone-head">
+          <span class="zone-ic">⊕</span>
+          <div><div class="zone-title">Dados adicionais</div><div class="zone-sub">Seção recolhível “ver mais”</div></div>
+          <span class="zone-count" data-count></span>
+        </div>
+        <div class="list" data-list></div>
+        <div class="zone-foot">campos secundários, fora do fluxo principal</div>
+      </div>
+
+      <div class="zone z-off" data-zone="off">
+        <div class="zone-head">
+          <span class="zone-ic">⊘</span>
+          <div><div class="zone-title">Desativados</div><div class="zone-sub">Não aparecem no lançamento</div></div>
+          <span class="zone-count" data-count></span>
+        </div>
+        <div class="list" data-list></div>
+        <div class="zone-foot">campos obrigatórios ✱ não podem vir para cá</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="ic">◆</span>
+      <span>Os campos <b>obrigatórios</b> (marcados com <span style="color:#e0524d">✱</span>) podem ser reordenados e trocar de zona, mas <b>não podem ser desativados</b> — a zona Desativados os recusa. O <b>Apelido/ID</b> fica fixo como primeiro da grade.</span>
+    </div>
+  </div>
+
+<script>
+  // modelo: cada campo tem zona e a ordem é a posição na zona
+  let fields = [
+    { id:'data',    label:'Data',           req:true,  zone:'sup' },
+    { id:'raca',    label:'Raça',           req:true,  zone:'sup' },
+    { id:'lote',    label:'Lote',           req:false, zone:'sup' },
+    { id:'cat',     label:'Categoria',      req:true,  zone:'tab' },
+    { id:'sexo',    label:'Sexo',           req:true,  zone:'tab' },
+    { id:'porte',   label:'Porte',          req:true,  zone:'tab' },
+    { id:'rfid',    label:'ID Eletrônica',  req:false, zone:'tab' },
+    { id:'sisbov',  label:'Nº SISBOV',      req:false, zone:'tab' },
+    { id:'colostro',label:'Colostro?',      req:false, zone:'add' },
+    { id:'peso',    label:'Peso nasc.',     req:false, zone:'add' },
+    { id:'obs',     label:'Observação',     req:false, zone:'off' },
+  ];
+
+  const ZONES = ['sup','tab','add','off'];
+  const EMPTY = { sup:'Nenhum campo no topo', tab:'Nenhuma coluna', add:'Nenhum dado adicional', off:'Nada desativado' };
+
+  function render(){
+    ZONES.forEach(z=>{
+      const zoneEl = document.querySelector(`.zone[data-zone="${z}"]`);
+      const list = zoneEl.querySelector('[data-list]');
+      const items = fields.filter(f=>f.zone===z);
+      zoneEl.querySelector('[data-count]').textContent = items.length;
+      list.classList.toggle('empty-hint', items.length===0);
+      if(!items.length){ list.innerHTML = EMPTY[z]; return; }
+      list.innerHTML = items.map((f,i)=>`
+        <div class="fld" data-id="${f.id}">
+          <span class="handle" data-handle>⠿</span>
+          <span class="pos">${i+1}</span>
+          <span class="name">${f.label}${f.req?'<span class="req">✱</span>':''}</span>
+          ${f.req?'<span class="lock" title="Obrigatório — não pode ser desativado">🔒</span>':''}
+        </div>`).join('');
+    });
+  }
+
+  // ---- drag por ponteiro (mouse + toque) ----
+  let drag = null;
+  document.addEventListener('pointerdown', e=>{
+    const handle = e.target.closest('[data-handle]');
+    if(!handle) return;
+    e.preventDefault();
+    const row = handle.closest('.fld');
+    const id = row.dataset.id;
+    const rect = row.getBoundingClientRect();
+    const float = row.cloneNode(true);
+    float.classList.add('float');
+    float.style.width = rect.width+'px';
+    float.style.left = rect.left+'px';
+    float.style.top = rect.top+'px';
+    document.body.appendChild(float);
+    row.classList.add('dragging');
+    const ph = document.createElement('div');
+    ph.className = 'placeholder';
+    row.after(ph);
+    drag = { id, float, row, ph, offX:e.clientX-rect.left, offY:e.clientY-rect.top };
+    document.body.style.cursor='grabbing';
+  });
+
+  document.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    drag.float.style.left = (e.clientX-drag.offX)+'px';
+    drag.float.style.top  = (e.clientY-drag.offY)+'px';
+    // zona sob o cursor
+    let overZone=null;
+    document.querySelectorAll('.zone').forEach(z=>{
+      const r=z.getBoundingClientRect();
+      const inside = e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+      z.classList.toggle('drop-active', inside);
+      if(inside) overZone=z;
+    });
+    if(!overZone) return;
+    const field = fields.find(f=>f.id===drag.id);
+    // obrigatório não entra em "Desativados"
+    if(overZone.dataset.zone==='off' && field.req){ return; }
+    const list = overZone.querySelector('[data-list]');
+    list.classList.remove('empty-hint');
+    const rows = [...list.querySelectorAll('.fld:not(.dragging)')];
+    let target=null;
+    for(const r of rows){
+      const rr=r.getBoundingClientRect();
+      if(e.clientY < rr.top+rr.height/2){ target=r; break; }
+    }
+    if(target) list.insertBefore(drag.ph, target);
+    else list.appendChild(drag.ph);
+  });
+
+  document.addEventListener('pointerup', ()=>{
+    if(!drag) return;
+    const ph = drag.ph;
+    const list = ph.parentElement;
+    const zone = list.closest('.zone').dataset.zone;
+    const field = fields.find(f=>f.id===drag.id);
+    // índice de destino dentro da zona (contando placeholders/rows na lista)
+    const siblings = [...list.children].filter(n=>n.classList.contains('fld')||n===ph);
+    const idx = siblings.indexOf(ph);
+    // remove do array e reinsere
+    fields = fields.filter(f=>f.id!==drag.id);
+    field.zone = zone;
+    const zoneItems = fields.filter(f=>f.zone===zone);
+    const before = zoneItems[idx]; // campo que ficará logo após
+    if(before){
+      const gi = fields.indexOf(before);
+      fields.splice(gi,0,field);
+    } else {
+      // vai para o fim da zona: insere após o último item da zona
+      const last = zoneItems[zoneItems.length-1];
+      if(last){ fields.splice(fields.indexOf(last)+1,0,field); }
+      else { fields.push(field); }
+    }
+    drag.float.remove();
+    document.querySelectorAll('.zone').forEach(z=>z.classList.remove('drop-active'));
+    document.body.style.cursor='';
+    drag=null;
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

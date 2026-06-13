@@ -1,18 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Plus, Layers, MapPin, Leaf, Baby, ArrowLeftRight, Tag, Move, AlertTriangle,
-  Loader2, Pencil, Lock, Info,
+  Loader2, List, LayoutGrid,
 } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
+import TabSwitch from '../../../components/ui/TabSwitch';
+import AnimalStatusBadge from '../fichaAnimal/AnimalStatusBadge';
 import { listLotes, updateLote, createLote, type Lote } from '../../../lib/api/lotesClient';
 import { listLoteEventos, createLoteEvento } from '../../../lib/api/loteEventosClient';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
 import { listFichasAnimal } from '../../../lib/api/fichasAnimalClient';
+import { listMovimentos as listNascimentos } from '../../../lib/api/nascimentosClient';
+import { listMovimentos as listMortes } from '../../../lib/api/mortesClient';
 import type { CategoriaLookup, AnimalLite, LoteEventoRow } from './types';
 import {
   groupByLote, saldo, composicao, pendencias, animaisVinculados,
   localAtual, planoNutri, protocolo, faseRepro, ultimoRepro, timeline, formatDateBR,
+  ledgerLoteByAnimal, resolveLoteIdFromText,
 } from './util';
 import type { ReproDados } from './types';
 import LoteTimeline from './LoteTimeline';
@@ -20,6 +25,7 @@ import {
   RemanejarModal, TransferirModal, MudarRegimeModal, RegistrarReproModal,
   LoteFormModal, EncerrarModal, type EventoDraft,
 } from './LoteModals';
+import { IncluirPorIdModal } from './IncluirPorIdModal';
 
 interface GestaoLotesViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -28,7 +34,8 @@ interface GestaoLotesViewProps {
 }
 
 type ModalKind =
-  | { kind: 'remanejar'; modo: 'grupo' | 'id' }
+  | { kind: 'remanejar' }
+  | { kind: 'incluirId' }
   | { kind: 'transferir' }
   | { kind: 'regime' }
   | { kind: 'repro' }
@@ -51,6 +58,8 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
+  // Abas do painel do lote: Lançamentos (cards operacionais) / Registros (animais).
+  const [aba, setAba] = useState<'lancamentos' | 'registros'>('lancamentos');
 
   // ── Carga ──────────────────────────────────────────────────────────────────
   const carregar = useCallback(async () => {
@@ -85,16 +94,59 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
     }
   }, [organizationId, onToast]);
 
-  // Carrega animais sob demanda (modo "por ID").
+  // Carrega animais sob demanda (modo "por ID"). Mesma relação da Ficha Animal:
+  // fichas persistidas + fichas derivadas dos nascimentos ainda não persistidas
+  // (dedup por ID Manejo, a do banco tem prioridade), com a situação de Morte
+  // aplicada a partir das baixas — assim todos os animais do plantel aparecem.
   const carregarAnimais = useCallback(async () => {
     if (!organizationId || animaisCarregados) return;
     try {
       setAnimaisLoading(true);
-      const rows = await listFichasAnimal(organizationId);
-      setAnimais(rows.map((r) => ({
+      const [fichas, nascimentos, mortes] = await Promise.all([
+        listFichasAnimal(organizationId),
+        listNascimentos(organizationId),
+        listMortes(organizationId),
+      ]);
+
+      // Índice de baixas por ID Manejo / ID Eletrônico → marca o animal como morto.
+      const morteByManejo = new Set<string>();
+      const morteByRfid = new Set<string>();
+      for (const m of mortes) {
+        for (const f of m.fichas) {
+          if (f.apelido) morteByManejo.add(f.apelido.trim().toLowerCase());
+          if (f.rfid) morteByRfid.add(f.rfid.trim().toLowerCase());
+        }
+      }
+      const situacaoDe = (apelido: string | null, rfid: string | null, base: string): string => {
+        const a = (apelido || '').trim().toLowerCase();
+        const r = (rfid || '').trim().toLowerCase();
+        if ((a && morteByManejo.has(a)) || (r && morteByRfid.has(r))) return 'morte';
+        return base;
+      };
+
+      // Fichas persistidas no banco.
+      const out: AnimalLite[] = fichas.map((r) => ({
         id: r.id, apelido: r.apelido, rfid: r.rfid, raca: r.raca,
-        categoriaId: r.categoriaId, lote: r.lote, situacao: r.situacao,
-      })));
+        categoriaId: r.categoriaId, lote: r.lote,
+        situacao: situacaoDe(r.apelido, r.rfid, r.situacao || 'ativo'),
+      }));
+
+      // Fichas derivadas dos nascimentos ainda não persistidas (dedup por ID Manejo).
+      const seen = new Set(out.map((a) => a.apelido.trim().toLowerCase()).filter(Boolean));
+      for (const m of nascimentos) {
+        for (const f of m.fichas) {
+          const key = f.apelido.trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push({
+            id: f.id, apelido: f.apelido, rfid: f.rfid, raca: f.raca,
+            categoriaId: f.categoriaId, lote: null,
+            situacao: situacaoDe(f.apelido, f.rfid, 'ativo'),
+          });
+        }
+      }
+
+      setAnimais(out);
       setAnimaisCarregados(true);
     } catch (err: any) {
       onToast?.(err.message || 'Erro ao carregar animais', 'error');
@@ -119,6 +171,18 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   const selectedEventos = selectedId ? (eventosByLote[selectedId] ?? []) : [];
   const isCria = selected?.finalidade === 'Cria';
   const encerrado = !!selected?.finalizado;
+
+  // Animais individualizados que pertencem ao lote selecionado (ledger + ficha).
+  const ledger = useMemo(() => ledgerLoteByAnimal(eventosByLote), [eventosByLote]);
+  const animaisDoLote = useMemo(() => {
+    if (!selected) return [];
+    return animais.filter((a) => (ledger.get(a.id) ?? resolveLoteIdFromText(a.lote, lotes)) === selected.id);
+  }, [animais, ledger, lotes, selected]);
+
+  // Carrega os animais ao abrir a aba Registros (cacheado; recarrega após sync).
+  useEffect(() => {
+    if (aba === 'registros') carregarAnimais();
+  }, [aba, selectedId, carregarAnimais]);
 
   // ── Persistência de eventos ──────────────────────────────────────────────────
   const lancarEventos = useCallback(async (drafts: EventoDraft[]) => {
@@ -169,7 +233,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   }, [selected, carregar, onToast]);
 
   // ── Abertura de modais ───────────────────────────────────────────────────────
-  const abrirRemanejar = (modo: 'grupo' | 'id') => { if (modo === 'id') carregarAnimais(); setModal({ kind: 'remanejar', modo }); };
+  const abrirIncluirId = () => { carregarAnimais(); setModal({ kind: 'incluirId' }); };
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 size={24} className="animate-spin text-[#16a34a]" /></div>;
@@ -239,48 +303,18 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
             <div className="flex flex-1 items-center justify-center text-[13px] text-gray-400">Selecione um lote.</div>
           ) : (
             <>
-              {/* Cabeçalho da ficha */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    {selected.codigo && (
-                      <span className="rounded-lg bg-gray-100 px-2.5 py-1.5 font-mono text-[15px] font-bold text-gray-800">{selected.codigo}</span>
-                    )}
-                    <div>
-                      <h2 className="text-[18px] font-bold leading-tight text-gray-900">{selected.nome}</h2>
-                      <p className="mt-0.5 text-[12.5px] text-gray-500">
-                        Finalidade: <strong className="text-gray-700">{selected.finalidade || '—'}</strong>
-                        {' · '}aberto em {formatDateBR(selected.dataInicio)}
-                      </p>
-                      {selected.descricao && <p className="mt-1.5 max-w-xl text-[12.5px] text-gray-600">{selected.descricao}</p>}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {encerrado ? (
-                      <span className="text-[12px] font-semibold text-gray-400">Encerrado{/* sem data dedicada no schema */}</span>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => setModal({ kind: 'editar' })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-[12.5px] font-bold text-gray-700 hover:bg-gray-50">
-                          <Pencil size={13} /> Editar
-                        </button>
-                        <button type="button" onClick={() => setModal({ kind: 'encerrar' })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FECACA] bg-white px-3 text-[12.5px] font-bold text-[#DC2626] hover:bg-[#FEF2F2]">
-                          <Lock size={13} /> Encerrar
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+              {/* Abas: Lançamentos (cards operacionais) / Registros (animais do lote) */}
+              <TabSwitch
+                tabs={[
+                  { id: 'lancamentos', label: 'Lançamentos', icon: <LayoutGrid size={16} /> },
+                  { id: 'registros', label: 'Registros', icon: <List size={16} />, badge: saldo(selectedEventos) },
+                ]}
+                value={aba}
+                onChange={(id) => setAba(id as 'lancamentos' | 'registros')}
+              />
 
-              {/* Nota do modelo mental */}
-              <div className="flex gap-2 rounded-xl border border-[#b7e0c4] bg-[#f1faf4] px-4 py-3 text-[12.5px] leading-relaxed text-[#15803d]">
-                <Info size={15} className="mt-0.5 shrink-0" />
-                <span>
-                  <strong>Finalidade é a identidade</strong> do lote — não muda enquanto ele viver. Os estados abaixo são
-                  <strong> derivados dos eventos</strong>: você não edita, você lança um evento.
-                </span>
-              </div>
-
+              {aba === 'lancamentos' ? (
+                <>
               {/* Cards de controle */}
               <div className={`grid gap-4 ${isCria ? 'grid-cols-1 lg:grid-cols-4' : 'grid-cols-1 lg:grid-cols-3'}`}>
                 <ControleCard
@@ -288,8 +322,8 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                   mudaPor="Movimento de Alocação"
                   acoes={encerrado ? null : (
                     <div className="flex flex-wrap gap-2">
-                      <CardBtn onClick={() => abrirRemanejar('grupo')} icon={<Move size={13} />}>Remanejar animais</CardBtn>
-                      <CardBtn onClick={() => abrirRemanejar('id')} variant="ghost" icon={<Tag size={13} />}>Incluir por ID</CardBtn>
+                      <CardBtn onClick={() => setModal({ kind: 'remanejar' })} icon={<Move size={13} />}>Remanejar animais</CardBtn>
+                      <CardBtn onClick={abrirIncluirId} variant="ghost" icon={<Tag size={13} />}>Incluir por ID</CardBtn>
                     </div>
                   )}
                 >
@@ -334,6 +368,19 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
               {/* Linha do tempo */}
               <LoteTimeline items={timeline(selectedEventos, { catNome, loteNome })} />
+                </>
+              ) : (
+                <RegistrosLote
+                  animais={animaisDoLote}
+                  loading={!animaisCarregados || animaisLoading}
+                  saldoTotal={saldo(selectedEventos)}
+                  pend={pendencias(selectedEventos)}
+                  catNome={catNome}
+                  encerrado={encerrado}
+                  onAbrirFicha={onAbrirFicha}
+                  onIncluir={abrirIncluirId}
+                />
+              )}
             </>
           )}
         </main>
@@ -342,8 +389,14 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
       {/* ── Modais ───────────────────────────────────────────────────────────── */}
       {modal?.kind === 'remanejar' && selected && (
         <RemanejarModal
+          lote={selected} lotes={lotes} categorias={categorias}
+          onClose={() => setModal(null)} onSubmit={lancarEventos}
+        />
+      )}
+      {modal?.kind === 'incluirId' && selected && (
+        <IncluirPorIdModal
           lote={selected} lotes={lotes} categorias={categorias} animais={animais} animaisLoading={animaisLoading}
-          modoInicial={modal.modo} onClose={() => setModal(null)} onSubmit={lancarEventos}
+          eventosByLote={eventosByLote} onClose={() => setModal(null)} onSubmit={lancarEventos}
         />
       )}
       {modal?.kind === 'transferir' && selected && (
@@ -369,6 +422,84 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 };
 
 // ── Subcomponentes ─────────────────────────────────────────────────────────────
+
+/** Aba Registros: relação dos animais individualizados do lote selecionado. */
+const RegistrosLote: React.FC<{
+  animais: AnimalLite[];
+  loading: boolean;
+  saldoTotal: number;
+  pend: number;
+  catNome: (id: string | null) => string;
+  encerrado: boolean;
+  onAbrirFicha?: (id: string) => void;
+  onIncluir: () => void;
+}> = ({ animais, loading, saldoTotal, pend, catNome, encerrado, onAbrirFicha, onIncluir }) => (
+  <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+    <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+      <div>
+        <h3 className="text-[14px] font-bold text-gray-900">Animais do lote</h3>
+        <p className="mt-0.5 text-[12px] text-gray-500">
+          {saldoTotal} cab.{animais.length > 0 ? ` · ${animais.length} identificado(s)` : ''}
+          {pend > 0 ? ` · ${pend} sem identificação` : ''}
+        </p>
+      </div>
+      {!encerrado && (
+        <button
+          type="button"
+          onClick={onIncluir}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#16a34a] px-3 text-[12.5px] font-bold text-white hover:bg-[#15803d]"
+        >
+          <Tag size={14} /> Incluir por ID
+        </button>
+      )}
+    </div>
+    {loading ? (
+      <div className="flex items-center justify-center py-12 text-gray-400"><Loader2 size={20} className="animate-spin" /></div>
+    ) : animais.length === 0 ? (
+      <div className="px-4 py-12 text-center">
+        <div className="mb-2 flex justify-center text-gray-300"><LoteAnimaisIcon size={34} /></div>
+        <p className="text-[13px] font-semibold text-gray-500">
+          {saldoTotal > 0 ? 'Nenhum animal identificado individualmente.' : 'Lote sem animais.'}
+        </p>
+        <p className="mt-1 text-[12px] text-gray-400">
+          {saldoTotal > 0
+            ? `${saldoTotal} cabeça(s) no lote sem ID. Use "Incluir por ID" para vincular.`
+            : 'Inclua animais por ID ou remaneje um grupo na aba Lançamentos.'}
+        </p>
+      </div>
+    ) : (
+      <table className="w-full text-left text-[13px]">
+        <thead className="sticky top-0 z-10 bg-[#fafbfc]">
+          <tr className="text-[11px] uppercase tracking-wide text-gray-500">
+            <th className="px-4 py-2 font-bold">ID de manejo</th>
+            <th className="px-4 py-2 font-bold">Categoria</th>
+            <th className="px-4 py-2 font-bold">Raça</th>
+            <th className="px-4 py-2 text-right font-bold">Situação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {animais.map((a) => (
+            <tr
+              key={a.id}
+              onClick={() => onAbrirFicha?.(a.id)}
+              className="cursor-pointer border-t border-gray-100 transition-colors hover:bg-gray-50"
+            >
+              <td className="px-4 py-2.5 font-mono font-bold text-gray-800">{a.apelido}</td>
+              <td className="px-4 py-2.5 text-gray-600">{catNome(a.categoriaId) || '—'}</td>
+              <td className="px-4 py-2.5 text-gray-600">{a.raca || '—'}</td>
+              <td className="px-4 py-2.5 text-right"><AnimalStatusBadge situacao={a.situacao} size="sm" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+    {pend > 0 && animais.length > 0 && (
+      <div className="flex items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-[11.5px] font-semibold text-[#b45309]">
+        <AlertTriangle size={13} /> {pend} cabeça(s) sem identificação individual (pendência na Mesa).
+      </div>
+    )}
+  </div>
+);
 
 const ControleCard: React.FC<{
   cor: string; icon: React.ReactNode; titulo: string; pergunta: string; mudaPor: string;

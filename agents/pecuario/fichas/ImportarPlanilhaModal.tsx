@@ -8,6 +8,8 @@ interface ImportarPlanilhaModalProps {
   result: ImportResult;
   fileName: string;
   categories: LookupItem[];
+  /** Listas dinâmicas para exibir nomes de campos 'lookup'. */
+  lookups?: Record<string, LookupItem[]>;
   /** importa as linhas 100% conformes (verde). */
   onConfirm: (rows: Record<string, string>[]) => void;
   onClose: () => void;
@@ -28,9 +30,19 @@ const CELL_CLS: Record<CellStatus, string> = {
 };
 
 /** Texto a exibir numa célula (valor canônico quando válido; cru quando erro). */
-function cellDisplay(f: LrField, cell: ImportCell, categories: LookupItem[]): string {
+function cellDisplay(
+  f: LrField,
+  cell: ImportCell,
+  categories: LookupItem[],
+  lookups?: Record<string, LookupItem[]>,
+): string {
   if (f.type === 'cat') {
     if (cell.value) return categories.find((c) => c.id === cell.value)?.nome ?? cell.value;
+    return cell.raw || '—';
+  }
+  if (f.type === 'lookup') {
+    const list = lookups?.[f.lookupKey ?? f.id] ?? [];
+    if (cell.value) return list.find((l) => l.id === cell.value)?.nome ?? cell.value;
     return cell.raw || '—';
   }
   if (cell.status === 'erro') return cell.raw || '—';
@@ -41,12 +53,14 @@ const ImportarPlanilhaModal: React.FC<ImportarPlanilhaModalProps> = ({
   result,
   fileName,
   categories,
+  lookups,
   onConfirm,
   onClose,
   onReselect,
 }) => {
   const { fields, rows, okCount, avisoCount, erroCount, unmatchedHeaders, missingRequiredCols } = result;
-  const hasWarnBanner = missingRequiredCols.length > 0 || unmatchedHeaders.length > 0 || categories.length === 0;
+  const needsCategories = fields.some((f) => f.type === 'cat');
+  const hasWarnBanner = missingRequiredCols.length > 0 || unmatchedHeaders.length > 0 || (needsCategories && categories.length === 0);
 
   return (
     <div
@@ -97,7 +111,7 @@ const ImportarPlanilhaModal: React.FC<ImportarPlanilhaModalProps> = ({
         {/* Faixa de avisos estruturais */}
         {hasWarnBanner ? (
           <div className="mx-6 mt-3 rounded-lg border border-[#fcd9b6] bg-[#fff7ed] px-3 py-2 text-[12.5px] text-[#b45309]">
-            {categories.length === 0 ? (
+            {needsCategories && categories.length === 0 ? (
               <div className="flex items-center gap-1.5 font-semibold">
                 <AlertTriangle size={14} /> Nenhuma categoria carregada — selecione a organização antes de importar.
               </div>
@@ -155,7 +169,7 @@ const ImportarPlanilhaModal: React.FC<ImportarPlanilhaModalProps> = ({
                             className={`whitespace-nowrap p-2 ${cell ? CELL_CLS[cell.status] : 'text-gray-400'}`}
                             title={cell?.msg || ''}
                           >
-                            {cell ? cellDisplay(f, cell, categories) : '—'}
+                            {cell ? cellDisplay(f, cell, categories, lookups) : '—'}
                           </td>
                         );
                       })}
@@ -173,7 +187,6 @@ const ImportarPlanilhaModal: React.FC<ImportarPlanilhaModalProps> = ({
 
         {/* Rodapé */}
         <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 px-6 py-4">
-          {/* Legenda */}
           <div className="flex items-center gap-3 text-[11.5px] text-gray-500">
             <span className="inline-flex items-center gap-1">
               <CheckCircle2 size={13} className="text-[#16a34a]" /> importa

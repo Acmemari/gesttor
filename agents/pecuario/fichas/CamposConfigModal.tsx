@@ -15,10 +15,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FIELD_BY_ID } from './fieldRegistry';
 import type { FieldPlace, FieldPlaces, LrField } from './types';
 
 interface CamposConfigModalProps {
+  /** mapa id → campo do movimento. */
+  fieldById: Record<string, LrField>;
   places: FieldPlaces;
   autonum: boolean;
   /** ordem global de exibição (lista de field ids) */
@@ -29,6 +30,8 @@ interface CamposConfigModalProps {
   onReorder: (order: string[]) => void;
   onReset: () => void;
   onClose: () => void;
+  title?: string;
+  subtitle?: string;
 }
 
 type PillKind = 'superior' | 'tabela' | 'adicionais' | 'off';
@@ -82,11 +85,11 @@ const SortableFieldRow: React.FC<{
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-  const isApelido = !!f.locked;
-  const isSan = !!f.enableOnly;
-  const allowTop = !isApelido;
-  const allowBottom = !isSan;
-  const allowDados = !isApelido && !isSan;
+  const isLocked = !!f.locked;
+  const isSection = !!f.enableOnly;
+  const allowTop = !isLocked;
+  const allowBottom = !isSection;
+  const allowDados = !isLocked && !isSection;
 
   return (
     <tr ref={setNodeRef} style={style} className="hover:bg-[#fafbfc]">
@@ -107,7 +110,7 @@ const SortableFieldRow: React.FC<{
           {f.label}
           {f.req ? <span className="ml-0.5 text-red-500">*</span> : null}
         </span>
-        {isApelido ? (
+        {isLocked ? (
           <label
             className="ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[#b7e0c4] bg-[#e7f6ec] px-1.5 py-0.5 align-middle text-[11px] font-semibold text-[#16a34a]"
             title="Numeração automática: ao Adicionar sugere o próximo número (001 → 002)"
@@ -131,6 +134,7 @@ const SortableFieldRow: React.FC<{
 };
 
 const CamposConfigModal: React.FC<CamposConfigModalProps> = ({
+  fieldById,
   places,
   autonum,
   order,
@@ -139,9 +143,11 @@ const CamposConfigModal: React.FC<CamposConfigModalProps> = ({
   onReorder,
   onReset,
   onClose,
+  title = 'Configurar campos',
+  subtitle = 'Defina onde cada campo aparece: Linha Superior (repete em todos), Linha Tabela Lançamento (por animal), Dados Adicionais (recolhido) ou Desativado (não aparece). Arraste pela alça para definir a ordem em que aparecem na tela.',
 }) => {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const fields = order.map((id) => FIELD_BY_ID[id]).filter(Boolean) as LrField[];
+  const fields = order.map((id) => fieldById[id]).filter(Boolean) as LrField[];
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -153,7 +159,7 @@ const CamposConfigModal: React.FC<CamposConfigModalProps> = ({
   };
 
   const currentPlace = (f: LrField): FieldPlace =>
-    f.id === 'sanitario' ? places.sanitario || 'top' : places[f.id];
+    f.enableOnly ? places[f.id] || 'top' : places[f.id];
 
   return (
     <div
@@ -165,13 +171,8 @@ const CamposConfigModal: React.FC<CamposConfigModalProps> = ({
       <div className="my-auto w-full max-w-[920px] rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Configurar campos do Lançamento Rápido</h3>
-            <p className="mt-1 text-[12.5px] leading-snug text-gray-500">
-              Defina onde cada campo aparece: Linha Superior (repete em todos), Linha Tabela Lançamento
-              (por animal), Dados Adicionais (recolhido) ou Desativado (não aparece). Arraste pela alça
-              <span className="mx-1 inline-flex align-middle text-gray-400"><GripVertical size={13} /></span>
-              para definir a ordem em que aparecem na tela.
-            </p>
+            <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+            <p className="mt-1 text-[12.5px] leading-snug text-gray-500">{subtitle}</p>
           </div>
           <button
             type="button"
