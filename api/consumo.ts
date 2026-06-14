@@ -152,6 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           pesoMorto: toNumOrNull(f.pesoMorto),
           valor: toNumOrNull(f.valor),
           obs: f.obs || null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
         criadoPor: userId,
       });
@@ -216,6 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           pesoMorto: toNumOrNull(f.pesoMorto),
           valor: toNumOrNull(f.valor),
           obs: f.obs || null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
       });
       if (!updated) {

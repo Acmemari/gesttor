@@ -12,6 +12,7 @@ export interface MorteFichaRow {
   apelido: string | null;
   rfid: string | null;
   obs: string | null;
+  extras: Record<string, string>;
   createdAt: string;
 }
 
@@ -54,6 +55,7 @@ export interface CreateMorteMovimentoInput {
     catId?: string | null;
     motivoId?: string | null;
     obs?: string | null;
+    extras?: Record<string, string>;
   }>;
 }
 

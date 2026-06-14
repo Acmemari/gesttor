@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  saldo, composicao, pendencias, animaisVinculados,
+  saldo, composicao, pendencias, pendenciasPorCategoria, animaisVinculados,
   localAtual, planoNutri, protocolo, faseRepro, timeline, groupByLote,
 } from '../../../agents/pecuario/gestaoLotes/util';
 import type { LoteEventoRow } from '../../../agents/pecuario/gestaoLotes/types';
@@ -54,6 +54,29 @@ describe('Gestão de Lotes — selectors', () => {
       aloc('A', '2026-01-01', { sentido: 'entrada', qtd: 120, categoriaId: 'boi', naoIdent: 6 }),
     ];
     expect(pendencias(evs)).toBe(6);
+  });
+
+  it('pendenciasPorCategoria agrupa naoIdent por categoria e abate baixa/identificação', () => {
+    const evs = [
+      // Inclusões por categoria (cabeças sem ID).
+      aloc('A', '2026-01-01', { sentido: 'entrada', qtd: 30, naoIdent: 30, categoriaId: 'bez', categoriaNome: 'Bezerro' }),
+      aloc('A', '2026-01-02', { sentido: 'entrada', qtd: 12, naoIdent: 12, categoriaId: 'nov', categoriaNome: 'Novilha' }),
+      // Identifica 10 bezerros: entrada por ID (naoIdent 0) + saída que abate a pendência.
+      aloc('A', '2026-02-01', { sentido: 'entrada', qtd: 10, naoIdent: 0, categoriaId: 'bez', animais: ['a1'] }),
+      aloc('A', '2026-02-01', { sentido: 'saida', qtd: 10, naoIdent: 10, categoriaId: 'bez', categoriaNome: 'Bezerro' }),
+    ];
+    expect(pendenciasPorCategoria(evs)).toEqual([
+      { categoriaId: 'bez', categoriaNome: 'Bezerro', qtd: 20 },
+      { categoriaId: 'nov', categoriaNome: 'Novilha', qtd: 12 },
+    ]);
+  });
+
+  it('pendenciasPorCategoria exclui categorias totalmente baixadas/identificadas', () => {
+    const evs = [
+      aloc('A', '2026-01-01', { sentido: 'entrada', qtd: 8, naoIdent: 8, categoriaId: 'bez', categoriaNome: 'Bezerro' }),
+      aloc('A', '2026-02-01', { sentido: 'saida', qtd: 8, naoIdent: 8, categoriaId: 'bez', categoriaNome: 'Bezerro' }),
+    ];
+    expect(pendenciasPorCategoria(evs)).toEqual([]);
   });
 
   it('animaisVinculados adiciona nas entradas e remove nas saídas (dedup)', () => {

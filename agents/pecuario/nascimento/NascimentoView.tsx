@@ -23,6 +23,7 @@ import DefinaCamposPanel, { type DetalheColumn } from '../fichas/DefinaCamposPan
 import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
+import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
 import { LR_REGISTRY, LOTES_ESTATICOS, defaultValue } from './fieldRegistry';
 import { getFieldConfig, saveFieldConfig } from '../../../lib/api/nascimentoFieldConfigClient';
 import {
@@ -89,6 +90,7 @@ function mapRowToMovimento(row: NascimentoMovimentoRow, nextFichaId: () => numbe
       porte: f.porte || undefined,
       raca: f.raca || undefined,
       peso: f.peso != null ? Number(f.peso) : undefined,
+      extras: f.extras || {},
     })),
     naoIdentificados: row.naoIdentificados,
     status: row.status,
@@ -141,9 +143,13 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   const [entryValues, setEntryValues] = useState<Record<string, string>>(() => buildEntryValues(today));
   const detSeq = useRef(1);
 
+  // Campos personalizados (cadastro) que aparecem no Nascimento, mesclados ao registry.
+  const cpFields = useCamposPersonalizados(organizationId, 'nascimento');
+  const registry = useMemo(() => [...LR_REGISTRY, ...cpFields], [cpFields]);
+
   // ── Configuração de campos (kit compartilhado, persistida por organização) ──
   const fieldCfg = useFieldConfig({
-    registry: LR_REGISTRY,
+    registry,
     organizationId,
     load: getFieldConfig,
     save: saveFieldConfig,
@@ -317,14 +323,14 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     const next = proximoApelido(apelido);
     setEntryValues((prev) => {
       const reset = buildEntryValues(today, prev.raca);
-      // preserva campos da linha superior (top)
-      for (const f of LR_REGISTRY) {
+      // preserva campos da linha superior (top), inclusive personalizados
+      for (const f of registry) {
         if (places[f.id] === 'top' && f.id !== 'sanitario') reset[f.id] = prev[f.id] ?? reset[f.id];
       }
       reset.apelido = autonum ? next : '';
       return reset;
     });
-  }, [entryValues, onToast, today, places, autonum]);
+  }, [entryValues, onToast, today, places, autonum, registry]);
 
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
@@ -445,6 +451,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
       porte: d.values.porte || null,
       raca: d.values.raca || null,
       peso: parseWeight(d.values.peso) || null,
+      extras: extractExtras(d.values),
     }));
 
     // catDecl consolidado: detalhado (tally) + declarado (cats), somados por catId.
@@ -556,6 +563,7 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
           raca: f.raca || '',
           peso: f.peso != null ? String(f.peso) : '',
           data: m.data,
+          ...(f.extras || {}),
         },
       }));
       const novasCats: NascCat[] = m.catDecl
@@ -632,6 +640,9 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   const inputCls =
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
+  // Modo individual: os campos do lote (coletivo) seguem visíveis, porém
+  // bloqueados (cinza, sem entrada) — padrão da tela de Vendas.
+  const disabledCls = 'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400';
 
   // Abas: Lançamentos (formulário) vs. Registros (histórico completo).
   // Extraído para reuso no cabeçalho normal e no cabeçalho da tela cheia.
@@ -845,11 +856,9 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
                   icon={<LoteAnimaisIcon size={28} />}
                 />
               </div>
-              {/* Entrada coletiva: invisível no modo individual (continua ocupando espaço,
-                  para a altura do card não mudar ao alternar de modo). */}
+              {/* Entrada coletiva: permanece visível no modo individual, porém
+                  bloqueada (cinza, sem entrada) — padrão da tela de Vendas. */}
               <div
-                className={fromId ? 'invisible' : ''}
-                aria-hidden={fromId}
                 style={{ flex: '0 0 150px', maxWidth: 150 }}
               >
                 <label className={labelCls}>
@@ -858,16 +867,18 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
                 <input
                   type="number"
                   min={1}
-                  className={`${inputCls} mt-1.5`}
+                  disabled={fromId}
+                  className={`${inputCls} ${disabledCls} mt-1.5`}
                   placeholder="Ex.: 18"
                   value={totalStr}
                   onChange={(e) => setTotalStr(e.target.value)}
                 />
               </div>
-              <div className={`min-w-[180px] flex-1 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId}>
+              <div className="min-w-[180px] flex-1">
                 <label className={labelCls}>Categoria <span className="font-medium text-gray-400">(sem detalhe)</span></label>
                 <select
-                  className={`${inputCls} mt-1.5`}
+                  disabled={fromId}
+                  className={`${inputCls} ${disabledCls} mt-1.5`}
                   value={catSel}
                   onChange={(e) => setCatSel(e.target.value)}
                 >
@@ -882,8 +893,8 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               <button
                 type="button"
                 onClick={addCat}
-                aria-hidden={fromId}
-                className={`inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec] ${fromId ? 'invisible' : ''}`}
+                disabled={fromId}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
               >
                 <Plus size={16} /> mais
               </button>

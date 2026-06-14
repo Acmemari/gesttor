@@ -64,6 +64,8 @@ export interface AtribFicha {
   porte?: string;
   raca?: string;
   peso?: number;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, string>;
 }
 
 /** Movimento de nascimento salvo (estado local). */

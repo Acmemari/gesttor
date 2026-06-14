@@ -65,6 +65,7 @@ function normalizeFichas(raw: unknown): CompraFichaInput[] {
       pesoVivoKg: toNumOrNull(f.pesoVivoKg),
       pesoMortoKg: toNumOrNull(f.pesoMortoKg),
       valorArroba: toNumOrNull(f.valorArroba),
+      extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
     }))
     .filter((f) => f.apelido || f.rfid);
 }

@@ -1190,7 +1190,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
 
       <form
         onSubmit={handleSubmit}
-        className={`max-w-7xl w-full bg-white flex flex-col ${isInttegra ? 'rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)] p-[26px]' : 'rounded-lg border border-ai-border p-4'}`}
+        className={`${farmActiveTab === 'locais' ? 'max-w-none' : 'max-w-7xl'} w-full bg-white flex flex-col ${isInttegra ? 'rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)] p-[26px]' : 'rounded-lg border border-ai-border p-4'}`}
       >
         {/* Abas: Dados Gerais | Locais */}
         <div className={`flex gap-1 mb-4 p-1 rounded-[10px] ${isInttegra ? 'bg-[#F3F4F6]' : 'bg-gray-100'}`}>

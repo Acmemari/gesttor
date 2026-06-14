@@ -185,9 +185,10 @@ function validateCell(f: LrField, raw: string, src: ValidateArgs): ImportCell {
       return { raw, value: norm, status: 'ok' };
     }
     case 'weight':
-    case 'money': {
+    case 'money':
+    case 'number': {
       const n = parseFloat(raw.replace(',', '.'));
-      if (!Number.isFinite(n)) return { raw, value: '', status: 'erro', msg: f.type === 'money' ? 'Valor não numérico' : 'Peso não numérico' };
+      if (!Number.isFinite(n)) return { raw, value: '', status: 'erro', msg: f.type === 'money' ? 'Valor não numérico' : f.type === 'weight' ? 'Peso não numérico' : 'Número inválido' };
       return { raw, value: raw, status: 'ok' };
     }
     case 'date': {

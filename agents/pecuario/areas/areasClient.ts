@@ -21,12 +21,12 @@ export const FAZ_PREFIX = 'faz:';
 export const fazRootId = (farmId: string) => FAZ_PREFIX + farmId;
 export const isFazRoot = (id: string) => id.startsWith(FAZ_PREFIX);
 
-interface LevelsDTO { retiro: boolean; setor: boolean; local: boolean }
+interface LevelsDTO { retiro: boolean; setor: boolean; local: boolean; configured?: boolean }
 interface PerimeterDTO { geometry: unknown; source: string | null }
 interface BundleDTO {
-  retiros: Array<{ id: string; name: string; totalArea: string | null; geometry: unknown; geometrySource: string | null }>;
-  setores: Array<{ id: string; retiroId: string | null; name: string; area: string | null; geometry: unknown; geometrySource: string | null }>;
-  locais: Array<{ id: string; retiroId: string | null; setorId: string | null; name: string; area: string | null; geometry: unknown; geometrySource: string | null; tipo: string | null }>;
+  retiros: Array<{ id: string; name: string; totalArea: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null }>;
+  setores: Array<{ id: string; retiroId: string | null; name: string; area: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null }>;
+  locais: Array<{ id: string; retiroId: string | null; setorId: string | null; name: string; area: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null; tipo: string | null }>;
   levels: LevelsDTO;
   perimeter: PerimeterDTO | null;
 }
@@ -60,6 +60,8 @@ export interface AreaWrite {
   tipo?: TipoLocal | null;
   retiroId?: string | null;
   setorId?: string | null;
+  /** data inicial do cadastro (ISO 'YYYY-MM-DD') — única por tela. */
+  dataInicial?: string | null;
 }
 
 // ── Carrega a hierarquia da fazenda como Area[] (raiz fazenda + filhas) ────────
@@ -74,20 +76,25 @@ export async function loadAreas(farmId: string, farmName: string): Promise<Area[
     tipo: null,
     coords: toCoords(b.perimeter?.geometry),
     fonte: (b.perimeter?.source as Fonte) || 'desenho',
+    dataInicial: null,
     visivel: true,
   }];
+  // Registros padrão (is_default) são âncoras ocultas: não entram no mapa.
   for (const r of b.retiros) {
+    if (r.isDefault) continue;
     areas.push({ id: r.id, nivel: 'retiro', nome: r.name, parent: root, tipo: null,
-      coords: toCoords(r.geometry), fonte: (r.geometrySource as Fonte) || 'desenho', visivel: true });
+      coords: toCoords(r.geometry), fonte: (r.geometrySource as Fonte) || 'desenho', dataInicial: r.dataInicial ?? null, visivel: true });
   }
   for (const s of b.setores) {
+    if (s.isDefault) continue;
     areas.push({ id: s.id, nivel: 'setor', nome: s.name, parent: s.retiroId || root, tipo: null,
-      coords: toCoords(s.geometry), fonte: (s.geometrySource as Fonte) || 'desenho', visivel: true });
+      coords: toCoords(s.geometry), fonte: (s.geometrySource as Fonte) || 'desenho', dataInicial: s.dataInicial ?? null, visivel: true });
   }
   for (const l of b.locais) {
+    if (l.isDefault) continue;
     areas.push({ id: l.id, nivel: 'local', nome: l.name, parent: l.setorId || l.retiroId || root,
       tipo: (l.tipo as TipoLocal) || null,
-      coords: toCoords(l.geometry), fonte: (l.geometrySource as Fonte) || 'desenho', visivel: true });
+      coords: toCoords(l.geometry), fonte: (l.geometrySource as Fonte) || 'desenho', dataInicial: l.dataInicial ?? null, visivel: true });
   }
   return areas;
 }
@@ -96,36 +103,41 @@ export async function getLevels(farmId: string): Promise<LevelsDTO> {
   return req<LevelsDTO>(`${API}?levels=${encodeURIComponent(farmId)}`);
 }
 
-export async function setLevels(farmId: string, levels: LevelsDTO): Promise<void> {
-  await post(API, { type: 'levels', farmId, ...levels });
+export async function setLevels(
+  farmId: string,
+  levels: LevelsDTO,
+  configured?: boolean,
+): Promise<void> {
+  await post(API, { type: 'levels', farmId, ...levels, ...(configured !== undefined ? { configured } : {}) });
 }
 
 // ── Cria uma área (POST no nível certo) → devolve a Area já com id real ────────
 export async function createArea(farmId: string, w: AreaWrite): Promise<Area> {
   const root = fazRootId(farmId);
   const ha = haString(w.coords);
+  const di = w.dataInicial ?? null;
   if (w.nivel === 'fazenda') {
     await saveFarmPerimeter(farmId, w.coords, w.fonte);
-    return { id: root, nivel: 'fazenda', nome: w.nome, parent: null, tipo: null, coords: w.coords, fonte: w.fonte, visivel: true };
+    return { id: root, nivel: 'fazenda', nome: w.nome, parent: null, tipo: null, coords: w.coords, fonte: w.fonte, dataInicial: null, visivel: true };
   }
   if (w.nivel === 'retiro') {
     const row = await post<{ id: string; name: string }>(API, {
-      farmId, name: w.nome, totalArea: ha, geometry: w.coords, geometrySource: w.fonte,
+      farmId, name: w.nome, totalArea: ha, dataInicial: di, geometry: w.coords, geometrySource: w.fonte,
     });
-    return { id: row.id, nivel: 'retiro', nome: row.name, parent: root, tipo: null, coords: w.coords, fonte: w.fonte, visivel: true };
+    return { id: row.id, nivel: 'retiro', nome: row.name, parent: root, tipo: null, coords: w.coords, fonte: w.fonte, dataInicial: di, visivel: true };
   }
   if (w.nivel === 'setor') {
     const row = await post<{ id: string; name: string }>(API, {
-      type: 'setor', farmId, retiroId: w.retiroId ?? null, name: w.nome, area: ha, geometry: w.coords, geometrySource: w.fonte,
+      type: 'setor', farmId, retiroId: w.retiroId ?? null, name: w.nome, area: ha, dataInicial: di, geometry: w.coords, geometrySource: w.fonte,
     });
-    return { id: row.id, nivel: 'setor', nome: row.name, parent: w.retiroId || root, tipo: null, coords: w.coords, fonte: w.fonte, visivel: true };
+    return { id: row.id, nivel: 'setor', nome: row.name, parent: w.retiroId || root, tipo: null, coords: w.coords, fonte: w.fonte, dataInicial: di, visivel: true };
   }
   const row = await post<{ id: string; name: string }>(API, {
     type: 'local', farmId, retiroId: w.retiroId ?? null, setorId: w.setorId ?? null,
-    name: w.nome, area: ha, geometry: w.coords, geometrySource: w.fonte, tipo: w.tipo ?? null,
+    name: w.nome, area: ha, dataInicial: di, geometry: w.coords, geometrySource: w.fonte, tipo: w.tipo ?? null,
   });
   return { id: row.id, nivel: 'local', nome: row.name, parent: w.setorId || w.retiroId || root,
-    tipo: w.tipo ?? null, coords: w.coords, fonte: w.fonte, visivel: true };
+    tipo: w.tipo ?? null, coords: w.coords, fonte: w.fonte, dataInicial: di, visivel: true };
 }
 
 // ── Atualiza só a geometria (edição de forma / import por card) + recalcula o ha ─
@@ -146,11 +158,12 @@ export async function updateAreaGeometry(
 // ── Atualiza nome / tipo / vínculo (parent) de uma área existente ─────────────
 export async function updateAreaProps(
   area: Area,
-  w: { nome: string; tipo?: TipoLocal | null; retiroId?: string | null; setorId?: string | null },
+  w: { nome: string; tipo?: TipoLocal | null; retiroId?: string | null; setorId?: string | null; dataInicial?: string | null },
 ): Promise<void> {
-  if (area.nivel === 'retiro') await patch(API, { id: area.id, name: w.nome });
-  else if (area.nivel === 'setor') await patch(API, { type: 'setor', id: area.id, name: w.nome, retiroId: w.retiroId ?? null });
-  else if (area.nivel === 'local') await patch(API, { type: 'local', id: area.id, name: w.nome, tipo: w.tipo ?? null, retiroId: w.retiroId ?? null, setorId: w.setorId ?? null });
+  const di = w.dataInicial ?? null;
+  if (area.nivel === 'retiro') await patch(API, { id: area.id, name: w.nome, dataInicial: di });
+  else if (area.nivel === 'setor') await patch(API, { type: 'setor', id: area.id, name: w.nome, retiroId: w.retiroId ?? null, dataInicial: di });
+  else if (area.nivel === 'local') await patch(API, { type: 'local', id: area.id, name: w.nome, tipo: w.tipo ?? null, retiroId: w.retiroId ?? null, setorId: w.setorId ?? null, dataInicial: di });
   // fazenda: o nome é editado em "Dados Gerais", não aqui.
 }
 

@@ -15,6 +15,8 @@ import {
 } from '../../../lib/api/mudancaCategoriaClient';
 import CategoriaGrid from '../nascimento/CategoriaGrid';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
+import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
+import IconCardButton from '../../../components/IconCardButton';
 import {
   FICHA_SRC_KEY,
   FICHA_ID_KEY,
@@ -79,6 +81,9 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
   const [obsColetiva, setObsColetiva] = useState('');
 
   // ── Modo / edição por linha ─────────────────────────────────────────────
+  // Layout da tela (Padrão = ícones · Padrão 2 = seletor com rótulos) e
+  // modo de controle por indivíduo (fromDetail = detalhamento por animal).
+  const [layoutMudanca, setLayoutMudanca] = useState<'padrao' | 'guiado'>('padrao');
   const [fromDetail, setFromDetail] = useState(false);
   const [rowState, setRowState] = useState<Record<string, MudancaEdit>>({});
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
@@ -333,9 +338,33 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
       {/* Cabeçalho + abas */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <ArrowLeftRight size={22} className="text-[#16a34a]" />
-          <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Mudança de Categoria</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <ArrowLeftRight size={22} className="text-[#16a34a]" />
+            <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Mudança de Categoria</h1>
+          </div>
+
+          {/* Tab de layout da tela: Padrão (ícones) × Padrão 2 (seletor com rótulos) */}
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
+            <button
+              type="button"
+              onClick={() => setLayoutMudanca('padrao')}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
+                layoutMudanca === 'padrao' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Padrão
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMudanca('guiado')}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
+                layoutMudanca === 'guiado' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Padrão 2
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
@@ -465,7 +494,64 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
                     </div>
                   </div>
 
-                  {/* Lançamento coletivo (por quantidade) */}
+                  {/* Modo de controle por animal: Lote (coletivo) × Detalhamento individual */}
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {layoutMudanca === 'padrao' ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <IconCardButton
+                          active={fromDetail}
+                          onClick={() => setFromDetail(true)}
+                          title="Detalhamento individual (por animal)"
+                          icon={<BrincoBovinoIcon size={22} />}
+                        />
+                        <IconCardButton
+                          active={!fromDetail}
+                          onClick={() => setFromDetail(false)}
+                          title="Lote de animais (visão coletiva)"
+                          icon={<LoteAnimaisIcon size={28} />}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setFromDetail(true)}
+                          aria-pressed={fromDetail}
+                          title="Detalhamento individual (por animal)"
+                          className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                            fromDetail
+                              ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <BrincoBovinoIcon size={22} /> Detalhamento individual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFromDetail(false)}
+                          aria-pressed={!fromDetail}
+                          title="Lote de animais (visão coletiva)"
+                          className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                            !fromDetail
+                              ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <LoteAnimaisIcon size={26} /> Lote de animais
+                        </button>
+                      </div>
+                    )}
+                    <span className="text-[12.5px] text-gray-500">
+                      {fromDetail
+                        ? (saida
+                            ? `${saidaRows.length} animal(is) em ${catName(saida)} disponível(is) para mudança`
+                            : 'Selecione a categoria de saída para listar os animais')
+                        : 'Lançamento coletivo — informe a quantidade de cabeças'}
+                    </span>
+                  </div>
+
+                  {/* Lançamento coletivo (por quantidade) — modo Lote */}
+                  {!fromDetail ? (
                   <div className="mt-4 flex flex-wrap items-end gap-3.5">
                     <div className="min-w-0" style={{ flex: '0 0 110px' }}>
                       <label className={labelCls}>Quantidade</label>
@@ -518,29 +604,7 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
                       <Plus size={16} /> Lançar mudança
                     </button>
                   </div>
-                </div>
-
-                {/* Toggle: detalhamento individual */}
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFromDetail((v) => !v)}
-                    aria-pressed={fromDetail}
-                    className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-semibold transition-colors ${
-                      fromDetail
-                        ? 'border-[#b7e0c4] bg-[#e7f6ec] text-[#16a34a]'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <BrincoBovinoIcon size={18} /> Detalhamento individual
-                  </button>
-                  <span className="text-[12.5px] text-gray-500">
-                    {fromDetail
-                      ? (saida
-                          ? `${saidaRows.length} animal(is) em ${catName(saida)} disponível(is) para mudança`
-                          : 'Selecione a categoria de saída para listar os animais')
-                      : 'Clique para listar os animais da categoria de saída e mudar por animal'}
-                  </span>
+                  ) : null}
                 </div>
               </div>
 

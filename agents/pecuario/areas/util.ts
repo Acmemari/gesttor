@@ -271,5 +271,5 @@ export function buildSeed(fazendaNome: string): Area[] {
       fonte: 'desenho',
     },
   ];
-  return seed.map((a) => ({ ...a, visivel: true }));
+  return seed.map((a) => ({ ...a, dataInicial: null, visivel: true }));
 }

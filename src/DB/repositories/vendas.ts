@@ -1,6 +1,7 @@
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../index.js';
 import { vendaMovimentos, vendaItens, vendaFichas } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 /**
  * Repositório de Movimentação › Vendas (Venda Abate, versão lote).
@@ -34,6 +35,8 @@ export interface VendaFichaInput {
   pesoVivoKg?: number | null;
   pesoMortoKg?: number | null;
   valorArroba?: number | null;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, unknown>;
 }
 
 export interface VendaMovimentoInput {
@@ -108,7 +111,7 @@ export async function createMovimento(data: VendaMovimentoInput) {
   const [mov] = await db.insert(vendaMovimentos).values({
     organizationId: data.organizationId as any,
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     clienteId: (data.clienteId ?? null) as any,
     data: data.data,
@@ -155,6 +158,7 @@ export async function createMovimento(data: VendaMovimentoInput) {
         pesoVivoKg: numStr(f.pesoVivoKg),
         pesoMortoKg: numStr(f.pesoMortoKg),
         valorArroba: numStr(f.valorArroba),
+        extras: (f.extras ?? {}) as any,
       })),
     ).returning();
   }
@@ -173,7 +177,7 @@ export async function updateMovimento(id: string, data: Omit<VendaMovimentoInput
 
   await db.update(vendaMovimentos).set({
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     clienteId: (data.clienteId ?? null) as any,
     data: data.data,
@@ -222,6 +226,7 @@ export async function updateMovimento(id: string, data: Omit<VendaMovimentoInput
         pesoVivoKg: numStr(f.pesoVivoKg),
         pesoMortoKg: numStr(f.pesoMortoKg),
         valorArroba: numStr(f.valorArroba),
+        extras: (f.extras ?? {}) as any,
       })),
     );
   }

@@ -105,14 +105,20 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
     let cancelled = false;
     fetch(`/api/farm-locations?farmIdLocais=${encodeURIComponent(fazenda)}`, { credentials: 'include' })
       .then((res) => res.json())
-      .then((json) => { if (!cancelled) setFarmLocais((json?.data ?? json) || []); })
+      .then((json) => {
+        if (cancelled) return;
+        // A resposta de sucesso é { ok, data: [...] }; em erro (401/500) não há `data`.
+        // Garante SEMPRE um array — senão o `for…of` abaixo quebra a tela inteira.
+        const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+        setFarmLocais(rows);
+      })
       .catch(() => { if (!cancelled) setFarmLocais([]); });
     return () => { cancelled = true; };
   }, [fazenda]);
 
   const retiros = useMemo(() => {
     const set = new Set<string>();
-    for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
+    for (const l of Array.isArray(farmLocais) ? farmLocais : []) if (l.retiroName) set.add(l.retiroName);
     return [...set];
   }, [farmLocais]);
 
@@ -242,7 +248,10 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
         dados: d.dados,
         syncFichas: d.syncFichas,
       });
-      totalNaoIdent += Number(d.dados?.naoIdent) || 0;
+      // Só ENTRADAS sem identificação viram pendência na Mesa. Saídas com
+      // naoIdent (baixar / transferir / identificar) abatem a pendência — não
+      // devem disparar o aviso de "enviadas à Mesa".
+      if (d.dados?.sentido !== 'saida') totalNaoIdent += Number(d.dados?.naoIdent) || 0;
     }
     await recarregarEventos();
     // Animais podem ter mudado de lote (sync) — invalida cache.
@@ -420,7 +429,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                 <ControleCard
                   cor="#16a34a" icon={<LoteAnimaisIcon size={18} />} titulo="Composição" pergunta="Quais animais estão nele?"
                   mudaPor="Movimento de Alocação"
-                  acoes={encerrado ? null : <CardBtn onClick={abrirIncluirId} icon={<Plus size={13} />}>Incluir por ID</CardBtn>}
+                  acoes={encerrado ? null : <CardBtn onClick={abrirIncluirId} icon={<Plus size={13} />}>Incluir animais</CardBtn>}
                 >
                   <ComposicaoEstado eventos={selectedEventos} catNome={catNome} onAbrirFicha={onAbrirFicha} />
                 </ControleCard>
@@ -550,7 +559,7 @@ const RegistrosLote: React.FC<{
           onClick={onIncluir}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#16a34a] px-3 text-[12.5px] font-bold text-white hover:bg-[#15803d]"
         >
-          <Tag size={14} /> Incluir por ID
+          <Tag size={14} /> Incluir animais
         </button>
       )}
     </div>
@@ -564,7 +573,7 @@ const RegistrosLote: React.FC<{
         </p>
         <p className="mt-1 text-[12px] text-gray-400">
           {saldoTotal > 0
-            ? `${saldoTotal} cabeça(s) no lote sem ID. Use "Incluir por ID" para vincular.`
+            ? `${saldoTotal} cabeça(s) no lote sem ID. Use "Incluir animais" para vincular.`
             : 'Inclua animais por ID ou remaneje um grupo na aba Lançamentos.'}
         </p>
       </div>

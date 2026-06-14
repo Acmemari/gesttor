@@ -47,6 +47,8 @@ export interface VendaFicha {
   pesoMortoKg: number | null;
   /** Valor por arroba (R$) do animal; o padrão é o valor/@ do lote (topo). */
   valorArroba: number | null;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, string>;
 }
 
 /** Venda salva (modelo de exibição da tela). */

@@ -27,6 +27,8 @@ export interface CompraFicha {
   pesoVivoKg: number | null;
   pesoMortoKg: number | null; // Pode não ser usado, mas mantido por simetria
   valorArroba: number | null; // Valor por quilo do animal (R$/kg)
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, string>;
 }
 
 /** Compra salva. */

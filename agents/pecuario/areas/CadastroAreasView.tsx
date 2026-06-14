@@ -51,10 +51,14 @@ interface CadastroAreasViewProps {
   /** Níveis ativos da fazenda (para auto-ativar ao desenhar um nível desligado). */
   levels?: { retiro: boolean; setor: boolean; local: boolean };
   onEnsureLevel?: (nivel: 'retiro' | 'setor' | 'local') => void;
+  /** Data inicial única da tela (ISO 'YYYY-MM-DD') — carimbada ao criar/editar área. */
+  dataInicial?: string | null;
   /** Avisa o container que a hierarquia mudou (para recarregar a lista). */
   onMutated?: () => void;
   /** Incrementado pelo container quando a lista muda → o mapa recarrega. */
   reloadToken?: number;
+  /** Muda quando o layout em volta do mapa muda (ex.: recolher o painel) → invalidateSize. */
+  resizeSignal?: number;
 }
 
 interface PropsDraft {
@@ -112,8 +116,10 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   onSelect,
   levels,
   onEnsureLevel,
+  dataInicial,
   onMutated,
   reloadToken,
+  resizeSignal,
 }) => {
   // ── Estado de domínio ───────────────────────────────────────────────────
   const [areas, setAreas] = useState<Area[]>([]);
@@ -266,6 +272,16 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // ── Recalcula o tamanho quando o layout em volta muda (recolher painel) ──
+  // O ResizeObserver pode não disparar em toggles de display; forçamos aqui.
+  useEffect(() => {
+    if (resizeSignal === undefined) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const timers = [0, 80, 320].map((d) => window.setTimeout(() => map.invalidateSize(), d));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [resizeSignal]);
 
   const fitToFazenda = useCallback(() => {
     const map = mapRef.current;
@@ -434,10 +450,10 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         if (d.editId) {
           const area = areasRef.current.find((a) => a.id === d.editId);
           if (!area) return;
-          await apiUpdateProps(area, { nome, tipo, retiroId: fk.retiroId, setorId: fk.setorId });
+          await apiUpdateProps(area, { nome, tipo, retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null });
           setAreas((prev) =>
             prev.map((a) =>
-              a.id === d.editId ? { ...a, nome, parent: d.parent, tipo } : a,
+              a.id === d.editId ? { ...a, nome, parent: d.parent, tipo, dataInicial: dataInicial ?? null } : a,
             ),
           );
           selectArea(d.editId);
@@ -453,6 +469,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             tipo,
             retiroId: fk.retiroId,
             setorId: fk.setorId,
+            dataInicial: dataInicial ?? null,
           };
           const area = await apiCreateArea(farmId, w);
           setAreas((prev) => {
@@ -472,7 +489,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onToast, farmId, levels, onEnsureLevel, onMutated, selectArea],
+    [onToast, farmId, levels, onEnsureLevel, onMutated, selectArea, dataInicial],
   );
 
   const editProps = useCallback((a: Area) => {

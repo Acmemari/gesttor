@@ -14,6 +14,7 @@ export interface NascimentoFichaRow {
   porte: string | null;
   raca: string | null;
   peso: string | null;
+  extras: Record<string, string>;
   createdAt: string;
 }
 
@@ -58,6 +59,7 @@ export interface CreateMovimentoInput {
     porte?: string | null;
     raca?: string | null;
     peso?: number | null;
+    extras?: Record<string, string>;
   }>;
 }
 

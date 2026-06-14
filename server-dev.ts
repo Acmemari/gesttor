@@ -249,6 +249,7 @@ app.all('/api/desempenho', (req, res) => handleApiRoute('./api/desempenho.ts', r
 app.all('/api/evidence', (req, res) => handleApiRoute('./api/evidence.ts', req, res));
 app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req, res));
 app.all('/api/farm-locations', (req, res) => handleApiRoute('./api/farm-locations.ts', req, res));
+app.all('/api/area-movimentos', (req, res) => handleApiRoute('./api/area-movimentos.ts', req, res));
 
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
@@ -290,6 +291,9 @@ app.all('/api/padrao-racial', (req, res) => handleApiRoute('./api/padrao-racial.
 
 // Motivos de morte
 app.all('/api/motivos-morte', (req, res) => handleApiRoute('./api/motivos-morte.ts', req, res));
+
+// Campos Personalizados (campos extras do "Defina seus campos")
+app.all('/api/campos-personalizados', (req, res) => handleApiRoute('./api/campos-personalizados.ts', req, res));
 
 // Pelagens
 app.all('/api/pelagens', (req, res) => handleApiRoute('./api/pelagens.ts', req, res));

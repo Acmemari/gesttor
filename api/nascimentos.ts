@@ -136,6 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           porte: f.porte || null,
           raca: f.raca || null,
           peso: f.peso != null && f.peso !== '' ? toNum(f.peso) : null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
         criadoPor: userId,
       });
@@ -192,6 +193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           porte: f.porte || null,
           raca: f.raca || null,
           peso: f.peso != null && f.peso !== '' ? toNum(f.peso) : null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
       });
       if (!updated) {

@@ -1,6 +1,7 @@
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../index.js';
 import { morteMovimentos, morteFichas } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 export interface MorteFichaInput {
   apelido?: string | null;
@@ -8,6 +9,8 @@ export interface MorteFichaInput {
   categoriaId?: string | null;
   motivoId?: string | null;
   obs?: string | null;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, unknown>;
 }
 
 export interface MorteMovimentoInput {
@@ -62,7 +65,7 @@ export async function createMovimento(data: MorteMovimentoInput) {
   const [mov] = await db.insert(morteMovimentos).values({
     organizationId: data.organizationId as any,
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -85,6 +88,7 @@ export async function createMovimento(data: MorteMovimentoInput) {
         apelido: f.apelido ?? null,
         rfid: f.rfid ?? null,
         obs: f.obs ?? null,
+        extras: (f.extras ?? {}) as any,
       })),
     ).returning();
   }
@@ -107,6 +111,7 @@ export async function addFicha(movimentoId: string, ficha: MorteFichaInput) {
     apelido: ficha.apelido ?? null,
     rfid: ficha.rfid ?? null,
     obs: ficha.obs ?? null,
+    extras: (ficha.extras ?? {}) as any,
   });
 
   const naoIdentificados = Math.max(0, (mov.naoIdentificados ?? 0) - 1);
@@ -130,7 +135,7 @@ export async function updateMovimento(id: string, data: Omit<MorteMovimentoInput
 
   await db.update(morteMovimentos).set({
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -154,6 +159,7 @@ export async function updateMovimento(id: string, data: Omit<MorteMovimentoInput
         apelido: f.apelido ?? null,
         rfid: f.rfid ?? null,
         obs: f.obs ?? null,
+        extras: (f.extras ?? {}) as any,
       })),
     );
   }

@@ -12,6 +12,7 @@ export type FieldPlace = 'top' | 'bottom' | 'dados' | 'off';
 export type FieldType =
   | 'text'
   | 'textarea'
+  | 'number'
   | 'date'
   | 'weight'
   | 'money'

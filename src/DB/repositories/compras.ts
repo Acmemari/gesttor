@@ -1,6 +1,7 @@
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../index.js';
 import { compraMovimentos, compraItens, compraFichas } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 /**
  * Repositório de Movimentação › Compras (Compra Peso Vivo, versão lote).
@@ -34,6 +35,8 @@ export interface CompraFichaInput {
   pesoVivoKg?: number | null;
   pesoMortoKg?: number | null;
   valorArroba?: number | null; // Valor por kg
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, unknown>;
 }
 
 export interface CompraMovimentoInput {
@@ -108,7 +111,7 @@ export async function createMovimento(data: CompraMovimentoInput) {
   const [mov] = await db.insert(compraMovimentos).values({
     organizationId: data.organizationId as any,
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     clienteId: (data.clienteId ?? null) as any,
     data: data.data,
@@ -155,6 +158,7 @@ export async function createMovimento(data: CompraMovimentoInput) {
         pesoVivoKg: numStr(f.pesoVivoKg),
         pesoMortoKg: numStr(f.pesoMortoKg),
         valorArroba: numStr(f.valorArroba),
+        extras: (f.extras ?? {}) as any,
       })),
     ).returning();
   }
@@ -173,7 +177,7 @@ export async function updateMovimento(id: string, data: Omit<CompraMovimentoInpu
 
   await db.update(compraMovimentos).set({
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     clienteId: (data.clienteId ?? null) as any,
     data: data.data,
@@ -222,6 +226,7 @@ export async function updateMovimento(id: string, data: Omit<CompraMovimentoInpu
         pesoVivoKg: numStr(f.pesoVivoKg),
         pesoMortoKg: numStr(f.pesoMortoKg),
         valorArroba: numStr(f.valorArroba),
+        extras: (f.extras ?? {}) as any,
       })),
     );
   }

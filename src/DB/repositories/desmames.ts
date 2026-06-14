@@ -1,6 +1,7 @@
 import { and, eq, desc, isNull } from 'drizzle-orm';
 import { db } from '../index.js';
 import { desmameMovimentos, desmameFichas, fichasAnimal } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 /**
  * Repositório de Movimentação › Desmame.
@@ -84,6 +85,8 @@ function eqOrNull(col: any, val: string | null | undefined) {
 export async function weanAnimal(input: WeanInput) {
   const apelido = input.apelido ? String(input.apelido).trim() : null;
   const rfid = input.rfid ? String(input.rfid).trim() : null;
+  // Nunca grava local_id nulo quando há fazenda: ancora no local padrão (oculto).
+  const localId = input.localId ?? (input.farmId ? await resolveDefaultLocalId(input.farmId) : null);
 
   const movId = await db.transaction(async (tx) => {
     // 1. Movimento da sessão (find-or-create).
@@ -104,7 +107,7 @@ export async function weanAnimal(input: WeanInput) {
       const [created] = await tx.insert(desmameMovimentos).values({
         organizationId: input.organizationId as any,
         farmId: input.farmId ?? null,
-        localId: (input.localId ?? null) as any,
+        localId: localId as any,
         proprietarioId: (input.proprietarioId ?? null) as any,
         data: input.data,
         safra: input.safra ?? null,

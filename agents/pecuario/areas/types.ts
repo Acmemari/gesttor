@@ -27,6 +27,10 @@ export interface Area {
   coords: [number, number][];
   /** 'desenho' (mão) ou 'kml' (importado). */
   fonte: Fonte;
+  /** data inicial do cadastro (ISO 'YYYY-MM-DD') ou null. Única por tela. */
+  dataInicial?: string | null;
+  /** registro padrão (âncora oculta) gerado ao desativar um nível. */
+  isDefault?: boolean;
   /** mostra/oculta no mapa. */
   visivel: boolean;
 }
@@ -58,3 +62,39 @@ export const TIPOS_LOCAL: TipoLocal[] = [
   'Reserva',
   'Outro',
 ];
+
+/* ===== Movimentação de Áreas — ledger (/api/area-movimentos) ===== */
+
+export type AreaMovimentoTipo =
+  | 'abertura' | 'renomear' | 'remodelar' | 'mover'
+  | 'aposentar' | 'reativar' | 'dividir' | 'criado_divisao'
+  | 'unir' | 'unido' | 'nivel' | 'correcao';
+
+/** Foto de uma área num evento (para diff/reconstrução). */
+export interface AreaSnapshotDTO {
+  name?: string;
+  area?: string | null;
+  geometry?: unknown;
+  geometrySource?: string | null;
+  tipo?: string | null;
+  retiroId?: string | null;
+  setorId?: string | null;
+}
+
+/** Linha persistida de um movimento de área. */
+export interface AreaMovimentoRow {
+  id: string;
+  organizationId: string;
+  farmId: string;
+  nivel: Nivel;
+  tipo: AreaMovimentoTipo;
+  classe: 'movimento' | 'correcao';
+  data: string;                 // 'AAAA-MM-DD' (data efetiva)
+  areaId: string | null;
+  antes: AreaSnapshotDTO | null;
+  depois: AreaSnapshotDTO | null;
+  dados: Record<string, any>;
+  nota: string | null;
+  criadoPor: string | null;
+  createdAt: string;
+}

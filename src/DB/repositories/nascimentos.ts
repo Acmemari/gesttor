@@ -1,5 +1,6 @@
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../index.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 import { nascimentoMovimentos, nascimentoFichas } from '../schema.js';
 
 export interface NascFichaInput {
@@ -10,6 +11,8 @@ export interface NascFichaInput {
   porte?: string | null;
   raca?: string | null;
   peso?: number | null;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, unknown>;
 }
 
 export interface NascMovimentoInput {
@@ -64,7 +67,7 @@ export async function createMovimento(data: NascMovimentoInput) {
   const [mov] = await db.insert(nascimentoMovimentos).values({
     organizationId: data.organizationId as any,
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -89,6 +92,7 @@ export async function createMovimento(data: NascMovimentoInput) {
         porte: f.porte ?? null,
         raca: f.raca ?? null,
         peso: f.peso != null ? String(f.peso) : null,
+        extras: (f.extras ?? {}) as any,
       })),
     ).returning();
   }
@@ -113,6 +117,7 @@ export async function addFicha(movimentoId: string, ficha: NascFichaInput) {
     porte: ficha.porte ?? null,
     raca: ficha.raca ?? null,
     peso: ficha.peso != null ? String(ficha.peso) : null,
+    extras: (ficha.extras ?? {}) as any,
   });
 
   const naoIdentificados = Math.max(0, (mov.naoIdentificados ?? 0) - 1);
@@ -136,7 +141,7 @@ export async function updateMovimento(id: string, data: Omit<NascMovimentoInput,
 
   await db.update(nascimentoMovimentos).set({
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -162,6 +167,7 @@ export async function updateMovimento(id: string, data: Omit<NascMovimentoInput,
         porte: f.porte ?? null,
         raca: f.raca ?? null,
         peso: f.peso != null ? String(f.peso) : null,
+        extras: (f.extras ?? {}) as any,
       })),
     );
   }

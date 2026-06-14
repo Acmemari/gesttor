@@ -21,6 +21,7 @@ import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
 import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
+import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
 import { buildEntryValues } from '../fichas/fieldConfig';
 import { proximoApelido } from '../fichas/util';
 import { vendaFields } from './fields';
@@ -81,6 +82,7 @@ function mapRowToMovimento(row: VendaMovimentoRow): MovimentoVenda {
       pesoVivoKg: num(f.pesoVivoKg),
       pesoMortoKg: num(f.pesoMortoKg),
       valorArroba: num(f.valorArroba),
+      extras: f.extras || {},
     })),
     valorArroba: num(row.valorArroba),
     pesoMortoTotal: num(row.pesoMortoTotal),
@@ -158,8 +160,10 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
 
-  // Registro de campos (rótulo do Valor depende do tipo de peso) + configuração.
-  const registry = useMemo(() => vendaFields(tipoPeso), [tipoPeso]);
+  // Registro de campos (rótulo do Valor depende do tipo de peso) + campos
+  // personalizados (cadastro) que aparecem na Venda + configuração persistida.
+  const cpFields = useCamposPersonalizados(organizationId, 'venda');
+  const registry = useMemo(() => [...vendaFields(tipoPeso), ...cpFields], [tipoPeso, cpFields]);
   const fieldCfg = useFieldConfig({
     registry,
     organizationId,
@@ -457,6 +461,7 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
         pesoVivoKg: parsePesoVivo(d.values.pesoVivo || ''),
         pesoMortoKg: parsePesoVivo(d.values.pesoMorto || ''),
         valorArroba: parseBRL(d.values.valor || '') ?? parseBRL(valorArrobaStr),
+        extras: extractExtras(d.values),
       })),
     };
 
@@ -505,6 +510,7 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
             pesoMorto: numToInput(f.pesoMortoKg),
             valor: numToInput(f.valorArroba),
             data: m.data,
+            ...(f.extras || {}),
           },
         })),
       );

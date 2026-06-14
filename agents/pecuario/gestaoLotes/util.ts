@@ -125,6 +125,28 @@ export function composicao(eventos: LoteEventoRow[]): ComposicaoLinha[] {
   return Array.from(acc.values()).filter((l) => l.qtd > 0);
 }
 
+/**
+ * Pendências por categoria = mapa categoria→cabeças SEM identificação líquidas
+ * (Σ naoIdent entradas − Σ naoIdent saídas), só qtd > 0. Espelha `composicao`,
+ * mas conta `naoIdent` em vez de `qtd` — é a base para gerir as cabeças que
+ * entraram "por categoria" (incluir, baixar, transferir, identificar).
+ */
+export function pendenciasPorCategoria(eventos: LoteEventoRow[]): ComposicaoLinha[] {
+  const acc = new Map<string, ComposicaoLinha>();
+  for (const e of eventos) {
+    if (e.tipo !== 'alocacao') continue;
+    const d = e.dados as AlocacaoDados;
+    const n = num(d.naoIdent);
+    if (n === 0) continue;
+    const key = d.categoriaId || `@${d.categoriaNome || ''}`;
+    const cur = acc.get(key) || { categoriaId: d.categoriaId ?? null, categoriaNome: d.categoriaNome, qtd: 0 };
+    cur.qtd += d.sentido === 'saida' ? -n : n;
+    if (!cur.categoriaNome && d.categoriaNome) cur.categoriaNome = d.categoriaNome;
+    acc.set(key, cur);
+  }
+  return Array.from(acc.values()).filter((l) => l.qtd > 0);
+}
+
 /** Pendências = Σ naoIdent das entradas − Σ naoIdent das saídas (clamp ≥ 0). */
 export function pendencias(eventos: LoteEventoRow[]): number {
   let total = 0;

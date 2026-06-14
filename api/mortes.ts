@@ -136,6 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           categoriaId: f.catId || f.categoriaId || null,
           motivoId: f.motivoId || null,
           obs: f.obs || null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
         criadoPor: userId,
       });
@@ -194,6 +195,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           categoriaId: f.catId || f.categoriaId || null,
           motivoId: f.motivoId || null,
           obs: f.obs || null,
+          extras: f.extras && typeof f.extras === 'object' && !Array.isArray(f.extras) ? f.extras : {},
         })),
       });
       if (!updated) {

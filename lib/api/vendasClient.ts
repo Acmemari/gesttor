@@ -30,6 +30,7 @@ export interface VendaFichaRow {
   pesoVivoKg: string | null;
   pesoMortoKg: string | null;
   valorArroba: string | null;
+  extras: Record<string, string>;
   createdAt: string;
 }
 
@@ -90,6 +91,7 @@ export interface CreateVendaInput {
     pesoVivoKg?: number | null;
     pesoMortoKg?: number | null;
     valorArroba?: number | null;
+    extras?: Record<string, string>;
   }>;
 }
 

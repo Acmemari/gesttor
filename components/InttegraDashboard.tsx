@@ -16,6 +16,7 @@ type SubView =
   | 'pelagens'
   | 'reprodutores'
   | 'motivos-morte'
+  | 'campos-personalizados'
   | 'tipos-chifre'
   | 'lotes'
   | 'people'
@@ -32,6 +33,7 @@ const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'pelagens',
   'reprodutores',
   'motivos-morte',
+  'campos-personalizados',
   'tipos-chifre',
   'lotes',
   'people',
@@ -52,6 +54,7 @@ const DesmameView = lazyWithRetry(() => import('../agents/pecuario/desmame/Desma
 const MudancaCategoriaView = lazyWithRetry(() => import('../agents/pecuario/mudancaCategoria/MudancaCategoriaView'));
 const ConsumoView = lazyWithRetry(() => import('../agents/pecuario/consumo/ConsumoView'));
 const GestaoLotesView = lazyWithRetry(() => import('../agents/pecuario/gestaoLotes/GestaoLotesView'));
+const MovimentacaoAreasView = lazyWithRetry(() => import('../agents/pecuario/areas/MovimentacaoAreasView'));
 const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
 const AnimalBreedsManagement = lazyWithRetry(() => import('../agents/AnimalBreedsManagement'));
@@ -59,6 +62,7 @@ const PadraoRacialManagement = lazyWithRetry(() => import('../agents/PadraoRacia
 const PelagensManagement = lazyWithRetry(() => import('../agents/PelagensManagement'));
 const ReprodutoresManagement = lazyWithRetry(() => import('../agents/ReprodutoresManagement'));
 const MotivosMorteManagement = lazyWithRetry(() => import('../agents/MotivosMorteManagement'));
+const CamposPersonalizadosManagement = lazyWithRetry(() => import('../agents/CamposPersonalizadosManagement'));
 const TiposChifreManagement = lazyWithRetry(() => import('../agents/TiposChifreManagement'));
 const LotesManagement = lazyWithRetry(() => import('../agents/LotesManagement'));
 const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
@@ -195,6 +199,14 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
     );
   }
 
+  if (view === 'pecuario-mov-areas') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <MovimentacaoAreasView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
   if (view === 'pecuario-cadastros') {
     if (subView === 'estoque-partida') {
       return (
@@ -268,6 +280,15 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         </Suspense>
       );
     }
+    if (subView === 'campos-personalizados') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <CamposPersonalizadosManagement onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
     if (subView === 'tipos-chifre') {
       return (
         <Suspense fallback={<LoadingFallback />}>
@@ -322,6 +343,7 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
           onSelectPelagens={() => setSubView('pelagens')}
           onSelectReprodutores={() => setSubView('reprodutores')}
           onSelectMotivosMorte={() => setSubView('motivos-morte')}
+          onSelectCamposPersonalizados={() => setSubView('campos-personalizados')}
           onSelectTiposChifre={() => setSubView('tipos-chifre')}
           onSelectLotes={() => setSubView('lotes')}
           onSelectPessoas={() => setSubView('people')}

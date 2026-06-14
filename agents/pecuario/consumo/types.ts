@@ -65,6 +65,8 @@ export interface MovimentoConsumo {
     pesoMorto: number | null;
     valor: number | null;
     obs: string;
+    /** Valores dos Campos Personalizados (chaves `cp_*`). */
+    extras?: Record<string, string>;
   }[];
   naoIdentificados: number;
   status: 'pendente' | 'conciliado';

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Save, Info, List, Tags, Receipt, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
@@ -21,6 +21,7 @@ import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
 import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
+import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
 import { buildEntryValues } from '../fichas/fieldConfig';
 import { proximoApelido } from '../fichas/util';
 import { COMPRA_FIELDS } from './fields';
@@ -78,6 +79,7 @@ function mapRowToMovimento(row: CompraMovimentoRow): MovimentoCompra {
       pesoVivoKg: num(f.pesoVivoKg),
       pesoMortoKg: num(f.pesoMortoKg),
       valorArroba: num(f.valorArroba),
+      extras: f.extras || {},
     })),
     valorArroba: num(row.valorArroba),
     pesoMortoTotal: num(row.pesoMortoTotal),
@@ -148,9 +150,13 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
 
+  // Campos personalizados (cadastro) que aparecem na Compra, mesclados ao registry.
+  const cpFields = useCamposPersonalizados(organizationId, 'compra');
+  const registry = useMemo(() => [...COMPRA_FIELDS, ...cpFields], [cpFields]);
+
   // Configuração de campos do painel (persistida por organização, tipo 'compra').
   const fieldCfg = useFieldConfig({
-    registry: COMPRA_FIELDS,
+    registry,
     organizationId,
     load: (id) => getFieldConfig(id, 'compra'),
     save: (id, cfg) => saveFieldConfig(id, 'compra', cfg),
@@ -331,15 +337,15 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
     setDetalhe((prev) => [...prev, { id: nextFichaId(), values: snapshot }]);
     // Próxima entrada: preserva os campos do bloco "repete em todos" (top), reseta o resto.
     setEntryValues((prev) => {
-      const reset = buildEntryValues(COMPRA_FIELDS, today);
-      for (const f of COMPRA_FIELDS) {
+      const reset = buildEntryValues(registry, today);
+      for (const f of registry) {
         if (fieldCfg.places[f.id] === 'top') reset[f.id] = prev[f.id] ?? reset[f.id];
       }
       reset.idManejo = fieldCfg.autonum ? proximoApelido(idManejo) : '';
       return reset;
     });
     onToast?.(`Animal adicionado · ${idManejo || idEletronico}`, 'success');
-  }, [entryValues, fieldCfg.places, fieldCfg.autonum, today, onToast]);
+  }, [entryValues, fieldCfg.places, fieldCfg.autonum, registry, today, onToast]);
 
   const removeDetalhe = useCallback((id: number) => setDetalhe((prev) => prev.filter((d) => d.id !== id)), []);
 
@@ -446,6 +452,7 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
         pesoVivoKg: parsePesoVivo(d.values.pesoVivo || ''),
         pesoMortoKg: null,
         valorArroba: parseBRL(d.values.valor || '') ?? parseBRL(valorArrobaStr),
+        extras: extractExtras(d.values),
       })),
     };
 
@@ -490,6 +497,7 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
             pesoVivo: numToInput(f.pesoVivoKg),
             valor: numToInput(f.valorArroba),
             data: m.data,
+            ...(f.extras || {}),
           },
         })),
       );

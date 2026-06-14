@@ -53,6 +53,8 @@ export interface MovimentoMorte {
     catId: string;
     motivoId: string;
     obs: string;
+    /** Valores dos Campos Personalizados (chaves `cp_*`). */
+    extras?: Record<string, string>;
   }[];
   naoIdentificados: number;
   status: 'pendente' | 'conciliado';

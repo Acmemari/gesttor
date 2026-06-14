@@ -24,6 +24,7 @@ import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
 import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
+import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
 import { buildEntryValues } from '../fichas/fieldConfig';
 import { proximoApelido } from '../fichas/util';
 import { MORTE_FIELDS } from './fields';
@@ -68,6 +69,7 @@ function mapRowToMovimento(row: MorteMovimentoRow): MovimentoMorte {
       catId: f.categoriaId || '',
       motivoId: f.motivoId || '',
       obs: f.obs || '',
+      extras: f.extras || {},
     })),
     naoIdentificados: row.naoIdentificados,
     status: row.status,
@@ -162,9 +164,13 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
 
+  // Campos personalizados (cadastro) que aparecem na Morte, mesclados ao registry.
+  const cpFields = useCamposPersonalizados(organizationId, 'morte');
+  const registry = useMemo(() => [...MORTE_FIELDS, ...cpFields], [cpFields]);
+
   // Configuração de campos do painel (persistida por organização, tipo 'morte').
   const fieldCfg = useFieldConfig({
-    registry: MORTE_FIELDS,
+    registry,
     organizationId,
     load: (id) => getFieldConfig(id, 'morte'),
     save: (id, cfg) => saveFieldConfig(id, 'morte', cfg),
@@ -330,8 +336,8 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
     // Próxima entrada: preserva top (data) + categoria/motivo (mesma causa costuma
     // se repetir no mesmo lote de baixa); limpa os IDs e a observação.
     setEntryValues((prev) => {
-      const reset = buildEntryValues(MORTE_FIELDS, today);
-      for (const f of MORTE_FIELDS) {
+      const reset = buildEntryValues(registry, today);
+      for (const f of registry) {
         if (fieldCfg.places[f.id] === 'top') reset[f.id] = prev[f.id] ?? reset[f.id];
       }
       reset.categoria = prev.categoria ?? '';
@@ -339,7 +345,7 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
       reset.idManejo = fieldCfg.autonum ? proximoApelido(idManejo) : '';
       return reset;
     });
-  }, [entryValues, fieldCfg.places, fieldCfg.autonum, today, onToast]);
+  }, [entryValues, fieldCfg.places, fieldCfg.autonum, registry, today, onToast]);
 
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
@@ -443,6 +449,7 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
       catId: d.values.categoria || null,
       motivoId: d.values.motivo || null,
       obs: d.values.obs || null,
+      extras: extractExtras(d.values),
     }));
 
     const catDecl = declaradas.map((c) => ({ catId: c.catId, qtd: c.qtd, motivoId: c.motivoId || null }));
@@ -508,6 +515,7 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
           motivo: f.motivoId || '',
           obs: f.obs || '',
           data: m.data,
+          ...(f.extras || {}),
         },
       }));
       const novasCats: MorteCat[] = m.catDecl
@@ -608,6 +616,9 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
   const inputCls =
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
+  // Modo individual: os campos do lote (coletivo) seguem visíveis, porém
+  // bloqueados (cinza, sem entrada) — padrão da tela de Vendas.
+  const disabledCls = 'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400';
 
   // Abas (Lançamentos / Registros): reusado no cabeçalho normal e no da tela cheia.
   const abasToggle = (
@@ -829,8 +840,6 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
                 />
               </div>
               <div
-                className={fromId ? 'invisible' : ''}
-                aria-hidden={fromId}
                 style={{ flex: '0 0 120px', maxWidth: 120 }}
               >
                 <label className={labelCls}>
@@ -839,15 +848,16 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
                 <input
                   type="number"
                   min={1}
-                  className={`${inputCls} mt-1.5`}
+                  disabled={fromId}
+                  className={`${inputCls} ${disabledCls} mt-1.5`}
                   placeholder="Ex.: 3"
                   value={totalStr}
                   onChange={(e) => setTotalStr(e.target.value)}
                 />
               </div>
-              <div className={`min-w-[150px] flex-1 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId}>
+              <div className="min-w-[150px] flex-1">
                 <label className={labelCls}>Categoria <span className="font-medium text-gray-400">(coletivo)</span></label>
-                <select className={`${inputCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
+                <select disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
                   <option value="">Selecione a categoria</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -856,9 +866,9 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
                   ))}
                 </select>
               </div>
-              <div className={`min-w-[150px] flex-1 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId}>
+              <div className="min-w-[150px] flex-1">
                 <label className={labelCls}>Motivo da morte</label>
-                <select className={`${inputCls} mt-1.5`} value={catMotivoSel} onChange={(e) => setCatMotivoSel(e.target.value)}>
+                <select disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} value={catMotivoSel} onChange={(e) => setCatMotivoSel(e.target.value)}>
                   <option value="">Selecione o motivo</option>
                   {motivos.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -870,8 +880,8 @@ const MorteView: React.FC<MorteViewProps> = ({ onToast }) => {
               <button
                 type="button"
                 onClick={addCat}
-                aria-hidden={fromId}
-                className={`inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec] ${fromId ? 'invisible' : ''}`}
+                disabled={fromId}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
               >
                 <Plus size={16} /> mais
               </button>

@@ -56,6 +56,17 @@ const FieldControl: React.FC<FieldControlProps> = ({
             onChange={(e) => onChange(e.target.value)}
           />
         );
+      case 'number':
+        return (
+          <input
+            type="text"
+            inputMode="decimal"
+            className={inputCls}
+            placeholder={field.placeholder || ''}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        );
       case 'date':
         return (
           <input

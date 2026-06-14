@@ -1,6 +1,7 @@
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../index.js';
 import { consumoMovimentos, consumoFichas } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 export interface ConsumoFichaInput {
   apelido?: string | null;
@@ -11,6 +12,8 @@ export interface ConsumoFichaInput {
   pesoMorto?: number | null;
   valor?: number | null;
   obs?: string | null;
+  /** Valores dos Campos Personalizados (chaves `cp_*`). */
+  extras?: Record<string, unknown>;
 }
 
 export interface ConsumoCatDecl {
@@ -79,7 +82,7 @@ export async function createMovimento(data: ConsumoMovimentoInput) {
   const [mov] = await db.insert(consumoMovimentos).values({
     organizationId: data.organizationId as any,
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -105,6 +108,7 @@ export async function createMovimento(data: ConsumoMovimentoInput) {
         pesoMorto: numStr(f.pesoMorto) as any,
         valor: numStr(f.valor) as any,
         obs: f.obs ?? null,
+        extras: (f.extras ?? {}) as any,
       })),
     ).returning();
   }
@@ -130,6 +134,7 @@ export async function addFicha(movimentoId: string, ficha: ConsumoFichaInput) {
     pesoMorto: numStr(ficha.pesoMorto) as any,
     valor: numStr(ficha.valor) as any,
     obs: ficha.obs ?? null,
+    extras: (ficha.extras ?? {}) as any,
   });
 
   const naoIdentificados = Math.max(0, (mov.naoIdentificados ?? 0) - 1);
@@ -153,7 +158,7 @@ export async function updateMovimento(id: string, data: Omit<ConsumoMovimentoInp
 
   await db.update(consumoMovimentos).set({
     farmId: data.farmId ?? null,
-    localId: (data.localId ?? null) as any,
+    localId: (data.localId ?? (data.farmId ? await resolveDefaultLocalId(data.farmId) : null)) as any,
     proprietarioId: (data.proprietarioId ?? null) as any,
     data: data.data,
     safra: data.safra ?? null,
@@ -180,6 +185,7 @@ export async function updateMovimento(id: string, data: Omit<ConsumoMovimentoInp
         pesoMorto: numStr(f.pesoMorto) as any,
         valor: numStr(f.valor) as any,
         obs: f.obs ?? null,
+        extras: (f.extras ?? {}) as any,
       })),
     );
   }

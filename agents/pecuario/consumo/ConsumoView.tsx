@@ -22,6 +22,7 @@ import DefinaCamposPanel from '../fichas/DefinaCamposPanel';
 import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
+import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
 import { buildEntryValues } from '../fichas/fieldConfig';
 import { proximoApelido } from '../fichas/util';
 import { CONSUMO_FIELDS } from './fields';
@@ -75,6 +76,7 @@ function mapRowToMovimento(row: ConsumoMovimentoRow): MovimentoConsumo {
       pesoMorto: toNumOrNull(f.pesoMorto),
       valor: toNumOrNull(f.valor),
       obs: f.obs || '',
+      extras: f.extras || {},
     })),
     naoIdentificados: row.naoIdentificados,
     status: row.status,
@@ -164,9 +166,13 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
 
+  // Campos personalizados (cadastro) que aparecem no Consumo, mesclados ao registry.
+  const cpFields = useCamposPersonalizados(organizationId, 'consumo');
+  const registry = useMemo(() => [...CONSUMO_FIELDS, ...cpFields], [cpFields]);
+
   // Configuração de campos do painel (persistida por organização, tipo 'consumo').
   const fieldCfg = useFieldConfig({
-    registry: CONSUMO_FIELDS,
+    registry,
     organizationId,
     load: (id) => getFieldConfig(id, 'consumo'),
     save: (id, cfg) => saveFieldConfig(id, 'consumo', cfg),
@@ -323,8 +329,8 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
     // Próxima entrada: preserva top (data) + categoria/tipo (costumam se repetir
     // no mesmo lote); limpa os IDs, pesos, valor e a observação.
     setEntryValues((prev) => {
-      const reset = buildEntryValues(CONSUMO_FIELDS, today);
-      for (const f of CONSUMO_FIELDS) {
+      const reset = buildEntryValues(registry, today);
+      for (const f of registry) {
         if (fieldCfg.places[f.id] === 'top') reset[f.id] = prev[f.id] ?? reset[f.id];
       }
       reset.categoria = prev.categoria ?? '';
@@ -332,7 +338,7 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
       reset.idManejo = fieldCfg.autonum ? proximoApelido(idManejo) : '';
       return reset;
     });
-  }, [entryValues, fieldCfg.places, fieldCfg.autonum, today, onToast]);
+  }, [entryValues, fieldCfg.places, fieldCfg.autonum, registry, today, onToast]);
 
   const removeDetalhe = useCallback((id: number) => {
     setDetalhe((prev) => prev.filter((d) => d.id !== id));
@@ -459,6 +465,7 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
       pesoMorto: toNumOrNull(d.values.pesoMorto),
       valor: toNumOrNull(d.values.valor),
       obs: d.values.obs || null,
+      extras: extractExtras(d.values),
     }));
 
     const catDecl = declaradas.map((c) => ({
@@ -534,6 +541,7 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
           valor: f.valor != null ? String(f.valor) : '',
           obs: f.obs || '',
           data: m.data,
+          ...(f.extras || {}),
         },
       }));
       const novasCats: ConsumoCat[] = m.catDecl
@@ -650,6 +658,9 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
   const inputCls =
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
+  // Modo individual: os campos do lote (coletivo) seguem visíveis, porém
+  // bloqueados (cinza, sem entrada) — padrão da tela de Vendas.
+  const disabledCls = 'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400';
 
   // Abas (Lançamentos / Registros): reusado no cabeçalho normal e no da tela cheia.
   const abasToggle = (
@@ -798,9 +809,9 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
                   Safra <span className="font-semibold text-[#16a34a]">{safra}</span>
                 </div>
               </div>
-              <div className={`min-w-0 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId} style={{ flex: '1 1 150px' }}>
+              <div className="min-w-0" style={{ flex: '1 1 150px' }}>
                 <label className={labelCls}>Tipo</label>
-                <select className={`${inputCls} mt-1.5`} value={catTipoSel} onChange={(e) => setCatTipoSel(e.target.value)}>
+                <select disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} value={catTipoSel} onChange={(e) => setCatTipoSel(e.target.value)}>
                   <option value="">Selecione o tipo</option>
                   {CONSUMO_TIPOS.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -881,8 +892,6 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
                 />
               </div>
               <div
-                className={fromId ? 'invisible' : ''}
-                aria-hidden={fromId}
                 style={{ flex: '0 0 110px', maxWidth: 110 }}
               >
                 <label className={labelCls}>
@@ -891,15 +900,16 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
                 <input
                   type="number"
                   min={1}
-                  className={`${inputCls} mt-1.5`}
+                  disabled={fromId}
+                  className={`${inputCls} ${disabledCls} mt-1.5`}
                   placeholder="Ex.: 3"
                   value={totalStr}
                   onChange={(e) => setTotalStr(e.target.value)}
                 />
               </div>
-              <div className={`min-w-[140px] flex-1 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId}>
+              <div className="min-w-[140px] flex-1">
                 <label className={labelCls}>Categoria <span className="font-medium text-gray-400">(coletivo)</span></label>
-                <select className={`${inputCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
+                <select disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} value={catSel} onChange={(e) => setCatSel(e.target.value)}>
                   <option value="">Selecione a categoria</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -911,23 +921,24 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
             </div>
 
             {/* Peso Vivo/Cabeça, Peso Morto/Cabeça, Valor Cabeça (coletivo) */}
-            <div className={`mt-3 flex flex-wrap items-end gap-3 ${fromId ? 'invisible' : ''}`} aria-hidden={fromId}>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
               <div style={{ flex: '0 0 150px' }}>
                 <label className={labelCls}>Peso Vivo/Cabeça <span className="font-medium text-gray-400">(kg)</span></label>
-                <input type="text" inputMode="decimal" className={`${inputCls} mt-1.5`} placeholder="Ex.: 480" value={catPVStr} onChange={(e) => setCatPVStr(e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} placeholder="Ex.: 480" value={catPVStr} onChange={(e) => setCatPVStr(e.target.value)} />
               </div>
               <div style={{ flex: '0 0 150px' }}>
                 <label className={labelCls}>Peso Morto/Cabeça <span className="font-medium text-gray-400">(kg)</span></label>
-                <input type="text" inputMode="decimal" className={`${inputCls} mt-1.5`} placeholder="Ex.: 240" value={catPMStr} onChange={(e) => setCatPMStr(e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} placeholder="Ex.: 240" value={catPMStr} onChange={(e) => setCatPMStr(e.target.value)} />
               </div>
               <div style={{ flex: '0 0 150px' }}>
                 <label className={labelCls}>Valor Cabeça <span className="font-medium text-gray-400">(R$)</span></label>
-                <input type="text" inputMode="decimal" className={`${inputCls} mt-1.5`} placeholder="Ex.: 0,00" value={catValStr} onChange={(e) => setCatValStr(e.target.value)} />
+                <input type="text" inputMode="decimal" disabled={fromId} className={`${inputCls} ${disabledCls} mt-1.5`} placeholder="Ex.: 0,00" value={catValStr} onChange={(e) => setCatValStr(e.target.value)} />
               </div>
               <button
                 type="button"
                 onClick={addCat}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec]"
+                disabled={fromId}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#16a34a] bg-white px-3.5 text-sm font-semibold text-[#16a34a] hover:bg-[#e7f6ec] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
               >
                 <Plus size={16} /> mais
               </button>

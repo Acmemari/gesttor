@@ -8,12 +8,19 @@ import {
   Loader2,
   Layers,
   ChevronRight,
+  ChevronLeft,
   Upload,
+  AlertTriangle,
+  Link2,
+  Sparkles,
 } from 'lucide-react';
 import { useHierarchy } from '../contexts/HierarchyContext';
 import CadastroAreasView from '../agents/pecuario/areas/CadastroAreasView';
 import { fazRootId, updateAreaGeometry } from '../agents/pecuario/areas/areasClient';
 import { parseKmlPolygons, KmlError } from '../agents/pecuario/areas/kml';
+import { centroid, pointInPoly, cleanRing } from '../agents/pecuario/areas/util';
+import NiveisSetup, { type NiveisCombo } from '../agents/pecuario/areas/NiveisSetup';
+import DateInputBR from './DateInputBR';
 
 type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
@@ -22,8 +29,10 @@ type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => 
  * Retiro › Setor › Local daquela fazenda. Os níveis intermediários/folha são
  * opcionais e ativados por fazenda (toggles). Só a Fazenda é obrigatória (raiz).
  * Um Local ancora no nível ATIVO mais profundo acima dele (setor ?? retiro ?? fazenda).
- * As 4 colunas se distribuem em toda a largura; o mapa (mesma hierarquia, com
- * geometria) fica grande logo abaixo. Cada card importa seu próprio KMZ/KML.
+ * Layout do painel: Fazenda/Retiro/Setor ficam em 3 colunas estreitas no topo
+ * (~40% da altura) e os Locais ocupam uma caixa larga em grade logo abaixo
+ * (~60%); o mapa (mesma hierarquia, com geometria) fica grande à direita. Cada
+ * card importa seu próprio KMZ/KML.
  */
 
 interface Retiro {
@@ -32,6 +41,8 @@ interface Retiro {
   name: string;
   totalArea: string | null;
   isDefault: boolean;
+  dataInicial?: string | null;
+  geometry?: unknown;
 }
 interface Setor {
   id: string;
@@ -39,6 +50,9 @@ interface Setor {
   retiroId: string | null;
   name: string;
   area: string | null;
+  isDefault?: boolean;
+  dataInicial?: string | null;
+  geometry?: unknown;
 }
 interface Local {
   id: string;
@@ -47,11 +61,32 @@ interface Local {
   setorId: string | null;
   name: string;
   area: string | null;
+  isDefault?: boolean;
+  dataInicial?: string | null;
+  geometry?: unknown;
 }
 interface Levels {
   retiro: boolean;
   setor: boolean;
   local: boolean;
+  /** O usuário já escolheu a combinação de níveis desta fazenda? (gate do mapa) */
+  configured?: boolean;
+}
+
+/** Atalho de re-vínculo sugerido pela posição no mapa (ponto-em-polígono). */
+interface OrphanSuggestion {
+  name: string;
+  apply: () => void;
+}
+/** Item exibido na faixa "Sem vínculo" de uma coluna (órfão pós-ativação de nível). */
+interface OrphanRow {
+  id: string;
+  name: string;
+  area: string | null;
+  /** vincula ao nó selecionado à esquerda (destino padrão); undefined ⇒ sem destino. */
+  onAttach?: () => void;
+  /** vincula ao pai sugerido pela geometria, quando difere do selecionado. */
+  suggestion?: OrphanSuggestion;
 }
 
 type LevelKey = 'retiro' | 'setor' | 'local';
@@ -143,17 +178,47 @@ function fmtArea(area: string | null): string | null {
   return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`;
 }
 
+/** "Hoje" em ISO 'YYYY-MM-DD' por hora local (evita o off-by-one de toISOString). */
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Sugere o pai de um órfão pela posição no mapa: o 1º candidato cujo polígono
+ *  contém o centroide do polígono do órfão (ponto-em-polígono). null se o órfão
+ *  não tem geometria válida ou não cai em nenhum candidato. Atalho opcional. */
+function suggestContainer<T extends { id: string; name: string; geometry?: unknown }>(
+  geom: unknown,
+  candidates: T[],
+): T | null {
+  const ring = cleanRing(geom);
+  if (ring.length < 3) return null;
+  const ct = centroid(ring);
+  for (const c of candidates) {
+    const cr = cleanRing(c.geometry);
+    if (cr.length >= 3 && pointInPoly(ct, cr)) return c;
+  }
+  return null;
+}
+
 const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnly, onToast }) => {
   const { farms, loading: hierarchyLoading } = useHierarchy();
 
   // Fazenda selecionada na 1ª coluna (default = fazenda em edição).
   const [selFarmId, setSelFarmId] = useState<string>(farmId);
   useEffect(() => setSelFarmId(farmId), [farmId]);
+  // Trocar de fazenda fecha o modo "reconfigurar" (cada fazenda tem seu gate).
+  useEffect(() => setReopenSetup(false), [selFarmId]);
 
   const [levels, setLevels] = useState<Levels>({ retiro: true, setor: false, local: true });
   const [retiros, setRetiros] = useState<Retiro[]>([]);
   const [setores, setSetores] = useState<Setor[]>([]);
   const [locais, setLocais] = useState<Local[]>([]);
+  // Registro automático (is_default) de cada nível: aparece, somente leitura, na
+  // coluna do nível quando ele está DESATIVADO — nomeado com o nível anterior.
+  const [defaultRetiro, setDefaultRetiro] = useState<Retiro | null>(null);
+  const [defaultSetor, setDefaultSetor] = useState<Setor | null>(null);
+  const [defaultLocal, setDefaultLocal] = useState<Local | null>(null);
 
   const [selRetiro, setSelRetiro] = useState<string | null>(null);
   const [selSetor, setSelSetor] = useState<string | null>(null);
@@ -169,8 +234,20 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   const [saving, setSaving] = useState(false);
   const [togglingKey, setTogglingKey] = useState<LevelKey | null>(null);
 
+  // Gate da combinação de níveis: enquanto a fazenda não tiver a combinação
+  // escolhida (configured), mostra o cadastro de níveis antes do mapa. `reopenSetup`
+  // reabre o cadastro para reconfigurar uma fazenda já configurada.
+  const [savingLevels, setSavingLevels] = useState(false);
+  const [reopenSetup, setReopenSetup] = useState(false);
+
   const [adding, setAdding] = useState<{ key: LevelKey; name: string; area: string } | null>(null);
   const [editing, setEditing] = useState<{ key: LevelKey; id: string; name: string; area: string } | null>(null);
+
+  // Painel das colunas recolhível → o mapa ocupa toda a largura quando recolhido.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Data inicial única da tela: carimbada em todo registro criado/editado aqui.
+  const [dataInicial, setDataInicial] = useState<string>(todayIso());
 
   // ── Carrega o bundle da fazenda selecionada ─────────────────────────────────
   useEffect(() => {
@@ -184,12 +261,21 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     )
       .then((b) => {
         if (cancelled) return;
-        setRetiros(b.retiros);
-        setSetores(b.setores);
-        setLocais(b.locais);
+        // Registros padrão (is_default) são as âncoras do back-end. Os níveis
+        // ATIVOS listam só os do usuário (sem default); os níveis DESATIVADOS
+        // exibem o respectivo default (somente leitura) na sua coluna.
+        const userRetiros = b.retiros.filter((r) => !r.isDefault);
+        setRetiros(userRetiros);
+        setSetores(b.setores.filter((s) => !s.isDefault));
+        setLocais(b.locais.filter((l) => !l.isDefault));
+        setDefaultRetiro(b.retiros.find((r) => r.isDefault) ?? null);
+        setDefaultSetor(b.setores.find((s) => s.isDefault) ?? null);
+        setDefaultLocal(b.locais.find((l) => l.isDefault) ?? null);
         setLevels(b.levels);
-        setSelRetiro(b.retiros[0]?.id ?? null);
-        setSelSetor(null);
+        // Preserva a seleção atual num reload (toggle de nível, mutação do mapa);
+        // só reseta quando o item sumiu (ex.: troca de fazenda).
+        setSelRetiro((prev) => (userRetiros.some((r) => r.id === prev) ? prev : (userRetiros[0]?.id ?? null)));
+        setSelSetor((prev) => (b.setores.some((s) => !s.isDefault && s.id === prev) ? prev : null));
       })
       .catch((err) => console.error('Erro ao carregar locais:', err))
       .finally(() => !cancelled && setLoading(false));
@@ -211,19 +297,187 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     return locais;
   }, [levels.setor, levels.retiro, locais, effSetor, effRetiro]);
 
-  const activeLevels = LEVELS.filter((l) => levels[l.key]);
+  // ── Órfãos: registros sem vínculo no nível ativo mais profundo acima deles ────
+  // Quando o usuário ATIVA um nível depois de já ter cadastrado locais/setores, os
+  // registros antigos ficam com o FK daquele nível = null e SUMIRIAM da coluna
+  // (locaisVisible/setoresVisible filtram por effSetor/effRetiro). Aqui os
+  // detectamos para reexibi-los numa faixa "Sem vínculo" e permitir re-vinculá-los.
+  // Só são "órfãos a vincular" quando EXISTE um nó de destino selecionado que os
+  // exclui da lista normal: com effSetor/effRetiro == null o filtro casa com null
+  // e eles continuam visíveis na coluna (sem destino, basta criar/selecionar um).
+  const orphanLocais = useMemo(() => {
+    if (levels.setor) return effSetor != null ? locais.filter((l) => l.setorId == null) : [];
+    if (levels.retiro) return effRetiro != null ? locais.filter((l) => l.retiroId == null) : [];
+    return [];
+  }, [levels.setor, levels.retiro, locais, effSetor, effRetiro]);
+
+  const orphanSetores = useMemo(
+    () => (levels.retiro && effRetiro != null ? setores.filter((s) => s.retiroId == null) : []),
+    [levels.retiro, effRetiro, setores],
+  );
+
+  // Destino "padrão" da re-vinculação = o nó selecionado à esquerda (effSetor para
+  // locais, effRetiro para setores), espelhando como commitAdd ancora um novo item.
+  const localTarget = useMemo<{ setorId: string | null; retiroId: string | null } | null>(() => {
+    if (levels.setor) return effSetor ? { setorId: effSetor, retiroId: levels.retiro ? effRetiro : null } : null;
+    if (levels.retiro) return effRetiro ? { setorId: null, retiroId: effRetiro } : null;
+    return null;
+  }, [levels.setor, levels.retiro, effSetor, effRetiro]);
+
+  const localTargetName = useMemo(() => {
+    if (levels.setor) return setoresVisible.find((s) => s.id === effSetor)?.name ?? null;
+    if (levels.retiro) return retiros.find((r) => r.id === effRetiro)?.name ?? null;
+    return null;
+  }, [levels.setor, levels.retiro, setoresVisible, effSetor, retiros, effRetiro]);
+
+  const setorTargetName = useMemo(
+    () => (levels.retiro ? retiros.find((r) => r.id === effRetiro)?.name ?? null : null),
+    [levels.retiro, retiros, effRetiro],
+  );
+
+  // ── Re-vínculo de órfãos (PATCH direto, sem evento no ledger) ────────────────
+  const patchLocalLink = useCallback(
+    async (ids: string[], target: { setorId: string | null; retiroId: string | null }) => {
+      if (!ids.length) return;
+      setSaving(true);
+      // Otimista: aplica o vínculo já no estado (some da faixa, entra na lista).
+      setLocais((p) => p.map((l) => (ids.includes(l.id) ? { ...l, ...target } : l)));
+      try {
+        await Promise.all(
+          ids.map((id) => patchJson({ type: 'local', id, setorId: target.setorId, retiroId: target.retiroId })),
+        );
+        setMapReloadToken((v) => v + 1);
+        onToast?.(
+          ids.length > 1 ? `${ids.length} locais vinculados.` : 'Local vinculado.',
+          'success',
+        );
+      } catch (err) {
+        console.error('Erro ao vincular local(is):', err);
+        onToast?.('Não foi possível vincular. Recarregando…', 'error');
+        setListReloadVersion((v) => v + 1); // reconcilia em caso de falha parcial
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onToast],
+  );
+
+  const patchSetorLink = useCallback(
+    async (ids: string[], retiroId: string | null) => {
+      if (!ids.length) return;
+      setSaving(true);
+      setSetores((p) => p.map((s) => (ids.includes(s.id) ? { ...s, retiroId } : s)));
+      try {
+        await Promise.all(ids.map((id) => patchJson({ type: 'setor', id, retiroId })));
+        setMapReloadToken((v) => v + 1);
+        onToast?.(ids.length > 1 ? `${ids.length} setores vinculados.` : 'Setor vinculado.', 'success');
+      } catch (err) {
+        console.error('Erro ao vincular setor(es):', err);
+        onToast?.('Não foi possível vincular. Recarregando…', 'error');
+        setListReloadVersion((v) => v + 1);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onToast],
+  );
+
+  // Linhas de órfãos prontas para a faixa "Sem vínculo" (destino + sugestão).
+  const localOrphanRows = useMemo<OrphanRow[]>(
+    () =>
+      orphanLocais.map((l) => {
+        let suggestion: OrphanSuggestion | undefined;
+        if (levels.setor) {
+          const s = suggestContainer(l.geometry, setores);
+          if (s && s.id !== effSetor)
+            suggestion = {
+              name: s.name,
+              apply: () => patchLocalLink([l.id], { setorId: s.id, retiroId: s.retiroId ?? (levels.retiro ? effRetiro : null) }),
+            };
+        } else if (levels.retiro) {
+          const r = suggestContainer(l.geometry, retiros);
+          if (r && r.id !== effRetiro)
+            suggestion = { name: r.name, apply: () => patchLocalLink([l.id], { setorId: null, retiroId: r.id }) };
+        }
+        return {
+          id: l.id,
+          name: l.name,
+          area: l.area,
+          onAttach: localTarget ? () => patchLocalLink([l.id], localTarget) : undefined,
+          suggestion,
+        };
+      }),
+    [orphanLocais, levels.setor, levels.retiro, setores, retiros, effSetor, effRetiro, localTarget, patchLocalLink],
+  );
+
+  const setorOrphanRows = useMemo<OrphanRow[]>(
+    () =>
+      orphanSetores.map((s) => {
+        let suggestion: OrphanSuggestion | undefined;
+        const r = suggestContainer(s.geometry, retiros);
+        if (r && r.id !== effRetiro)
+          suggestion = { name: r.name, apply: () => patchSetorLink([s.id], r.id) };
+        return {
+          id: s.id,
+          name: s.name,
+          area: s.area,
+          onAttach: effRetiro ? () => patchSetorLink([s.id], effRetiro) : undefined,
+          suggestion,
+        };
+      }),
+    [orphanSetores, retiros, effRetiro, patchSetorLink],
+  );
+
+  const attachAllLocais = useCallback(() => {
+    if (localTarget) patchLocalLink(orphanLocais.map((o) => o.id), localTarget);
+  }, [localTarget, orphanLocais, patchLocalLink]);
+
+  const attachAllSetores = useCallback(() => {
+    if (effRetiro) patchSetorLink(orphanSetores.map((o) => o.id), effRetiro);
+  }, [effRetiro, orphanSetores, patchSetorLink]);
+
+  // Nome do "nível anterior" (pai ativo) p/ batizar o registro automático que o
+  // back-end grava quando um nível é desativado.
+  const parentNameFor = useCallback(
+    (key: LevelKey): string => {
+      const farmDisplayName = farms.find((f) => f.id === selFarmId)?.name ?? farmName ?? 'Padrão';
+      if (key === 'retiro') return farmDisplayName;
+      const retiroName = retiros.find((r) => r.id === effRetiro)?.name;
+      if (key === 'setor') return (levels.retiro && retiroName) || farmDisplayName;
+      // local: ancora no nível ativo mais profundo acima dele.
+      const setorName = setoresVisible.find((s) => s.id === effSetor)?.name;
+      if (levels.setor && setorName) return setorName;
+      if (levels.retiro && retiroName) return retiroName;
+      return farmDisplayName;
+    },
+    [farms, selFarmId, farmName, retiros, effRetiro, setoresVisible, effSetor, levels.retiro, levels.setor],
+  );
 
   // ── Toggle de nível (persiste em farm_location_levels da fazenda) ───────────
   const toggleLevel = useCallback(
     async (key: LevelKey) => {
       if (readOnly || togglingKey) return;
       const next = { ...levels, [key]: !levels[key] };
+      const turningOff = !next[key];
+      const parentName = turningOff ? parentNameFor(key) : null;
       setLevels(next);
       setTogglingKey(key);
       setAdding(null);
       setEditing(null);
+      // Espelha na hora o registro automático que o back-end vai gravar, para a
+      // coluna desativada já aparecer com o nome do nível anterior (sem refetch).
+      if (turningOff && parentName) {
+        if (key === 'retiro')
+          setDefaultRetiro((p) => ({ ...(p ?? { id: 'auto-retiro', farmId: selFarmId, totalArea: null, isDefault: true } as Retiro), name: parentName }));
+        else if (key === 'setor')
+          setDefaultSetor((p) => ({ ...(p ?? { id: 'auto-setor', farmId: selFarmId, retiroId: null, area: null, isDefault: true } as Setor), name: parentName }));
+        else
+          setDefaultLocal((p) => ({ ...(p ?? { id: 'auto-local', farmId: selFarmId, retiroId: null, setorId: null, area: null, isDefault: true } as Local), name: parentName }));
+      }
       try {
-        await postJson({ type: 'levels', farmId: selFarmId, ...next });
+        // Ao desativar, grava o registro automático do nível com o nome do pai.
+        const autoNames = turningOff ? { [key]: parentName } : undefined;
+        await postJson({ type: 'levels', farmId: selFarmId, ...next, autoNames });
         setMapReloadToken((v) => v + 1);
       } catch (err) {
         console.error('Erro ao salvar níveis:', err);
@@ -232,7 +486,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         setTogglingKey(null);
       }
     },
-    [levels, selFarmId, readOnly, togglingKey],
+    [levels, selFarmId, readOnly, togglingKey, parentNameFor],
   );
 
   // ── CRUD (sempre na fazenda selecionada) ────────────────────────────────────
@@ -242,7 +496,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     setSaving(true);
     try {
       if (key === 'retiro') {
-        const row = await postJson<Retiro>({ farmId: selFarmId, name: name.trim(), totalArea: area.trim() || null });
+        const row = await postJson<Retiro>({ farmId: selFarmId, name: name.trim(), totalArea: area.trim() || null, dataInicial });
         setRetiros((p) => [...p, row]);
         setSelRetiro(row.id);
         setSelSetor(null);
@@ -250,7 +504,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         const row = await postJson<Setor>({
           type: 'setor', farmId: selFarmId,
           retiroId: levels.retiro ? effRetiro : null,
-          name: name.trim(), area: area.trim() || null,
+          name: name.trim(), area: area.trim() || null, dataInicial,
         });
         setSetores((p) => [...p, row]);
         setSelSetor(row.id);
@@ -259,7 +513,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
           type: 'local', farmId: selFarmId,
           retiroId: levels.retiro ? effRetiro : null,
           setorId: levels.setor ? effSetor : null,
-          name: name.trim(), area: area.trim() || null,
+          name: name.trim(), area: area.trim() || null, dataInicial,
         });
         setLocais((p) => [...p, row]);
       }
@@ -278,13 +532,13 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     setSaving(true);
     try {
       if (key === 'retiro') {
-        const row = await patchJson<Retiro>({ id, name: name.trim(), totalArea: area.trim() || null });
+        const row = await patchJson<Retiro>({ id, name: name.trim(), totalArea: area.trim() || null, dataInicial });
         setRetiros((p) => p.map((r) => (r.id === id ? row : r)));
       } else if (key === 'setor') {
-        const row = await patchJson<Setor>({ type: 'setor', id, name: name.trim(), area: area.trim() || null });
+        const row = await patchJson<Setor>({ type: 'setor', id, name: name.trim(), area: area.trim() || null, dataInicial });
         setSetores((p) => p.map((s) => (s.id === id ? row : s)));
       } else {
-        const row = await patchJson<Local>({ type: 'local', id, name: name.trim(), area: area.trim() || null });
+        const row = await patchJson<Local>({ type: 'local', id, name: name.trim(), area: area.trim() || null, dataInicial });
         setLocais((p) => p.map((l) => (l.id === id ? row : l)));
       }
       setMapReloadToken((v) => v + 1);
@@ -324,6 +578,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
       setMapReloadToken((v) => v + 1);
     } catch (err) {
       console.error('Erro ao excluir:', err);
+      onToast?.(err instanceof Error ? err.message : 'Não foi possível excluir.', 'error');
     } finally {
       setSaving(false);
     }
@@ -393,6 +648,29 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
 
   // Mapa mutou a hierarquia → recarrega a lista.
   const onMapMutated = useCallback(() => setListReloadVersion((v) => v + 1), []);
+
+  // ── Gate: confirma a combinação de níveis escolhida no cadastro ─────────────
+  // Persiste a combinação com configured:true (libera o mapa) e recarrega tudo.
+  const confirmCombination = useCallback(
+    async (combo: NiveisCombo) => {
+      if (readOnly) return;
+      setSavingLevels(true);
+      try {
+        const row = await postJson<Levels>({ type: 'levels', farmId: selFarmId, ...combo, configured: true });
+        setLevels({ ...row, configured: true });
+        setReopenSetup(false);
+        setMapReloadToken((v) => v + 1);
+        setListReloadVersion((v) => v + 1);
+        onToast?.('Estrutura de níveis salva. Agora aloque os locais no mapa.', 'success');
+      } catch (err) {
+        console.error('Erro ao salvar a combinação de níveis:', err);
+        onToast?.('Não foi possível salvar a combinação de níveis.', 'error');
+      } finally {
+        setSavingLevels(false);
+      }
+    },
+    [selFarmId, readOnly, onToast],
+  );
 
   // ── Importar KMZ/KML direto num card → vira o contorno daquele registro ─────
   // (Fazenda → perímetro; Retiro/Setor/Local → geometria da linha.) Reaproveita
@@ -466,47 +744,177 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     [farms],
   );
 
+  // Coluna de um nível DESATIVADO: mostra só o registro automático (default),
+  // somente leitura, com o nome do nível anterior. Se o default ainda não foi
+  // gravado (fazenda em config derivada que nunca togglou), cai no nome do pai
+  // ativo para a coluna nunca aparecer vazia.
+  const inactiveColumn = (key: LevelKey, def: Retiro | Setor | Local | null, area: string | null) => ({
+    rows: [{ id: def?.id ?? `auto-${key}`, name: def?.name ?? parentNameFor(key), area: def ? area : null }],
+    selId: null as string | null,
+    parentChosen: true,
+    drillable: false,
+    colReadOnly: true,
+    inactive: true,
+  });
+
   const columnFor = (key: ColKey) => {
     if (key === 'fazenda') {
-      return { rows: fazendaRows, selId: selFarmId, parentChosen: true, drillable: true, colReadOnly: true };
+      return { rows: fazendaRows, selId: selFarmId, parentChosen: true, drillable: true, colReadOnly: true, inactive: false };
     }
     if (key === 'retiro') {
+      if (!levels.retiro) return inactiveColumn('retiro', defaultRetiro, defaultRetiro?.totalArea ?? null);
       return {
         rows: retiros.map((r) => ({ id: r.id, name: r.name, area: r.totalArea })),
         selId: effRetiro,
         parentChosen: !!selFarmId,
         drillable: true,
         colReadOnly: !!readOnly,
+        inactive: false,
       };
     }
     if (key === 'setor') {
+      if (!levels.setor) return inactiveColumn('setor', defaultSetor, defaultSetor?.area ?? null);
       return {
         rows: setoresVisible.map((s) => ({ id: s.id, name: s.name, area: s.area })),
         selId: effSetor,
         parentChosen: !levels.retiro || effRetiro != null,
         drillable: true,
         colReadOnly: !!readOnly,
+        inactive: false,
       };
     }
+    if (!levels.local) return inactiveColumn('local', defaultLocal, defaultLocal?.area ?? null);
     return {
       rows: locaisVisible.map((l) => ({ id: l.id, name: l.name, area: l.area })),
       selId: locais.some((l) => l.id === selId) ? selId : (null as string | null),
       parentChosen: levels.setor ? effSetor != null : levels.retiro ? effRetiro != null : true,
       drillable: false,
       colReadOnly: !!readOnly,
+      inactive: false,
     };
   };
 
+  // Todas as colunas ficam visíveis; os níveis desativados aparecem em cinza
+  // (somente leitura) em vez de sumirem do layout.
   const cols: { key: ColKey; style: LevelStyle }[] = [
     { key: 'fazenda', style: FAZENDA_STYLE },
-    ...activeLevels.map((l) => ({ key: l.key as ColKey, style: l.s })),
+    ...LEVELS.map((l) => ({ key: l.key as ColKey, style: l.s })),
   ];
+  // Fazenda/Retiro/Setor sobem para o topo; Locais vira a caixa larga de baixo.
+  const topCols = cols.filter((c) => c.key !== 'local');
+  const localCol = cols.find((c) => c.key === 'local') ?? null;
+
+  // Render compartilhado de uma coluna (estreita no topo / larga em grade embaixo).
+  const renderColumn = (key: ColKey, style: LevelStyle, opts: { wide?: boolean; grow?: boolean } = {}) => {
+    const { wide = false, grow = false } = opts;
+    const col = columnFor(key);
+    // Faixa "Sem vínculo": órfãos pós-ativação de nível, só nas colunas ativas e
+    // editáveis de Local e Setor.
+    const orphans = readOnly || col.inactive
+      ? []
+      : key === 'local'
+        ? localOrphanRows
+        : key === 'setor'
+          ? setorOrphanRows
+          : [];
+    const orphanDestName = key === 'local' ? localTargetName : key === 'setor' ? setorTargetName : null;
+    const onAttachAll = key === 'local' ? attachAllLocais : key === 'setor' ? attachAllSetores : undefined;
+    const attachEnabled = key === 'local' ? !!localTarget : key === 'setor' ? !!effRetiro : false;
+    // Enquanto carrega o bundle, mostra spinner nas colunas de nível
+    // (a coluna de Fazendas permanece navegável).
+    if (key !== 'fazenda' && loading) {
+      return (
+        <div
+          key={key}
+          className={`flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white py-12 ${
+            wide ? 'h-full w-full' : grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] lg:h-full'
+          }`}
+        >
+          <Loader2 size={18} className="animate-spin text-gray-300" />
+        </div>
+      );
+    }
+    return (
+      <LevelColumn
+        key={key}
+        wide={wide}
+        grow={grow}
+        style={style}
+        rows={col.rows}
+        selId={col.selId}
+        drillable={col.drillable}
+        parentChosen={col.parentChosen}
+        readOnly={col.colReadOnly}
+        inactive={col.inactive}
+        emptyHint={
+          key === 'fazenda'
+            ? hierarchyLoading.farms
+              ? 'Carregando fazendas...'
+              : 'Nenhuma fazenda no contexto.'
+            : undefined
+        }
+        saving={saving}
+        adding={key !== 'fazenda' && adding?.key === key ? adding : null}
+        editing={key !== 'fazenda' && editing?.key === key ? editing : null}
+        onStartAdd={() => {
+          setEditing(null);
+          setAdding({ key: key as LevelKey, name: '', area: '' });
+        }}
+        onChangeAdd={(name, area) => setAdding({ key: key as LevelKey, name, area })}
+        onCommitAdd={commitAdd}
+        onCancelAdd={() => setAdding(null)}
+        onStartEdit={(id, name, area) => {
+          setAdding(null);
+          setEditing({ key: key as LevelKey, id, name, area: area ?? '' });
+        }}
+        onChangeEdit={(name, area) => setEditing((e) => (e ? { ...e, name, area } : e))}
+        onCommitEdit={commitEdit}
+        onCancelEdit={() => setEditing(null)}
+        onSelect={(id) => onSelect(key, id)}
+        onDelete={(id) => removeItem(key as LevelKey, id)}
+        onImport={readOnly || col.colReadOnly ? undefined : (id, name) => startImport(id, key, name)}
+        orphans={orphans}
+        orphanDestName={orphanDestName}
+        orphanAttachEnabled={attachEnabled}
+        onAttachAllOrphans={onAttachAll}
+      />
+    );
+  };
+
+  // ── Gate da combinação de níveis ────────────────────────────────────────────
+  // Enquanto a fazenda não tiver a combinação confirmada (ou ao reconfigurar),
+  // mostra o cadastro de níveis no lugar das colunas/mapa.
+  const showGate = reopenSetup || (!loading && !levels.configured);
+  if (showGate) {
+    return (
+      <div className="py-2">
+        <NiveisSetup
+          farmName={selFarmName}
+          initial={{ retiro: levels.retiro, setor: levels.setor, local: levels.local }}
+          readOnly={readOnly}
+          saving={savingLevels}
+          reconfiguring={reopenSetup && !!levels.configured}
+          onConfirm={confirmCombination}
+          onCancel={() => setReopenSetup(false)}
+        />
+      </div>
+    );
+  }
+  // Primeira carga (ainda não sabemos se está configurada): evita montar o mapa
+  // só para trocá-lo pelo gate logo em seguida.
+  if (loading && !levels.configured) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 size={22} className="animate-spin text-gray-300" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       {/* ── Seletores de nível ──────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white p-3.5">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <Layers size={15} className="text-gray-400" />
           <span className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
             Níveis de localização
@@ -514,6 +922,28 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
           <span className="text-[11px] text-gray-400 normal-case font-normal">
             · a Fazenda é a raiz (sempre ativa) · ative os níveis que esta fazenda usa
           </span>
+          {/* Data única da tela: carimbada em todo registro criado/editado aqui. */}
+          <div className="ml-auto flex items-center gap-2">
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setReopenSetup(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50"
+                title="Escolher de novo a combinação de níveis desta fazenda"
+              >
+                <Layers size={13} /> Alterar combinação
+              </button>
+            )}
+            <label className="whitespace-nowrap text-[11px] font-medium text-gray-500">
+              Registros a partir de
+            </label>
+            <DateInputBR
+              value={dataInicial}
+              onChange={(v) => setDataInicial(v || todayIso())}
+              disabled={readOnly}
+              className="w-36"
+            />
+          </div>
         </div>
         {/* Mesma largura/distribuição das 4 colunas abaixo (4×100px + gaps) */}
         <div className="flex w-[424px] max-w-full flex-wrap items-center gap-2">
@@ -556,67 +986,65 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         </div>
       </div>
 
+      {/* ── Banner-resumo de órfãos: avisa que há registros ocultos sem vínculo ── */}
+      {!readOnly && (orphanLocais.length > 0 || orphanSetores.length > 0) && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+          <div className="text-[12.5px] leading-snug text-amber-800">
+            <b>
+              {[
+                orphanLocais.length > 0 && `${orphanLocais.length} ${orphanLocais.length > 1 ? 'locais' : 'local'}`,
+                orphanSetores.length > 0 && `${orphanSetores.length} ${orphanSetores.length > 1 ? 'setores' : 'setor'}`,
+              ]
+                .filter(Boolean)
+                .join(' e ')}
+            </b>{' '}
+            sem vínculo no nível ativado e {orphanLocais.length + orphanSetores.length > 1 ? 'estão ocultos' : 'está oculto'} da
+            hierarquia. Use a faixa <span className="font-semibold">"Sem vínculo"</span> nas colunas abaixo para vinculá-los.
+          </div>
+        </div>
+      )}
+
       {/* ── Colunas (lateral esq., largura do conteúdo) + Mapa grande ────────── */}
-      <div className="flex flex-col gap-4 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:flex-row">
-        {/* Painel das colunas: abraça a largura das colunas (resto vai pro mapa) */}
-        <div className="flex w-full gap-2 overflow-x-auto pb-1 lg:h-full lg:w-auto lg:max-w-[40%] lg:shrink-0">
-          {cols.map(({ key, style }) => {
-            const col = columnFor(key);
-            // Enquanto carrega o bundle, mostra spinner nas colunas de nível
-            // (a coluna de Fazendas permanece navegável).
-            if (key !== 'fazenda' && loading) {
-              return (
-                <div
-                  key={key}
-                  className="flex w-[100px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white py-12 lg:h-full"
-                >
-                  <Loader2 size={18} className="animate-spin text-gray-300" />
-                </div>
-              );
-            }
-            return (
-              <LevelColumn
-                key={key}
-              style={style}
-              rows={col.rows}
-              selId={col.selId}
-              drillable={col.drillable}
-              parentChosen={col.parentChosen}
-              readOnly={col.colReadOnly}
-              emptyHint={
-                key === 'fazenda'
-                  ? hierarchyLoading.farms
-                    ? 'Carregando fazendas...'
-                    : 'Nenhuma fazenda no contexto.'
-                  : undefined
-              }
-              saving={saving}
-              adding={key !== 'fazenda' && adding?.key === key ? adding : null}
-              editing={key !== 'fazenda' && editing?.key === key ? editing : null}
-              onStartAdd={() => {
-                setEditing(null);
-                setAdding({ key: key as LevelKey, name: '', area: '' });
-              }}
-              onChangeAdd={(name, area) => setAdding({ key: key as LevelKey, name, area })}
-              onCommitAdd={commitAdd}
-              onCancelAdd={() => setAdding(null)}
-              onStartEdit={(id, name, area) => {
-                setAdding(null);
-                setEditing({ key: key as LevelKey, id, name, area: area ?? '' });
-              }}
-              onChangeEdit={(name, area) => setEditing((e) => (e ? { ...e, name, area } : e))}
-              onCommitEdit={commitEdit}
-              onCancelEdit={() => setEditing(null)}
-                onSelect={(id) => onSelect(key, id)}
-                onDelete={(id) => removeItem(key as LevelKey, id)}
-                onImport={readOnly ? undefined : (id, name) => startImport(id, key, name)}
-              />
-            );
-          })}
+      <div className="flex flex-col gap-2 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:flex-row">
+        {/* Painel: 3 colunas no topo (~40%) + caixa larga de Locais embaixo (~60%) */}
+        <div
+          className={`flex w-full flex-col gap-2 lg:h-full lg:w-auto lg:max-w-[44%] lg:shrink-0 ${
+            sidebarCollapsed ? 'hidden' : ''
+          }`}
+        >
+          {/* Topo: Fazenda › Retiro › Setor (colunas estreitas) */}
+          <div
+            className={`flex gap-2 overflow-x-auto pb-1 lg:min-h-0 ${
+              localCol ? 'lg:flex-[2]' : 'lg:flex-1'
+            }`}
+          >
+            {topCols.map(({ key, style }) => renderColumn(key, style, { grow: true }))}
+          </div>
+
+          {/* Base: Locais em grade larga */}
+          {localCol && (
+            <div className="min-h-0 lg:flex-[3]">{renderColumn('local', localCol.style, { wide: true })}</div>
+          )}
         </div>
 
+        {/* Botão recolher/expandir o painel — o mapa cresce quando recolhido */}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          title={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
+          aria-label={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
+          className="flex shrink-0 items-center justify-center self-stretch rounded-xl border border-gray-200 bg-white py-1.5 text-gray-400 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 lg:px-0.5"
+        >
+          {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+
         {/* Mapa de áreas (mesma hierarquia, com geometria) — ~70% */}
-        <div className="h-[58vh] min-h-[460px] w-full flex-1 lg:h-full lg:min-h-0">
+        <div
+          className={`min-h-[460px] w-full flex-1 lg:h-full lg:min-h-0 ${
+            sidebarCollapsed ? 'h-[78vh]' : 'h-[58vh]'
+          }`}
+        >
           <CadastroAreasView
             farmId={selFarmId}
             farmName={selFarmName}
@@ -626,8 +1054,10 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
             onSelect={selectFromMap}
             levels={levels}
             onEnsureLevel={ensureLevel}
+            dataInicial={dataInicial}
             onMutated={onMapMutated}
             reloadToken={mapReloadToken}
+            resizeSignal={sidebarCollapsed ? 1 : 0}
           />
         </div>
       </div>
@@ -654,6 +1084,12 @@ interface LevelColumnProps {
   style: LevelStyle;
   rows: Row[];
   selId: string | null;
+  /** Caixa larga com grade de cards (Locais embaixo) em vez de coluna estreita. */
+  wide?: boolean;
+  /** Coluna estreita que cresce para preencher a largura do topo. */
+  grow?: boolean;
+  /** Nível desativado: coluna cinza, somente leitura, mostra só o registro automático. */
+  inactive?: boolean;
   drillable: boolean;
   parentChosen: boolean;
   readOnly: boolean;
@@ -673,12 +1109,23 @@ interface LevelColumnProps {
   onDelete: (id: string) => void;
   /** Importar KMZ/KML como contorno deste card (independe de colReadOnly). */
   onImport?: (id: string, name: string) => void;
+  /** Órfãos sem vínculo no nível ativo (faixa "Sem vínculo" no topo da coluna). */
+  orphans?: OrphanRow[];
+  /** Nome do destino selecionado à esquerda (para rótulos "Vincular a X"). */
+  orphanDestName?: string | null;
+  /** Há um destino selecionado para ancorar os órfãos? (senão, só sugestões). */
+  orphanAttachEnabled?: boolean;
+  /** Vincula todos os órfãos ao destino selecionado de uma vez. */
+  onAttachAllOrphans?: () => void;
 }
 
 const LevelColumn: React.FC<LevelColumnProps> = ({
   style,
   rows,
   selId,
+  wide = false,
+  grow = false,
+  inactive = false,
   drillable,
   parentChosen,
   readOnly,
@@ -696,6 +1143,10 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
   onCancelEdit,
   onSelect,
   onDelete,
+  orphans = [],
+  orphanDestName,
+  orphanAttachEnabled = false,
+  onAttachAllOrphans,
   onImport,
 }) => {
   const totalArea = rows.reduce((s, r) => {
@@ -704,15 +1155,27 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
   }, 0);
 
   return (
-    <div className="flex w-[100px] shrink-0 flex-col rounded-xl border border-gray-200 bg-white lg:h-full">
+    <div
+      className={`flex min-w-0 flex-col rounded-xl border ${
+        inactive ? 'border-dashed border-gray-200 bg-gray-50/70' : 'border-gray-200 bg-white'
+      } ${wide ? 'h-full w-full' : grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] shrink-0 lg:h-full'}`}
+    >
       {/* Header */}
       <div className="flex items-center gap-1 border-b border-gray-100 px-1.5 py-1.5">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
+        <span className={`h-2 w-2 shrink-0 rounded-full ${inactive ? 'bg-gray-300' : style.dot}`} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[9px] font-bold uppercase tracking-wide text-gray-600">{style.plural}</div>
+          <div className={`truncate text-[9px] font-bold uppercase tracking-wide ${inactive ? 'text-gray-400' : 'text-gray-600'}`}>
+            {style.plural}
+          </div>
           <div className="truncate text-[9px] tabular-nums text-gray-400">
-            {rows.length}
-            {totalArea > 0 && ` · ${totalArea.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`}
+            {inactive ? (
+              'desativado'
+            ) : (
+              <>
+                {rows.length}
+                {totalArea > 0 && ` · ${totalArea.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`}
+              </>
+            )}
           </div>
         </div>
         {!readOnly && parentChosen && (
@@ -762,10 +1225,78 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
         </div>
       )}
 
+      {/* Faixa "Sem vínculo": órfãos que sumiriam ao ativar este nível. */}
+      {orphans.length > 0 && (
+        <div className="m-1.5 rounded-lg border border-amber-200 bg-amber-50/80">
+          <div className="flex items-center gap-1.5 border-b border-amber-200/70 px-2 py-1.5">
+            <AlertTriangle size={12} className="shrink-0 text-amber-600" />
+            <span className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-wide text-amber-700">
+              {orphans.length} sem vínculo
+            </span>
+            {onAttachAllOrphans && orphans.length > 1 && (
+              <button
+                type="button"
+                onClick={onAttachAllOrphans}
+                disabled={saving || !orphanAttachEnabled}
+                title={orphanAttachEnabled ? `Vincular todos a ${orphanDestName ?? 'destino'}` : 'Selecione um destino à esquerda'}
+                className="shrink-0 rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-amber-700 disabled:opacity-40"
+              >
+                Vincular todos
+              </button>
+            )}
+          </div>
+          {!orphanAttachEnabled && (
+            <div className="px-2 pt-1.5 text-[10px] italic leading-snug text-amber-700/80">
+              Selecione (ou crie) um {style.label.toLowerCase()} de destino à esquerda — ou use a sugestão pela posição.
+            </div>
+          )}
+          <div className="flex flex-col gap-1 p-1.5">
+            {orphans.map((o) => (
+              <div key={o.id} className="rounded-md border border-amber-200 bg-white px-1.5 py-1">
+                <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-800" title={o.name}>
+                    {o.name}
+                  </span>
+                  {o.onAttach && (
+                    <button
+                      type="button"
+                      onClick={o.onAttach}
+                      disabled={saving || !orphanAttachEnabled}
+                      title={orphanAttachEnabled ? `Vincular a ${orphanDestName ?? 'destino'}` : 'Selecione um destino à esquerda'}
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200 disabled:opacity-40"
+                    >
+                      <Link2 size={11} /> Aqui
+                    </button>
+                  )}
+                </div>
+                {o.suggestion && (
+                  <button
+                    type="button"
+                    onClick={o.suggestion.apply}
+                    disabled={saving}
+                    title={`Vincular a ${o.suggestion.name} (sugerido pela posição no mapa)`}
+                    className="mt-1 inline-flex max-w-full items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                  >
+                    <Sparkles size={11} className="shrink-0" />
+                    <span className="truncate">Sugerido: {o.suggestion.name}</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* List */}
-      <div className="flex max-h-[42vh] min-h-[60px] flex-1 flex-col gap-1 overflow-y-auto p-1.5 lg:max-h-none">
+      <div
+        className={`flex-1 overflow-y-auto p-1.5 ${
+          wide
+            ? 'grid max-h-[50vh] content-start auto-rows-min gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(132px,1fr))] lg:max-h-none'
+            : 'flex max-h-[42vh] min-h-[60px] flex-col gap-1 lg:max-h-none'
+        }`}
+      >
         {rows.length === 0 && !adding ? (
-          <div className="px-2 py-6 text-center text-[11.5px] italic text-gray-400">
+          <div className={`px-2 py-6 text-center text-[11.5px] italic text-gray-400 ${wide ? 'col-span-full' : ''}`}>
             {emptyHint
               ? emptyHint
               : parentChosen
@@ -778,7 +1309,12 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
             const selected = selId === row.id;
             if (isEditing && editing) {
               return (
-                <div key={row.id} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white p-1.5">
+                <div
+                  key={row.id}
+                  className={`flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white p-1.5 ${
+                    wide ? 'col-span-full' : ''
+                  }`}
+                >
                   <input
                     autoFocus
                     type="text"
@@ -813,13 +1349,17 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
             return (
               <div
                 key={row.id}
-                onClick={() => onSelect(row.id)}
-                className={`group flex cursor-pointer items-center gap-0.5 rounded-lg border px-1.5 py-1 transition-colors ${
-                  selected ? style.selRow : 'border-gray-200 bg-white hover:border-gray-300'
+                onClick={inactive ? undefined : () => onSelect(row.id)}
+                className={`group flex items-center gap-0.5 rounded-lg border px-1.5 py-1 transition-colors ${
+                  inactive
+                    ? 'cursor-default border-dashed border-gray-200 bg-gray-50'
+                    : `cursor-pointer ${selected ? style.selRow : 'border-gray-200 bg-white hover:border-gray-300'}`
                 }`}
               >
                 <div className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px] font-medium leading-tight text-gray-800">{row.name}</span>
+                  <span className={`block truncate text-[11px] font-medium leading-tight ${inactive ? 'text-gray-500' : 'text-gray-800'}`}>
+                    {row.name}
+                  </span>
                   {fmtArea(row.area) && <span className="text-[9px] text-gray-500">{fmtArea(row.area)}</span>}
                 </div>
                 <span className="flex shrink-0 items-center opacity-0 group-hover:opacity-100">

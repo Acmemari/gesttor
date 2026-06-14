@@ -595,6 +595,9 @@ export const farmRetiros = pgTable('farm_retiros', {
   name: text('name').notNull(),
   totalArea: numeric('total_area'),
   isDefault: boolean('is_default').default(false),
+  // Data inicial do cadastro (em uso desde). Única por tela: todos os registros
+  // criados numa sessão recebem a mesma data. Nula em linhas legadas.
+  dataInicial: date('data_inicial'),
   // Geometria do retiro (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
@@ -611,6 +614,11 @@ export const farmSetores = pgTable('farm_setores', {
   retiroId: uuid('retiro_id').references(() => farmRetiros.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   area: numeric('area'),
+  // Registro padrão (nome da fazenda) criado ao desativar o nível Setor: serve de
+  // âncora oculta para as movimentações. Espelha farm_retiros.is_default.
+  isDefault: boolean('is_default').default(false),
+  // Data inicial do cadastro (ver farm_retiros.data_inicial).
+  dataInicial: date('data_inicial'),
   // Geometria do setor (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
@@ -629,29 +637,80 @@ export const farmLocais = pgTable('farm_locais', {
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   area: numeric('area'),
+  // Registro padrão (nome da fazenda) criado ao desativar um nível: âncora oculta
+  // onde as movimentações ficam quando o usuário não escolhe um local. Espelha
+  // farm_retiros.is_default. É o local-folha que todo movimento referencia.
+  isDefault: boolean('is_default').default(false),
+  // Data inicial do cadastro (ver farm_retiros.data_inicial).
+  dataInicial: date('data_inicial'),
   // Geometria do local (mapa de áreas): anel [lat,lng][] cru + fonte + tipo
   // (Pasto/Curral/Confinamento/Aguada/Sede/Reserva/Outro).
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
   tipo: text('tipo'),
+  // Ciclo de vida (Movimentação de Áreas): 'ativo' | 'aposentado'. Aposentar
+  // substitui excluir — preserva a identidade (local_id) e mantém íntegros os
+  // lançamentos do rebanho que apontam para o local. Ver `area_movimentos`.
+  status: text('status').notNull().default('ativo'),
+  aposentadoEm: timestamp('aposentado_em'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_farm_locais_retiro_id').on(t.retiroId),
   index('idx_farm_locais_setor_id').on(t.setorId),
   index('idx_farm_locais_farm_id').on(t.farmId),
+  index('idx_farm_locais_status').on(t.status),
 ]);
 
 // Quais níveis intermediários estão ativos para cada fazenda. A Fazenda é sempre
 // ativa (raiz). 1 linha por fazenda; ausência ⇒ defaults (retiro on, setor off,
 // local on) calculados na leitura.
+// `configured`: o usuário já escolheu explicitamente a combinação de níveis desta
+// fazenda? Enquanto false, a aba "Locais" mostra o cadastro de combinação (gate)
+// antes de liberar a alocação de áreas no mapa.
 export const farmLocationLevels = pgTable('farm_location_levels', {
   farmId: text('farm_id').primaryKey().references(() => farms.id, { onDelete: 'cascade' }),
   retiro: boolean('retiro').notNull().default(true),
   setor: boolean('setor').notNull().default(false),
   local: boolean('local').notNull().default(true),
+  configured: boolean('configured').notNull().default(false),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// ── Movimentação de Áreas (ledger imutável) ───────────────────────────────────
+// Livro-razão das mudanças estruturais das áreas (Fazenda › Retiro › Setor ›
+// Local). Espelha `lote_eventos`: o usuário nunca edita o cadastro — ele empilha
+// um movimento, e a "foto atual" (farm_retiros/setores/locais) é a PROJEÇÃO dos
+// movimentos sobre a abertura. Cada movimento é gravado JUNTO com a mutação da
+// projeção, na mesma transação. Eventos são IMUTÁVEIS — correção é novo evento.
+export const areaMovimentos = pgTable('area_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  // Nível-alvo do movimento.
+  nivel: text('nivel').notNull(),                         // 'local'|'setor'|'retiro'|'fazenda'
+  // abertura|renomear|remodelar|mover|aposentar|reativar|dividir|criado_divisao|unir|unido|nivel|correcao
+  tipo: text('tipo').notNull(),
+  // 'movimento' (mudança no mundo real) | 'correcao' (correção de cadastro).
+  classe: text('classe').notNull().default('movimento'),
+  // Data efetiva (quando aconteceu no campo). ≠ created_at (quando foi registrado).
+  data: date('data').notNull(),
+  // Identidade-alvo (id do retiro/setor/local). NÃO é FK: a área pode ser
+  // aposentada/recriada e o ledger precisa sobreviver. Null em movimentos de nível.
+  areaId: uuid('area_id'),
+  // Snapshots p/ diff e reconstrução: {name,area,geometry,geometrySource,tipo,retiroId,setorId}.
+  antes: jsonb('antes'),
+  depois: jsonb('depois'),
+  // Linhagem e extras: filhos[], divididoDe, origens[], unidoEm, níveis {de,para}.
+  dados: jsonb('dados').notNull().default('{}'),
+  nota: text('nota'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_area_mov_farm_data').on(t.farmId, t.data),
+  index('idx_area_mov_area').on(t.areaId),
+  index('idx_area_mov_org').on(t.organizationId),
+]);
 
 // ── AI / Agents ────────────────────────────────────────────────────────────────
 
@@ -1296,7 +1355,9 @@ export const mapaRebanhoHeaders = pgTable('mapa_rebanho_headers', {
 export const mapaRebanhoLancamentos = pgTable('mapa_rebanho_lancamentos', {
   id: uuid('id').primaryKey().defaultRandom(),
   mapaHeaderId: uuid('mapa_header_id').notNull().references(() => mapaRebanhoHeaders.id, { onDelete: 'cascade' }),
-  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'cascade' }),
+  // RESTRICT (não cascade): um local nunca é excluído de fato — é APOSENTADO
+  // (farm_locais.status). Isto blinda o Mapa de Rebanho contra perda silenciosa.
+  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'restrict' }),
   categoriaId: uuid('categoria_id').notNull().references(() => animalCategories.id, { onDelete: 'cascade' }),
   quantidade: integer('quantidade').notNull().default(0),
   pesoKgCabeca: numeric('peso_kg_cabeca', { precision: 8, scale: 2 }).notNull().default('0'),
@@ -1334,7 +1395,8 @@ export const mapaoHeaders = pgTable('mapao_headers', {
 export const mapaoLancamentos = pgTable('mapao_lancamentos', {
   id: uuid('id').primaryKey().defaultRandom(),
   mapaHeaderId: uuid('mapa_header_id').notNull().references(() => mapaoHeaders.id, { onDelete: 'cascade' }),
-  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'cascade' }),
+  // RESTRICT (não cascade): local é aposentado, nunca excluído. Blinda o Mapão.
+  localId: uuid('local_id').notNull().references(() => farmLocais.id, { onDelete: 'restrict' }),
   categoriaId: uuid('categoria_id').notNull().references(() => animalCategories.id, { onDelete: 'cascade' }),
   quantidade: integer('quantidade').notNull().default(0),
   pesoKgCabeca: numeric('peso_kg_cabeca', { precision: 8, scale: 2 }).notNull().default('0'),
@@ -1384,6 +1446,8 @@ export const nascimentoFichas = pgTable('nascimento_fichas', {
   porte: text('porte'),
   raca: text('raca'),
   peso: numeric('peso', { precision: 8, scale: 2 }),
+  // Valores dos Campos Personalizados (chaves `cp_<id>`).
+  extras: jsonb('extras').notNull().default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_nascimento_fichas_mov').on(t.movimentoId),
@@ -1417,6 +1481,29 @@ export const movimentoFieldConfigs = pgTable('movimento_field_configs', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('movimento_field_config_org_tipo_uidx').on(t.organizationId, t.tipo),
+]);
+
+// ── Campos Personalizados (Cadastros › Campos Personalizados) ────────────────────
+// Campos extras definidos pelo usuário que se juntam ao painel "Defina seus campos"
+// das movimentações escolhidas. Cada campo vira um LrField (id = `cp_<id>`) mesclado
+// ao registry do movimento; os valores digitados por animal são gravados na coluna
+// `extras` (jsonb) das tabelas *_fichas. Escopo por organização (1 lista por org).
+export const camposPersonalizados = pgTable('campos_personalizados', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  // 'texto' | 'numero' | 'lista'
+  tipo: text('tipo').notNull(),
+  // string[] — opções da lista suspensa (máx. 4); vazio p/ texto/numero.
+  opcoes: jsonb('opcoes').notNull().default('[]'),
+  // string[] — movimentos onde o campo aparece: 'compra' | 'venda' | 'nascimento' | 'morte' | 'consumo'.
+  movimentos: jsonb('movimentos').notNull().default('[]'),
+  obrigatorio: boolean('obrigatorio').notNull().default(false),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_campos_personalizados_org').on(t.organizationId),
 ]);
 
 // ── Morte (Movimentação › Mortes) ───────────────────────────────────────────────
@@ -1459,6 +1546,8 @@ export const morteFichas = pgTable('morte_fichas', {
   apelido: text('apelido'),
   rfid: text('rfid'),
   obs: text('obs'),
+  // Valores dos Campos Personalizados (chaves `cp_<id>`).
+  extras: jsonb('extras').notNull().default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_morte_fichas_mov').on(t.movimentoId),
@@ -1509,6 +1598,8 @@ export const consumoFichas = pgTable('consumo_fichas', {
   pesoMorto: numeric('peso_morto', { precision: 8, scale: 2 }),
   valor: numeric('valor', { precision: 12, scale: 2 }),
   obs: text('obs'),
+  // Valores dos Campos Personalizados (chaves `cp_<id>`).
+  extras: jsonb('extras').notNull().default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_consumo_fichas_mov').on(t.movimentoId),
@@ -1680,6 +1771,8 @@ export const vendaFichas = pgTable('venda_fichas', {
   pesoVivoKg: numeric('peso_vivo_kg'),
   pesoMortoKg: numeric('peso_morto_kg'),
   valorArroba: numeric('valor_arroba'),
+  // Valores dos Campos Personalizados (chaves `cp_<id>`).
+  extras: jsonb('extras').notNull().default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_venda_fichas_mov').on(t.movimentoId),
@@ -1740,6 +1833,8 @@ export const compraFichas = pgTable('compra_fichas', {
   pesoVivoKg: numeric('peso_vivo_kg'),
   pesoMortoKg: numeric('peso_morto_kg'),
   valorArroba: numeric('valor_arroba'),
+  // Valores dos Campos Personalizados (chaves `cp_<id>`).
+  extras: jsonb('extras').notNull().default('{}'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_compra_fichas_mov').on(t.movimentoId),

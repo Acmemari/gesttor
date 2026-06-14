@@ -1,6 +1,7 @@
 import { and, eq, desc, isNull } from 'drizzle-orm';
 import { db } from '../index.js';
 import { mudancaCategoriaMovimentos, mudancaCategoriaFichas, fichasAnimal } from '../schema.js';
+import { resolveDefaultLocalId } from './farm-locations.js';
 
 /**
  * Repositório de Movimentação › Mudança de Categoria.
@@ -119,7 +120,7 @@ async function findOrCreateMovimento(tx: any, input: {
   const [created] = await tx.insert(mudancaCategoriaMovimentos).values({
     organizationId: input.organizationId as any,
     farmId: input.farmId ?? null,
-    localId: (input.localId ?? null) as any,
+    localId: (input.localId ?? (input.farmId ? await resolveDefaultLocalId(input.farmId) : null)) as any,
     proprietarioId: (input.proprietarioId ?? null) as any,
     data: input.data,
     safra: input.safra ?? null,

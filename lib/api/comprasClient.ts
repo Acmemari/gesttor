@@ -26,6 +26,7 @@ export interface CompraFichaRow {
   pesoVivoKg: string | null;
   pesoMortoKg: string | null;
   valorArroba: string | null; // Valor por kg
+  extras: Record<string, string>;
   createdAt: string;
 }
 
@@ -86,6 +87,7 @@ export interface CreateCompraInput {
     pesoVivoKg?: number | null;
     pesoMortoKg?: number | null;
     valorArroba?: number | null;
+    extras?: Record<string, string>;
   }>;
 }
 

@@ -238,6 +238,7 @@ interface PecuarioCadastrosDesktopProps {
   onSelectPelagens?: () => void;
   onSelectReprodutores?: () => void;
   onSelectMotivosMorte?: () => void;
+  onSelectCamposPersonalizados?: () => void;
   onSelectTiposChifre?: () => void;
   onSelectLotes?: () => void;
   onSelectPessoas?: () => void;
@@ -260,6 +261,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectPelagens,
   onSelectReprodutores,
   onSelectMotivosMorte,
+  onSelectCamposPersonalizados,
   onSelectTiposChifre,
   onSelectLotes,
   onSelectPessoas,
@@ -592,6 +594,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'Os motivos de morte cadastrados estão disponíveis para seleção nos lançamentos de mortalidade do rebanho.',
               impact: 'A padronização das causas de morte garante consistência nos relatórios de mortalidade e análise de perdas.',
               actionLabel: 'Gerenciar Motivos',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectCamposPersonalizados
+      ? [
+          {
+            id: 'campos-personalizados',
+            label: 'Campos Personalizados',
+            title: <CadastroTitle entity="Campos Personalizados" theme={theme} />,
+            description: 'Crie campos extras (texto, número ou lista) que aparecem no painel "Defina seus campos" das movimentações do rebanho.',
+            onClick: onSelectCamposPersonalizados,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'O Cadastro de Campos Personalizados permite expandir as fichas das movimentações com informações específicas da sua operação (ex: Nº do brinco, lote de vacina, observação do comprador). Cada campo passa a aparecer no painel "Defina seus campos" das movimentações que você escolher.',
+              steps: [
+                {
+                  title: 'Criar Campo',
+                  desc: 'Informe o nome, escolha o tipo (Texto, Número ou Lista suspensa com até 4 opções) e marque em quais movimentações ele aparece.',
+                },
+                {
+                  title: 'Posicionar no Lançamento',
+                  desc: 'Em cada movimentação, abra "Defina seus campos" (ícone do lápis) para reposicionar ou ocultar o campo conforme a necessidade daquela tela.',
+                },
+                {
+                  title: 'Ordenar a Lista',
+                  desc: 'Arraste os campos para definir a ordem em que aparecem.',
+                },
+              ],
+              proTip: 'Campos do tipo Lista suspensa padronizam o preenchimento; marque "Obrigatório" para destacar os campos essenciais com asterisco.'
+            },
+            alert: {
+              status: 'Módulo Customizável',
+              message: 'Os campos cadastrados ficam disponíveis no painel "Defina seus campos" das movimentações escolhidas.',
+              impact: 'Adicione informações próprias da sua operação aos lançamentos de Compra, Venda, Nascimento, Morte e Consumo.',
+              actionLabel: 'Gerenciar Campos',
             }
           },
         ]

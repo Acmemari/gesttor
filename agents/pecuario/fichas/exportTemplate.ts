@@ -56,6 +56,8 @@ function fieldOptions(f: LrField, src: TemplateSource): string[] {
 /** Descrição do tipo de preenchimento para a aba de instruções. */
 function fieldTipo(f: LrField): string {
   switch (f.type) {
+    case 'number':
+      return 'Número (ex.: 12)';
     case 'date':
       return 'Data (AAAA-MM-DD)';
     case 'weight':

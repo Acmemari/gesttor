@@ -15,6 +15,7 @@ export interface ConsumoFichaRow {
   pesoMorto: string | null;
   valor: string | null;
   obs: string | null;
+  extras: Record<string, string>;
   createdAt: string;
 }
 
@@ -69,6 +70,7 @@ export interface CreateConsumoMovimentoInput {
     pesoMorto?: number | null;
     valor?: number | null;
     obs?: string | null;
+    extras?: Record<string, string>;
   }>;
 }
 

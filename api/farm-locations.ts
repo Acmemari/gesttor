@@ -111,7 +111,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       if (farmIdLocais) {
-        jsonSuccess(res, await getLocaisByFarm(farmIdLocais));
+        // Seletor de local das movimentações: oculta o local padrão (âncora interna).
+        const locais = await getLocaisByFarm(farmIdLocais);
+        jsonSuccess(res, locais.filter((l: any) => !l.isDefault));
         return;
       }
       if (farmId) {
@@ -127,28 +129,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { type } = req.body ?? {};
 
       if (type === 'levels') {
-        const { farmId, retiro, setor, local } = req.body;
+        const { farmId, retiro, setor, local, autoNames, configured } = req.body;
         if (!farmId) {
           jsonError(res, 'Campo obrigatório: farmId', { status: 400 });
           return;
         }
-        const row = await setLevels(farmId, {
-          retiro: retiro !== false,
-          setor: setor === true,
-          local: local !== false,
-        });
+        // Nome (do nível anterior) para o registro automático de cada nível
+        // desligado; só repassa strings.
+        const names =
+          autoNames && typeof autoNames === 'object'
+            ? {
+                retiro: str(autoNames.retiro) || undefined,
+                setor: str(autoNames.setor) || undefined,
+                local: str(autoNames.local) || undefined,
+              }
+            : undefined;
+        const row = await setLevels(
+          farmId,
+          {
+            retiro: retiro !== false,
+            setor: setor === true,
+            local: local !== false,
+          },
+          names,
+          // Só repassa quando vier booleano explícito; ausência preserva o atual.
+          typeof configured === 'boolean' ? configured : undefined,
+        );
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'setor') {
-        const { farmId, retiroId, name, area, geometry, geometrySource } = req.body;
+        const { farmId, retiroId, name, area, dataInicial, geometry, geometrySource } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
         }
         const row = await createSetor({
           farmId, retiroId: retiroId ?? null, name, area: area ?? null,
+          dataInicial: dataInicial ?? null,
           geometry: geometry ?? null, geometrySource: geometrySource ?? null,
         });
         jsonSuccess(res, row);
@@ -156,7 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'local') {
-        const { farmId, retiroId, setorId, name, area, geometry, geometrySource, tipo } = req.body;
+        const { farmId, retiroId, setorId, name, area, dataInicial, geometry, geometrySource, tipo } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
@@ -167,6 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           setorId: setorId ?? null,
           name,
           area: area ?? null,
+          dataInicial: dataInicial ?? null,
           geometry: geometry ?? null,
           geometrySource: geometrySource ?? null,
           tipo: tipo ?? null,
@@ -176,13 +196,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // default: retiro
-      const { farmId, name, totalArea, isDefault, geometry, geometrySource } = req.body ?? {};
+      const { farmId, name, totalArea, isDefault, dataInicial, geometry, geometrySource } = req.body ?? {};
       if (!farmId || !name) {
         jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
         return;
       }
       const row = await createRetiro({
         farmId, name, totalArea: totalArea ?? null, isDefault: isDefault ?? false,
+        dataInicial: dataInicial ?? null,
         geometry: geometry ?? null, geometrySource: geometrySource ?? null,
       });
       jsonSuccess(res, row);
@@ -198,22 +219,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'setor') {
-        const { name, area, retiroId, geometry, geometrySource } = req.body;
-        const row = await updateSetor(id, { name, area, retiroId, geometry, geometrySource });
+        const { name, area, retiroId, dataInicial, geometry, geometrySource } = req.body;
+        const row = await updateSetor(id, { name, area, retiroId, dataInicial, geometry, geometrySource });
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'local') {
-        const { name, area, retiroId, setorId, geometry, geometrySource, tipo } = req.body;
-        const row = await updateLocal(id, { name, area, retiroId, setorId, geometry, geometrySource, tipo });
+        const { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, tipo } = req.body;
+        const row = await updateLocal(id, { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, tipo });
         jsonSuccess(res, row);
         return;
       }
 
       // default: retiro
-      const { name, totalArea, isDefault, geometry, geometrySource } = req.body;
-      const row = await updateRetiro(id, { name, totalArea, isDefault, geometry, geometrySource });
+      const { name, totalArea, isDefault, dataInicial, geometry, geometrySource } = req.body;
+      const row = await updateRetiro(id, { name, totalArea, isDefault, dataInicial, geometry, geometrySource });
       jsonSuccess(res, row);
       return;
     }
@@ -245,6 +266,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     jsonError(res, 'Método não permitido', { status: 405 });
   } catch (err: any) {
+    if (err?.message === 'DEFAULT_RECORD_PROTECTED') {
+      jsonError(res, 'Registro padrão da fazenda não pode ser excluído.', { status: 409 });
+      return;
+    }
     console.error('[farm-locations] error:', err);
     jsonError(res, err?.message || 'Erro interno', { status: 500 });
   }
