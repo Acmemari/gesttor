@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Layers, MapPin, Leaf, Baby, ArrowLeftRight, Tag, Move, AlertTriangle,
+  Plus, Layers, MapPin, Leaf, Baby, Tag, AlertTriangle, ArrowLeftRight,
   Loader2, List, LayoutGrid,
 } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
@@ -22,10 +22,11 @@ import {
 import type { ReproDados } from './types';
 import LoteTimeline from './LoteTimeline';
 import {
-  RemanejarModal, TransferirModal, MudarRegimeModal, RegistrarReproModal,
+  TransferirModal, MudarRegimeModal, RegistrarReproModal,
   LoteFormModal, EncerrarModal, type EventoDraft,
 } from './LoteModals';
 import { IncluirPorIdModal } from './IncluirPorIdModal';
+import { ManejoLotesModal } from './ManejoLotesModal';
 
 interface GestaoLotesViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -34,8 +35,8 @@ interface GestaoLotesViewProps {
 }
 
 type ModalKind =
-  | { kind: 'remanejar' }
   | { kind: 'incluirId' }
+  | { kind: 'manejoLotes' }
   | { kind: 'transferir' }
   | { kind: 'regime' }
   | { kind: 'repro' }
@@ -45,8 +46,13 @@ type ModalKind =
   | null;
 
 const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha }) => {
-  const { selectedOrganization } = useHierarchy();
+  const { selectedOrganization, farms } = useHierarchy();
   const organizationId = selectedOrganization?.id ?? '';
+
+  // Filtros do header: Fazenda (obrigatória) e Retiro (quando a fazenda tiver).
+  const [fazenda, setFazenda] = useState('');
+  const [retiro, setRetiro] = useState('');
+  const [farmLocais, setFarmLocais] = useState<{ id: string; name: string; retiroName?: string }[]>([]);
 
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [eventos, setEventos] = useState<LoteEventoRow[]>([]);
@@ -82,6 +88,33 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   }, [organizationId, onToast]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  // ── Fazenda / Retiro (filtro do header) ──────────────────────────────────────
+  // Pré-seleciona a primeira fazenda só uma vez (carga inicial). Sem o guard,
+  // escolher "Todas" (fazenda = '') reverteria de volta para a primeira fazenda.
+  const fazendaInicializada = useRef(false);
+  useEffect(() => {
+    if (!fazendaInicializada.current && farms.length > 0) {
+      fazendaInicializada.current = true;
+      setFazenda(farms[0].id);
+    }
+  }, [farms]);
+
+  useEffect(() => {
+    if (!fazenda) { setFarmLocais([]); return; }
+    let cancelled = false;
+    fetch(`/api/farm-locations?farmIdLocais=${encodeURIComponent(fazenda)}`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((json) => { if (!cancelled) setFarmLocais((json?.data ?? json) || []); })
+      .catch(() => { if (!cancelled) setFarmLocais([]); });
+    return () => { cancelled = true; };
+  }, [fazenda]);
+
+  const retiros = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
+    return [...set];
+  }, [farmLocais]);
 
   // Recarrega só os eventos (após lançar um evento).
   const recarregarEventos = useCallback(async () => {
@@ -155,10 +188,19 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
     }
   }, [organizationId, animaisCarregados, onToast]);
 
-  // Seleção válida.
+  // Lotes da fazenda/retiro escolhidos no header.
+  const lotesVisiveis = useMemo(
+    () => lotes.filter((l) =>
+      (!fazenda || l.farmId === fazenda) &&
+      (!retiro || (l.retiro || '') === retiro)
+    ),
+    [lotes, fazenda, retiro],
+  );
+
+  // Seleção válida (dentro do recorte visível).
   useEffect(() => {
-    setSelectedId((prev) => (prev && lotes.some((l) => l.id === prev) ? prev : lotes[0]?.id ?? null));
-  }, [lotes]);
+    setSelectedId((prev) => (prev && lotesVisiveis.some((l) => l.id === prev) ? prev : lotesVisiveis[0]?.id ?? null));
+  }, [lotesVisiveis]);
 
   const eventosByLote = useMemo(() => groupByLote(eventos), [eventos]);
   const catNome = useCallback((id: string | null) => categorias.find((c) => c.id === id)?.nome || '', [categorias]);
@@ -186,12 +228,14 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
   // ── Persistência de eventos ──────────────────────────────────────────────────
   const lancarEventos = useCallback(async (drafts: EventoDraft[]) => {
-    if (!selected) return;
     let totalNaoIdent = 0;
     for (const d of drafts) {
+      // Cada draft pode fixar seu próprio lote (Manejo de lotes); senão usa o lote em foco.
+      const loteId = d.loteId ?? selected?.id;
+      if (!loteId) continue;
       await createLoteEvento({
         organizationId,
-        loteId: selected.id,
+        loteId,
         tipo: d.tipo,
         data: d.data,
         resp: d.resp,
@@ -212,15 +256,22 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
   // ── Lote (cadastro) ──────────────────────────────────────────────────────────
   const salvarNovoLote = useCallback(async (data: any) => {
-    const novo = await createLote({ organizationId, finalizado: false, ...data });
+    // Herda a fazenda/retiro selecionados no header — o modal não pede esses campos.
+    const novo = await createLote({
+      organizationId,
+      finalizado: false,
+      farmId: fazenda || null,
+      retiro: retiro || null,
+      ...data,
+    });
     await carregar();
     setSelectedId(novo.id);
     onToast?.('Lote criado. Lance os primeiros eventos.', 'success');
-  }, [organizationId, carregar, onToast]);
+  }, [organizationId, fazenda, retiro, carregar, onToast]);
 
   const salvarEdicaoLote = useCallback(async (data: any) => {
     if (!selected) return;
-    await updateLote(selected.id, { codigo: data.codigo, nome: data.nome, sistema: data.sistema, descricao: data.descricao });
+    await updateLote(selected.id, { codigo: data.codigo, nome: data.nome, descricao: data.descricao });
     await carregar();
     onToast?.('Lote atualizado.', 'success');
   }, [selected, carregar, onToast]);
@@ -234,6 +285,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
   // ── Abertura de modais ───────────────────────────────────────────────────────
   const abrirIncluirId = () => { carregarAnimais(); setModal({ kind: 'incluirId' }); };
+  const abrirManejoLotes = () => { carregarAnimais(); setModal({ kind: 'manejoLotes' }); };
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 size={24} className="animate-spin text-[#16a34a]" /></div>;
@@ -241,31 +293,90 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
   return (
     <div className="flex h-full flex-col bg-[#f8fafc]">
-      <div className="px-6 pt-5">
-        <h1 className="text-[20px] font-bold text-gray-900">Gestão de Lotes</h1>
-        <p className="mt-0.5 text-[13px] text-gray-500">Opere os lotes cadastrados: lance eventos e os estados se recalculam.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4 px-6 pt-5">
+        <div>
+          <h1 className="text-[20px] font-bold text-gray-900">Gestão de Lotes</h1>
+          <p className="mt-0.5 text-[13px] text-gray-500">Opere os lotes cadastrados: lance eventos e os estados se recalculam.</p>
+        </div>
+        <div className="flex items-end gap-3">
+          <div className="w-[180px]">
+            <label className="text-[12.5px] font-semibold text-gray-700">Fazenda</label>
+            <select
+              className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 focus:border-[#16a34a] focus:outline-none focus:ring-[3px] focus:ring-[#16a34a]/15"
+              value={fazenda}
+              onChange={(e) => { setFazenda(e.target.value); setRetiro(''); }}
+            >
+              <option value="">Todas</option>
+              {farms.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="w-[180px]">
+            <label className="text-[12.5px] font-semibold text-gray-700">Retiro</label>
+            <select
+              className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 focus:border-[#16a34a] focus:outline-none focus:ring-[3px] focus:ring-[#16a34a]/15 disabled:bg-gray-50 disabled:text-gray-400"
+              value={retiro}
+              onChange={(e) => setRetiro(e.target.value)}
+              disabled={retiros.length === 0}
+            >
+              <option value="">{retiros.length === 0 ? '—' : 'Todos'}</option>
+              {retiros.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-5 overflow-hidden p-6 pt-4">
-        {/* ── Coluna esquerda: lista ─────────────────────────────────────────── */}
-        <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Lotes</span>
-            <button
-              type="button"
-              onClick={() => setModal({ kind: 'novo' })}
-              className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#16a34a] px-2.5 text-[12.5px] font-bold text-white hover:bg-[#15803d]"
-            >
-              <Plus size={14} /> Novo lote
-            </button>
-          </div>
+      {/* ── Barra de ações (fora do card branco) ───────────────────────────────
+          Esquerda alinha com a coluna de lotes (280px); direita com a ficha. */}
+      <div className="flex items-center gap-5 px-6 pt-4">
+        <div className="flex w-[280px] shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={abrirManejoLotes}
+            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#16a34a] bg-white text-[12.5px] font-bold text-[#16a34a] hover:bg-[#f0fdf4]"
+          >
+            <ArrowLeftRight size={15} /> Manejo de lotes
+          </button>
+          <button
+            type="button"
+            onClick={() => setModal({ kind: 'novo' })}
+            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#16a34a] text-[12.5px] font-bold text-white hover:bg-[#15803d]"
+          >
+            <Plus size={14} /> Novo lote
+          </button>
+        </div>
+        <div className="flex min-w-0 flex-1 justify-end">
+          {selected && (
+            <TabSwitch
+              tabs={[
+                { id: 'lancamentos', label: 'Lançamentos', icon: <LayoutGrid size={16} /> },
+                { id: 'registros', label: 'Registros', icon: <List size={16} />, badge: saldo(selectedEventos) },
+              ]}
+              value={aba}
+              onChange={(id) => setAba(id as 'lancamentos' | 'registros')}
+            />
+          )}
+        </div>
+      </div>
 
-          {lotes.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-hidden p-6 pt-4">
+        <div className="flex h-full gap-5 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5">
+        {/* ── Coluna esquerda: lista ─────────────────────────────────────────── */}
+        <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-hidden">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Lotes</span>
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {lotesVisiveis.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-[12.5px] text-gray-400">
-              Nenhum lote. Crie um lote ou cadastre em Cadastros › Lotes.
+              {lotes.length === 0
+                ? 'Nenhum lote. Crie um lote ou cadastre em Cadastros › Lotes.'
+                : 'Nenhum lote nesta fazenda/retiro.'}
             </div>
           ) : (
-            lotes.map((l) => {
+            lotesVisiveis.map((l) => {
               const evs = eventosByLote[l.id] ?? [];
               const s = saldo(evs);
               const pend = pendencias(evs);
@@ -276,16 +387,14 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                   key={l.id}
                   type="button"
                   onClick={() => setSelectedId(l.id)}
-                  className={`rounded-xl border bg-white p-3 text-left transition-all ${sel ? 'border-[#16a34a] ring-2 ring-[#16a34a]/15' : 'border-gray-200 hover:border-gray-300'} ${l.finalizado ? 'opacity-60' : ''}`}
+                  className={`rounded-xl border bg-white px-3 py-2 text-left transition-all ${sel ? 'border-[#16a34a] ring-2 ring-[#16a34a]/15' : 'border-gray-200 hover:border-gray-300'} ${l.finalizado ? 'opacity-60' : ''}`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      {l.codigo && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gray-700">{l.codigo}</span>}
-                      {l.finalidade && <span className="rounded-full bg-[#e7f6ec] px-2 py-0.5 text-[10.5px] font-semibold text-[#16a34a]">{l.finalidade}</span>}
-                    </div>
-                    {l.finalizado && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-semibold text-gray-500">Encerrado</span>}
+                  <div className="flex items-center gap-1.5">
+                    {l.codigo && <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gray-700">{l.codigo}</span>}
+                    <span className="truncate text-[13.5px] font-bold text-gray-900">{l.nome}</span>
+                    {l.finalidade && <span className="ml-auto shrink-0 rounded-full bg-[#e7f6ec] px-2 py-0.5 text-[10.5px] font-semibold text-[#16a34a]">{l.finalidade}</span>}
+                    {l.finalizado && <span className={`shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-semibold text-gray-500 ${l.finalidade ? '' : 'ml-auto'}`}>Encerrado</span>}
                   </div>
-                  <p className="mt-1.5 text-[13.5px] font-bold text-gray-900">{l.nome}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-gray-500">
                     <span className="inline-flex items-center gap-1"><Layers size={12} /> {s} cab.</span>
                     <span className="inline-flex items-center gap-1"><MapPin size={12} /> {local}</span>
@@ -295,6 +404,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
               );
             })
           )}
+          </div>
         </aside>
 
         {/* ── Coluna direita: ficha ──────────────────────────────────────────── */}
@@ -303,46 +413,31 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
             <div className="flex flex-1 items-center justify-center text-[13px] text-gray-400">Selecione um lote.</div>
           ) : (
             <>
-              {/* Abas: Lançamentos (cards operacionais) / Registros (animais do lote) */}
-              <TabSwitch
-                tabs={[
-                  { id: 'lancamentos', label: 'Lançamentos', icon: <LayoutGrid size={16} /> },
-                  { id: 'registros', label: 'Registros', icon: <List size={16} />, badge: saldo(selectedEventos) },
-                ]}
-                value={aba}
-                onChange={(id) => setAba(id as 'lancamentos' | 'registros')}
-              />
-
               {aba === 'lancamentos' ? (
                 <>
               {/* Cards de controle */}
               <div className={`grid gap-4 ${isCria ? 'grid-cols-1 lg:grid-cols-4' : 'grid-cols-1 lg:grid-cols-3'}`}>
                 <ControleCard
-                  cor="#f97316" icon={<LoteAnimaisIcon size={18} />} titulo="Composição" pergunta="Quais animais estão nele?"
+                  cor="#16a34a" icon={<LoteAnimaisIcon size={18} />} titulo="Composição" pergunta="Quais animais estão nele?"
                   mudaPor="Movimento de Alocação"
-                  acoes={encerrado ? null : (
-                    <div className="flex flex-wrap gap-2">
-                      <CardBtn onClick={() => setModal({ kind: 'remanejar' })} icon={<Move size={13} />}>Remanejar animais</CardBtn>
-                      <CardBtn onClick={abrirIncluirId} variant="ghost" icon={<Tag size={13} />}>Incluir por ID</CardBtn>
-                    </div>
-                  )}
+                  acoes={encerrado ? null : <CardBtn onClick={abrirIncluirId} icon={<Plus size={13} />}>Incluir por ID</CardBtn>}
                 >
                   <ComposicaoEstado eventos={selectedEventos} catNome={catNome} onAbrirFicha={onAbrirFicha} />
                 </ControleCard>
 
                 <ControleCard
-                  cor="#0891b2" icon={<MapPin size={16} />} titulo="Localização" pergunta="Onde ele está?"
+                  cor="#0d9488" icon={<MapPin size={16} />} titulo="Localização" pergunta="Onde ele está?"
                   mudaPor="Transferência de Lote"
-                  acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'transferir' })} icon={<ArrowLeftRight size={13} />}>Transferir lote</CardBtn>}
+                  acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'transferir' })} icon={<Plus size={13} />}>Movimentar lote</CardBtn>}
                 >
                   <p className="text-[15px] font-bold text-gray-900">{localAtual(selectedEventos)}</p>
                   <p className="mt-0.5 text-[12px] text-gray-500">Local atual derivado da última transferência.</p>
                 </ControleCard>
 
                 <ControleCard
-                  cor="#16a34a" icon={<Leaf size={16} />} titulo="Regime nutricional" pergunta="Como é alimentado?"
+                  cor="#15803d" icon={<Leaf size={16} />} titulo="Regime nutricional" pergunta="Como é alimentado?"
                   mudaPor="Evento de Manejo"
-                  acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'regime' })} icon={<Leaf size={13} />}>Mudar regime</CardBtn>}
+                  acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'regime' })} icon={<Plus size={13} />}>Mudar regime</CardBtn>}
                 >
                   <p className="text-[14px] font-bold text-gray-900">{planoNutri(selectedEventos) || 'Sem plano definido'}</p>
                   {protocolo(selectedEventos) ? (
@@ -356,9 +451,9 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
                 {isCria && (
                   <ControleCard
-                    cor="#0d9488" icon={<Baby size={16} />} titulo="Processo reprodutivo" pergunta="Em que fase está?"
+                    cor="#059669" icon={<Baby size={16} />} titulo="Processo reprodutivo" pergunta="Em que fase está?"
                     mudaPor="Evento Reprodutivo"
-                    acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'repro' })} icon={<Baby size={13} />}>Registrar evento</CardBtn>}
+                    acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'repro' })} icon={<Plus size={13} />}>Registrar evento</CardBtn>}
                   >
                     <p className="text-[14px] font-bold text-gray-900">{faseRepro(selectedEventos)}</p>
                     <ReproDetalhe eventos={selectedEventos} />
@@ -384,18 +479,19 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
             </>
           )}
         </main>
+        </div>
       </div>
 
       {/* ── Modais ───────────────────────────────────────────────────────────── */}
-      {modal?.kind === 'remanejar' && selected && (
-        <RemanejarModal
-          lote={selected} lotes={lotes} categorias={categorias}
-          onClose={() => setModal(null)} onSubmit={lancarEventos}
-        />
-      )}
       {modal?.kind === 'incluirId' && selected && (
         <IncluirPorIdModal
           lote={selected} lotes={lotes} categorias={categorias} animais={animais} animaisLoading={animaisLoading}
+          eventosByLote={eventosByLote} onClose={() => setModal(null)} onSubmit={lancarEventos}
+        />
+      )}
+      {modal?.kind === 'manejoLotes' && (
+        <ManejoLotesModal
+          lotes={lotes} categorias={categorias} animais={animais} animaisLoading={animaisLoading}
           eventosByLote={eventosByLote} onClose={() => setModal(null)} onSubmit={lancarEventos}
         />
       )}
@@ -409,7 +505,12 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
         <RegistrarReproModal lote={selected} onClose={() => setModal(null)} onSubmit={lancarEventos} />
       )}
       {modal?.kind === 'novo' && (
-        <LoteFormModal modo="novo" onClose={() => setModal(null)} onSubmit={salvarNovoLote} />
+        <LoteFormModal
+          modo="novo"
+          contexto={[farms.find((f) => f.id === fazenda)?.name, retiro].filter(Boolean).join(' › ') || undefined}
+          onClose={() => setModal(null)}
+          onSubmit={salvarNovoLote}
+        />
       )}
       {modal?.kind === 'editar' && selected && (
         <LoteFormModal modo="editar" inicial={selected} onClose={() => setModal(null)} onSubmit={salvarEdicaoLote} />
@@ -515,7 +616,7 @@ const ControleCard: React.FC<{
     </div>
     <div className="min-h-[64px] flex-1">{children}</div>
     <p className="mt-3 text-[11px] text-gray-400">muda por: <strong className="text-gray-500">{mudaPor}</strong></p>
-    {acoes && <div className="mt-2">{acoes}</div>}
+    {acoes && <div className="mt-2 flex justify-end">{acoes}</div>}
   </div>
 );
 

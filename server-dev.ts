@@ -334,6 +334,9 @@ app.all('/api/desmames', (req, res) => handleApiRoute('./api/desmames.ts', req, 
 // Movimentação › Mudança de Categoria
 app.all('/api/mudanca-categoria', (req, res) => handleApiRoute('./api/mudanca-categoria.ts', req, res));
 
+// Movimentação › Consumo / Doação
+app.all('/api/consumo', (req, res) => handleApiRoute('./api/consumo.ts', req, res));
+
 // Pecuário › Cadastros › Ficha Animal
 app.all('/api/fichas-animal', (req, res) => handleApiRoute('./api/fichas-animal.ts', req, res));
 

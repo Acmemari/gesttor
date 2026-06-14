@@ -51,6 +51,7 @@ import {
   getLevels,
   setLevels,
   getFarmLocationBundle,
+  countLocalDependents,
 } from '../src/DB/repositories/farm-locations.js';
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -79,9 +80,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const setoresByFarm = str(req.query?.setoresByFarm);
       const setoresByRetiro = str(req.query?.setoresByRetiro);
       const farmIdLocais = str(req.query?.farmIdLocais);
+      const localDependents = str(req.query?.localDependents);
 
       if (bundle) {
         jsonSuccess(res, await getFarmLocationBundle(bundle));
+        return;
+      }
+      if (localDependents) {
+        jsonSuccess(res, await countLocalDependents(localDependents));
         return;
       }
       if (levels) {
@@ -136,18 +142,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'setor') {
-        const { farmId, retiroId, name, area } = req.body;
+        const { farmId, retiroId, name, area, geometry, geometrySource } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
         }
-        const row = await createSetor({ farmId, retiroId: retiroId ?? null, name, area: area ?? null });
+        const row = await createSetor({
+          farmId, retiroId: retiroId ?? null, name, area: area ?? null,
+          geometry: geometry ?? null, geometrySource: geometrySource ?? null,
+        });
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'local') {
-        const { farmId, retiroId, setorId, name, area } = req.body;
+        const { farmId, retiroId, setorId, name, area, geometry, geometrySource, tipo } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
@@ -158,18 +167,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           setorId: setorId ?? null,
           name,
           area: area ?? null,
+          geometry: geometry ?? null,
+          geometrySource: geometrySource ?? null,
+          tipo: tipo ?? null,
         });
         jsonSuccess(res, row);
         return;
       }
 
       // default: retiro
-      const { farmId, name, totalArea, isDefault } = req.body ?? {};
+      const { farmId, name, totalArea, isDefault, geometry, geometrySource } = req.body ?? {};
       if (!farmId || !name) {
         jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
         return;
       }
-      const row = await createRetiro({ farmId, name, totalArea: totalArea ?? null, isDefault: isDefault ?? false });
+      const row = await createRetiro({
+        farmId, name, totalArea: totalArea ?? null, isDefault: isDefault ?? false,
+        geometry: geometry ?? null, geometrySource: geometrySource ?? null,
+      });
       jsonSuccess(res, row);
       return;
     }
@@ -183,22 +198,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'setor') {
-        const { name, area, retiroId } = req.body;
-        const row = await updateSetor(id, { name, area, retiroId });
+        const { name, area, retiroId, geometry, geometrySource } = req.body;
+        const row = await updateSetor(id, { name, area, retiroId, geometry, geometrySource });
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'local') {
-        const { name, area, retiroId, setorId } = req.body;
-        const row = await updateLocal(id, { name, area, retiroId, setorId });
+        const { name, area, retiroId, setorId, geometry, geometrySource, tipo } = req.body;
+        const row = await updateLocal(id, { name, area, retiroId, setorId, geometry, geometrySource, tipo });
         jsonSuccess(res, row);
         return;
       }
 
       // default: retiro
-      const { name, totalArea, isDefault } = req.body;
-      const row = await updateRetiro(id, { name, totalArea, isDefault });
+      const { name, totalArea, isDefault, geometry, geometrySource } = req.body;
+      const row = await updateRetiro(id, { name, totalArea, isDefault, geometry, geometrySource });
       jsonSuccess(res, row);
       return;
     }

@@ -75,6 +75,7 @@ const expandableSections: ExpandableItem[] = [
           { label: 'Vendas', view: 'pecuario-venda' },
           { label: 'Desmame', view: 'pecuario-desmame' },
           { label: 'Mudança de Categoria', view: 'pecuario-mudanca-categoria' },
+          { label: 'Consumo / Doação', view: 'pecuario-consumo' },
           { label: 'Gestão de Lotes', view: 'pecuario-gestao-lotes' },
           { label: 'Manejo' },
         ],

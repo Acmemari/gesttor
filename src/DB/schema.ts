@@ -196,6 +196,9 @@ export const farms = pgTable('farms', {
   herdValue: numeric('herd_value'),
   commercializesGenetics: boolean('commercializes_genetics').default(false),
   productionSystem: text('production_system'),
+  // Perímetro da fazenda (nível "fazenda" do mapa de áreas): anel [lat,lng][] cru.
+  perimeterGeometry: jsonb('perimeter_geometry'),
+  perimeterSource: text('perimeter_source'),
   ativo: boolean('ativo').default(true),
   createdBy: text('created_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -566,6 +569,7 @@ export const evidenceFiles = pgTable('evidence_files', {
 export const farmMaps = pgTable('farm_maps', {
   id: uuid('id').primaryKey().defaultRandom(),
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  uploadedBy: text('uploaded_by').notNull(),
   fileName: text('file_name').notNull(),
   originalName: text('original_name').notNull(),
   fileType: text('file_type').notNull(),
@@ -591,6 +595,9 @@ export const farmRetiros = pgTable('farm_retiros', {
   name: text('name').notNull(),
   totalArea: numeric('total_area'),
   isDefault: boolean('is_default').default(false),
+  // Geometria do retiro (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
+  geometry: jsonb('geometry'),
+  geometrySource: text('geometry_source'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -604,6 +611,9 @@ export const farmSetores = pgTable('farm_setores', {
   retiroId: uuid('retiro_id').references(() => farmRetiros.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   area: numeric('area'),
+  // Geometria do setor (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
+  geometry: jsonb('geometry'),
+  geometrySource: text('geometry_source'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -619,6 +629,11 @@ export const farmLocais = pgTable('farm_locais', {
   farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   area: numeric('area'),
+  // Geometria do local (mapa de áreas): anel [lat,lng][] cru + fonte + tipo
+  // (Pasto/Curral/Confinamento/Aguada/Sede/Reserva/Outro).
+  geometry: jsonb('geometry'),
+  geometrySource: text('geometry_source'),
+  tipo: text('tipo'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -1447,6 +1462,56 @@ export const morteFichas = pgTable('morte_fichas', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_morte_fichas_mov').on(t.movimentoId),
+]);
+
+// ── Consumo / Doação (Movimentação › Consumo/Doação) ─────────────────────────────
+// Baixa do rebanho por consumo (abate/acidente) ou doação. Espelha o modelo de
+// Morte (camada dupla coletivo + individual), trocando o motivo dinâmico por um
+// `tipo` fixo ('consumo-abate' | 'consumo-acidente' | 'doacao') e acrescentando
+// peso vivo/morto e valor por cabeça. catDecl (jsonb) guarda as linhas coletivas
+// [{ catId, qtd, tipo, pesoVivo, pesoMorto, valor }]; as fichas individuais ficam
+// na tabela filha.
+export const consumoMovimentos = pgTable('consumo_movimentos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  localId: uuid('local_id').references(() => farmLocais.id, { onDelete: 'set null' }),
+  proprietarioId: uuid('proprietario_id').references(() => people.id, { onDelete: 'set null' }),
+  data: date('data').notNull(),
+  safra: text('safra'),
+  retiro: text('retiro'),
+  qtd: integer('qtd').notNull().default(0),
+  naoIdentificados: integer('nao_identificados').notNull().default(0),
+  // 'pendente' | 'conciliado'
+  status: text('status').notNull().default('pendente'),
+  // [{ catId, qtd, tipo, pesoVivo, pesoMorto, valor }] — linhas coletivas (sem detalhe).
+  catDecl: jsonb('cat_decl').default('[]'),
+  obs: text('obs'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_consumo_mov_org').on(t.organizationId),
+  index('idx_consumo_mov_farm').on(t.farmId),
+]);
+
+export const consumoFichas = pgTable('consumo_fichas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  movimentoId: uuid('movimento_id').notNull().references(() => consumoMovimentos.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').references(() => animalCategories.id, { onDelete: 'set null' }),
+  // 'consumo-abate' | 'consumo-acidente' | 'doacao'
+  tipo: text('tipo'),
+  // Identificação do animal: ID Manejo (apelido) e/ou ID Eletrônico (rfid).
+  apelido: text('apelido'),
+  rfid: text('rfid'),
+  // Peso vivo/morto por cabeça (kg) e valor por cabeça (R$).
+  pesoVivo: numeric('peso_vivo', { precision: 8, scale: 2 }),
+  pesoMorto: numeric('peso_morto', { precision: 8, scale: 2 }),
+  valor: numeric('valor', { precision: 12, scale: 2 }),
+  obs: text('obs'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_consumo_fichas_mov').on(t.movimentoId),
 ]);
 
 // ── Desmame (Movimentação › Desmame) ─────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { Layers, Loader2 } from 'lucide-react';
 import SmartStart from './SmartStart';
 import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { onOpenCadastro, onOpenCadastrosTab, type CadastrosTab } from '../hooks/useCadastroFavorites';
+import { useHierarchy } from '../contexts/HierarchyContext';
 
 type SubView =
   | 'desktop'
@@ -43,13 +44,13 @@ const PecuarioCadastrosDesktop = lazyWithRetry(() => import('../agents/pecuario/
 const EstoquePartida = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
 // Mapa Rebanho - Mapão reaproveita o mesmo componente em modo periódico.
 const MapaoRebanho = lazyWithRetry(() => import('../agents/pecuario/EstoquePartida'));
-const CadastroAreasView = lazyWithRetry(() => import('../agents/pecuario/areas/CadastroAreasView'));
 const PecuarioMovimentos = lazyWithRetry(() => import('../agents/pecuario/PecuarioMovimentos'));
 const MorteView = lazyWithRetry(() => import('../agents/pecuario/morte/MorteView'));
 const VendaView = lazyWithRetry(() => import('../agents/pecuario/venda/VendaView'));
 const CompraView = lazyWithRetry(() => import('../agents/pecuario/compra/CompraView'));
 const DesmameView = lazyWithRetry(() => import('../agents/pecuario/desmame/DesmameView'));
 const MudancaCategoriaView = lazyWithRetry(() => import('../agents/pecuario/mudancaCategoria/MudancaCategoriaView'));
+const ConsumoView = lazyWithRetry(() => import('../agents/pecuario/consumo/ConsumoView'));
 const GestaoLotesView = lazyWithRetry(() => import('../agents/pecuario/gestaoLotes/GestaoLotesView'));
 const FichaAnimalView = lazyWithRetry(() => import('../agents/pecuario/fichaAnimal/FichaAnimalView'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('../agents/AnimalCategoriesManagement'));
@@ -77,6 +78,7 @@ const LoadingFallback: React.FC = () => (
 );
 
 const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, onToast }) => {
+  const { selectedFarm } = useHierarchy();
   const [subView, setSubView] = useState<SubView>('desktop');
   // Aba pedida pela sidebar ("Ver todos os cadastros" → "todos"); o nonce força
   // a tela de cadastros a reaplicar a aba mesmo já montada.
@@ -177,6 +179,14 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
     );
   }
 
+  if (view === 'pecuario-consumo') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <ConsumoView onToast={onToast} />
+      </Suspense>
+    );
+  }
+
   if (view === 'pecuario-gestao-lotes') {
     return (
       <Suspense fallback={<LoadingFallback />}>
@@ -201,9 +211,18 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
       );
     }
     if (subView === 'areas') {
+      // "Cadastro de Áreas" agora é a aba Locais (lista + mapa) da fazenda.
       return (
         <Suspense fallback={<LoadingFallback />}>
-          <CadastroAreasView theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <FarmManagement
+              onToast={onToast}
+              isInttegra={true}
+              onBack={() => setSubView('desktop')}
+              initialEditFarmId={selectedFarm?.id}
+              initialTab="locais"
+            />
+          </div>
         </Suspense>
       );
     }

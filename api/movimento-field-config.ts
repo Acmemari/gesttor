@@ -11,7 +11,7 @@ import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
 import { getByOrgAndTipo, save, type MovimentoTipo } from '../src/DB/repositories/movimentoFieldConfig.js';
 
-const TIPOS: MovimentoTipo[] = ['compra', 'venda', 'morte'];
+const TIPOS: MovimentoTipo[] = ['compra', 'venda', 'morte', 'consumo'];
 const isTipo = (v: unknown): v is MovimentoTipo => typeof v === 'string' && (TIPOS as string[]).includes(v);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -262,7 +262,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [nome, setNome] = useState('');
   const [codigo, setCodigo] = useState('');
   const [finalidade, setFinalidade] = useState('');
-  const [sistema, setSistema] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [finalizado, setFinalizado] = useState(false);
   const [descricao, setDescricao] = useState('');
@@ -288,7 +287,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [editNome, setEditNome] = useState('');
   const [editCodigo, setEditCodigo] = useState('');
   const [editFinalidade, setEditFinalidade] = useState('');
-  const [editSistema, setEditSistema] = useState('');
   const [editDataInicio, setEditDataInicio] = useState('');
   const [editFinalizado, setEditFinalizado] = useState(false);
   const [editDescricao, setEditDescricao] = useState('');
@@ -346,7 +344,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       setEditNome(selected.nome);
       setEditCodigo(selected.codigo ?? '');
       setEditFinalidade(selected.finalidade ?? '');
-      setEditSistema(selected.sistema ?? '');
       setEditDataInicio(selected.dataInicio);
       setEditFinalizado(selected.finalizado);
       setEditDescricao(selected.descricao ?? '');
@@ -360,7 +357,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setNome('');
     setCodigo('');
     setFinalidade('');
-    setSistema('');
     setDataInicio('');
     setFinalizado(false);
     setDescricao('');
@@ -397,7 +393,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
         retiro: retiro || null,
         codigo: codigo.trim() || null,
         finalidade: finalidade || null,
-        sistema: sistema.trim() || null,
         dataInicio,
         finalizado,
         descricao: descricao.trim() || null,
@@ -412,7 +407,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [nome, farmId, retiro, retiros, codigo, finalidade, sistema, dataInicio, finalizado, descricao, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
+  }, [nome, farmId, retiro, retiros, codigo, finalidade, dataInicio, finalizado, descricao, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
 
   // ── Edição (detalhamento da aba Registros) ──────────────────────────────────
 
@@ -423,7 +418,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       setEditNome(selected.nome);
       setEditCodigo(selected.codigo ?? '');
       setEditFinalidade(selected.finalidade ?? '');
-      setEditSistema(selected.sistema ?? '');
       setEditDataInicio(selected.dataInicio);
       setEditFinalizado(selected.finalizado);
       setEditDescricao(selected.descricao ?? '');
@@ -458,7 +452,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
         retiro: editRetiro || null,
         codigo: editCodigo.trim() || null,
         finalidade: editFinalidade || null,
-        sistema: editSistema.trim() || null,
         dataInicio: editDataInicio,
         finalizado: editFinalizado,
         descricao: editDescricao.trim() || null,
@@ -470,7 +463,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [selectedId, editFarmId, editRetiro, editRetiros, editNome, editCodigo, editFinalidade, editSistema, editDataInicio, editFinalizado, editDescricao, onToast, loadLotes]);
+  }, [selectedId, editFarmId, editRetiro, editRetiros, editNome, editCodigo, editFinalidade, editDataInicio, editFinalizado, editDescricao, onToast, loadLotes]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
@@ -687,16 +680,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                   <option key={f} value={f}>{f}</option>
                 ))}
               </select>
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Sistema</label>
-              <input
-                type="text"
-                value={sistema}
-                onChange={(e) => setSistema(e.target.value)}
-                placeholder="Ex.: Pasto + suplemento"
-                className={inputCls}
-              />
             </div>
           </div>
 
@@ -959,16 +942,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                           <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
-                    </div>
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Sistema</label>
-                      <input
-                        type="text"
-                        value={editSistema}
-                        onChange={(e) => setEditSistema(e.target.value)}
-                        placeholder="Ex.: Pasto + suplemento"
-                        className={inputCls}
-                      />
                     </div>
                   </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Farm } from '../types';
 import {
   Plus,
@@ -18,7 +18,6 @@ import {
   Info,
   Users,
   Loader2,
-  Map,
 } from 'lucide-react';
 import { evaluateSafeExpression, isExpression } from '../lib/evaluateExpression';
 import { useClient } from '../contexts/ClientContext';
@@ -30,7 +29,6 @@ import {
   deactivateFarm as apiFarmDeactivate,
 } from '../lib/api/farmsClient';
 import FarmPermissionsModal from '../components/FarmPermissionsModal';
-import FarmMapTab from '../components/FarmMapTab';
 import FarmLocaisTab from '../components/FarmLocaisTab';
 import {
   useFarmPermissions,
@@ -150,6 +148,10 @@ interface FarmManagementProps {
   onToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   isInttegra?: boolean;
   onBack?: () => void;
+  /** Atalho: abre direto esta fazenda em edição (ex.: card "Cadastro de Áreas"). */
+  initialEditFarmId?: string;
+  /** Aba inicial ao abrir via atalho. */
+  initialTab?: 'dados' | 'locais';
 }
 
 // Estados brasileiros
@@ -183,7 +185,7 @@ const BRAZILIAN_STATES = [
   'Tocantins',
 ];
 
-const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = false, onBack }) => {
+const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = false, onBack, initialEditFarmId, initialTab }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
   const {
@@ -207,7 +209,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [permissionsModalFarm, setPermissionsModalFarm] = useState<Farm | null>(null);
   const [areaWarning, setAreaWarning] = useState<string | null>(null);
-  const [farmActiveTab, setFarmActiveTab] = useState<'dados' | 'locais' | 'mapa'>('dados');
+  const [farmActiveTab, setFarmActiveTab] = useState<'dados' | 'locais'>('dados');
   const isLoading = hierarchyLoading.farms;
 
   const isCliente = user?.qualification === 'cliente';
@@ -952,6 +954,18 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
     setView('form');
   };
 
+  // Atalho ("Cadastro de Áreas"): abre a fazenda indicada direto na aba pedida.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || !initialEditFarmId) return;
+    const farm = farms.find((f) => f.id === initialEditFarmId);
+    if (!farm) return;
+    deepLinkedRef.current = true;
+    handleEdit(farm);
+    if (initialTab) setFarmActiveTab(initialTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditFarmId, initialTab, farms]);
+
   const resetForm = () => {
     setFarmActiveTab('dados');
     setFormData({
@@ -1178,7 +1192,7 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
         onSubmit={handleSubmit}
         className={`max-w-7xl w-full bg-white flex flex-col ${isInttegra ? 'rounded-[12px] border border-[#E5E7EB] shadow-[0_1px_3px_rgba(16,24,40,.08)] p-[26px]' : 'rounded-lg border border-ai-border p-4'}`}
       >
-        {/* Abas: Dados Gerais | Mapa */}
+        {/* Abas: Dados Gerais | Locais */}
         <div className={`flex gap-1 mb-4 p-1 rounded-[10px] ${isInttegra ? 'bg-[#F3F4F6]' : 'bg-gray-100'}`}>
           <button
             type="button"
@@ -1209,24 +1223,6 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
           >
             <MapPin size={14} />
             Locais
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!editingFarm) {
-                onToast?.('Salve a fazenda primeiro para acessar o mapa', 'warning');
-                return;
-              }
-              setFarmActiveTab('mapa');
-            }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[8px] text-sm font-semibold transition-all ${
-              farmActiveTab === 'mapa'
-                ? (isInttegra ? 'bg-white text-[#16A34A] shadow-[0_1px_3px_rgba(16,24,40,0.05)]' : 'bg-white text-emerald-700 shadow-sm')
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Map size={14} />
-            Mapa
           </button>
         </div>
 
@@ -1903,14 +1899,8 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
               farmName={editingFarm.name}
               pastureArea={editingFarm.pastureArea}
               readOnly={formReadOnly}
+              onToast={onToast}
             />
-          </div>
-        )}
-
-        {/* ─── Aba 3: Mapa ─── */}
-        {farmActiveTab === 'mapa' && editingFarm && (
-          <div className="flex-1">
-            <FarmMapTab farmId={editingFarm.id} readOnly={formReadOnly} />
           </div>
         )}
         {/* Action Buttons - only on Dados Gerais tab */}

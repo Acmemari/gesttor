@@ -113,8 +113,9 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const today = todayISO();
   const [data, setData] = useState(today);
   const safra = safraDaData(data);
-  const [tipoVenda, setTipoVenda] = useState<string>('pe');
-  const [tipoPeso, setTipoPeso] = useState<string>('kg');
+  // Compra é sempre em pé e sempre em quilos — valores fixos (sem seletor na UI).
+  const tipoVenda = 'pe';
+  const tipoPeso = 'kg';
   const [proprietario, setProprietario] = useState<string | null>(null);
   const [cliente, setCliente] = useState<string | null>(null);
   const [fazenda, setFazenda] = useState('');
@@ -123,6 +124,10 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const [descontoStr, setDescontoStr] = useState('');
 
   const [modoIndividual, setModoIndividual] = useState(false);
+  // Layout da tela: 'padrao' = atual (seletor de modo como ícones compactos na
+  // linha "Animais por categoria"); 'guiado' = botões rotulados (modelo) entre a
+  // linha de dados iniciais e o grupo de categorias.
+  const [layoutCompras, setLayoutCompras] = useState<'padrao' | 'guiado'>('padrao');
 
   const [catSel, setCatSel] = useState('');
   const [qtdStr, setQtdStr] = useState('');
@@ -468,8 +473,6 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
       const m = movimentos.find((x) => x.id === movId);
       if (!m) return;
       setData(m.data);
-      setTipoVenda(m.tipoVenda);
-      setTipoPeso(m.tipoPeso);
       setFazenda(m.fazenda || '');
       setRetiro(m.retiro || '');
       setProprietario(m.proprietario || null);
@@ -528,8 +531,6 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
 
   const inputCls =
     'w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
-  const inputCompactCls =
-    'w-full h-10 px-2 rounded-lg border border-gray-200 bg-white text-[12px] text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[3px] focus:ring-[#16a34a]/15';
   const labelCls = 'text-[12.5px] font-semibold text-gray-700';
 
   const Preview: React.FC<{ label: string; value: string; strong?: boolean }> = ({ label, value, strong }) => (
@@ -573,6 +574,39 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
             {movimentos.length}
           </span>
         ) : null}
+      </button>
+    </div>
+  );
+
+  // Seletor de modo com rótulos (modelo) — usado no layout "guiado", numa linha
+  // própria entre os dados iniciais e o grupo "Animais por categoria".
+  const modoSelectorLabeled = (
+    <div className="flex flex-wrap items-center gap-2.5">
+      <button
+        type="button"
+        onClick={() => setModoIndividual(true)}
+        aria-pressed={modoIndividual}
+        title="Detalhamento individual (por ID)"
+        className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+          modoIndividual
+            ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <BrincoBovinoIcon size={22} /> Detalhamento individual
+      </button>
+      <button
+        type="button"
+        onClick={() => setModoIndividual(false)}
+        aria-pressed={!modoIndividual}
+        title="Lote de animais (visão coletiva)"
+        className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+          !modoIndividual
+            ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <LoteAnimaisIcon size={26} /> Lote de animais
       </button>
     </div>
   );
@@ -652,9 +686,33 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   return (
     <div className="min-h-full bg-[#f9fafb] p-6 md:p-8">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <Receipt size={22} className="text-[#16a34a]" />
-          <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Compras</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <Receipt size={22} className="text-[#16a34a]" />
+            <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Compras</h1>
+          </div>
+
+          {/* Tab de layout da tela: Padrão (atual) × Guiado (seletor em destaque) */}
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
+            <button
+              type="button"
+              onClick={() => setLayoutCompras('padrao')}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
+                layoutCompras === 'padrao' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Padrão
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutCompras('guiado')}
+              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
+                layoutCompras === 'guiado' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Padrão 2
+            </button>
+          </div>
         </div>
 
         {abasToggle}
@@ -680,36 +738,6 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
                     Safra <span className="font-semibold text-[#16a34a]">{safra}</span>
                   </div>
                 </div>
-                <div className="min-w-0" style={{ flex: '0 0 122px' }}>
-                  <label className={labelCls}>Tipo de compra</label>
-                  <select
-                    className={`${inputCompactCls} mt-1.5`}
-                    value={tipoVenda}
-                    onChange={(e) => {
-                      const newTv = e.target.value;
-                      setTipoVenda(newTv);
-                      if (newTv === 'pe') {
-                        setTipoPeso('kg');
-                      }
-                    }}
-                  >
-                    <option value="pe">Compra em Pé</option>
-                    <option value="abate">Compra Abate</option>
-                  </select>
-                </div>
-                <div className="min-w-0" style={{ flex: '0 0 114px' }}>
-                  <label className={labelCls}>Tipo de peso</label>
-                  <select
-                    className={`${inputCompactCls} mt-1.5`}
-                    value={tipoPeso}
-                    disabled={tipoVenda === 'pe'}
-                    onChange={(e) => setTipoPeso(e.target.value)}
-                  >
-                    <option value="kg">Quilo (kg)</option>
-                    <option value="arroba" disabled={tipoVenda === 'pe'}>Arroba (@)</option>
-                  </select>
-                </div>
-
                 <div className="min-w-0" style={{ flex: '1 1 150px' }}>
                   <label className={labelCls}>Proprietário</label>
                   <PessoaSelector
@@ -760,25 +788,31 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
                 </div>
               </div>
 
+              {layoutCompras === 'guiado' ? (
+                <div className="mt-5">{modoSelectorLabeled}</div>
+              ) : null}
+
               <div className="mt-5">
                 <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold text-gray-700">
                   <Tags size={15} className="text-[#16a34a]" /> Animais por categoria
                 </h3>
                 <div className="flex flex-wrap items-end gap-3">
-                  <div className="flex shrink-0 items-center gap-2">
-                    <IconCardButton
-                      active={modoIndividual}
-                      onClick={() => setModoIndividual(true)}
-                      title="Detalhamento individual (por ID)"
-                      icon={<BrincoBovinoIcon size={22} />}
-                    />
-                    <IconCardButton
-                      active={!modoIndividual}
-                      onClick={() => setModoIndividual(false)}
-                      title="Lote de animais (visão coletiva)"
-                      icon={<LoteAnimaisIcon size={28} />}
-                    />
-                  </div>
+                  {layoutCompras === 'padrao' ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <IconCardButton
+                        active={modoIndividual}
+                        onClick={() => setModoIndividual(true)}
+                        title="Detalhamento individual (por ID)"
+                        icon={<BrincoBovinoIcon size={22} />}
+                      />
+                      <IconCardButton
+                        active={!modoIndividual}
+                        onClick={() => setModoIndividual(false)}
+                        title="Lote de animais (visão coletiva)"
+                        icon={<LoteAnimaisIcon size={28} />}
+                      />
+                    </div>
+                  ) : null}
 
                   <div style={{ flex: '0 0 110px' }}>
                     <label className={labelCls}>
@@ -812,14 +846,13 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
                   </div>
                   <div style={{ flex: '0 0 98px' }}>
                     <label className={`${labelCls} whitespace-nowrap`}>
-                      {tipoPeso === 'kg' ? 'Valor/kg' : 'Valor/@'}{' '}
-                      <span className="text-[10px] font-medium text-gray-400">(R$)</span> <span className="text-red-500">*</span>
+                      Valor/kg <span className="text-[10px] font-medium text-gray-400">(R$)</span> <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       inputMode="decimal"
                       className={`${inputCls} mt-1.5`}
-                      placeholder={tipoPeso === 'kg' ? 'Ex.: 12,00' : 'Ex.: 320,00'}
+                      placeholder="Ex.: 12,00"
                       value={valorArrobaStr}
                       onChange={(e) => setValorArrobaStr(e.target.value)}
                     />

@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { X, Info, Loader2 } from 'lucide-react';
+import { X, Info, Loader2, MapPin } from 'lucide-react';
 import type { Lote } from '../../../lib/api/lotesClient';
 import {
   TIPOS_LOCAL,
   FASES_REPRO,
   FINALIDADES,
-  type CategoriaLookup,
   type LoteEventoTipo,
 } from './types';
 import { todayISO } from './util';
@@ -17,6 +16,8 @@ export interface EventoDraft {
   resp: string | null;
   dados: Record<string, any>;
   syncFichas?: boolean;
+  /** Sobrepõe o lote em foco — usado pelo Manejo de lotes (movimentos lote→lote). */
+  loteId?: string;
 }
 
 export const inputCls =
@@ -98,105 +99,7 @@ const DataResp: React.FC<{
   </div>
 );
 
-// ── 1) Remanejar / Incluir por ID (Alocação) ─────────────────────────────────
-
-export const RemanejarModal: React.FC<{
-  lote: Lote;
-  lotes: Lote[];
-  categorias: CategoriaLookup[];
-  onClose: () => void;
-  onSubmit: (eventos: EventoDraft[]) => Promise<void>;
-}> = ({ lote, lotes, categorias, onClose, onSubmit }) => {
-  const [sentido, setSentido] = useState<'entrada' | 'saida'>('entrada');
-  const [outroLoteId, setOutroLoteId] = useState<string>(''); // '' = sem lote (só válido na entrada)
-  const [categoriaId, setCategoriaId] = useState('');
-  const [qtd, setQtd] = useState('');
-  const [ident, setIdent] = useState('');
-  const [data, setData] = useState(todayISO());
-  const [resp, setResp] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const outrosLotes = lotes.filter((l) => l.id !== lote.id);
-  const catNome = (id: string | null) => categorias.find((c) => c.id === id)?.nome;
-
-  const handleSave = async () => {
-    if (sentido === 'saida' && !outroLoteId) {
-      window.alert('Para "Sair para outro lote", escolha o lote de destino.');
-      return;
-    }
-    const q = Math.max(0, parseInt(qtd, 10) || 0);
-    if (!categoriaId) { window.alert('Escolha a categoria.'); return; }
-    if (q <= 0) { window.alert('Informe a quantidade.'); return; }
-    const id = Math.max(0, parseInt(ident, 10) || 0);
-    const naoIdent = Math.max(0, q - id);
-    const drafts: EventoDraft[] = [{
-      tipo: 'alocacao', data, resp: resp.trim() || null,
-      dados: { sentido, outroLoteId: outroLoteId || null, qtd: q, categoriaId, categoriaNome: catNome(categoriaId), naoIdent, animais: [] },
-    }];
-
-    setSaving(true);
-    try {
-      await onSubmit(drafts);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <ModalShell
-      title="Remanejar animais"
-      subtitle={`Lote ${lote.codigo || lote.nome} — Movimento de Alocação por quantidade`}
-      info='Você não edita o saldo: você lança um movimento. O que faltar de identificação vira pendência na Mesa e não bloqueia o lançamento. Para incluir/remover animais específicos, use "Incluir por ID".'
-      onClose={onClose}
-      wide
-      footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} /></>}
-    >
-      {/* Sentido + outro lote */}
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="flex-1">
-          <label className={labelCls}>Sentido</label>
-          <select value={sentido} onChange={(e) => setSentido(e.target.value as any)} className={inputCls}>
-            <option value="entrada">Entrar no lote</option>
-            <option value="saida">Sair para outro lote</option>
-          </select>
-        </div>
-        <div className="flex-1">
-          <label className={labelCls}>{sentido === 'entrada' ? 'Origem' : 'Destino'}</label>
-          <select value={outroLoteId} onChange={(e) => setOutroLoteId(e.target.value)} className={inputCls}>
-            {sentido === 'entrada' && <option value="">Sem lote (entrada nova)</option>}
-            {sentido === 'saida' && <option value="">Selecione o lote…</option>}
-            {outrosLotes.map((l) => (
-              <option key={l.id} value={l.id}>{l.codigo ? `${l.codigo} · ` : ''}{l.nome}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="flex-1">
-          <label className={labelCls}>Categoria {reqMark}</label>
-          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className={inputCls}>
-            <option value="">Selecione…</option>
-            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </select>
-        </div>
-        <div className="sm:w-32">
-          <label className={labelCls}>Quantidade {reqMark}</label>
-          <input type="number" min={0} value={qtd} onChange={(e) => setQtd(e.target.value)} className={inputCls} />
-        </div>
-        <div className="sm:w-36">
-          <label className={labelCls}>Identificados agora</label>
-          <input type="number" min={0} value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="opcional" className={inputCls} />
-        </div>
-      </div>
-
-      <DataResp data={data} setData={setData} resp={resp} setResp={setResp} />
-    </ModalShell>
-  );
-};
-
-// ── 2) Transferir lote (Transferência) ───────────────────────────────────────
+// ── 1) Transferir lote (Transferência) ───────────────────────────────────────
 
 export const TransferirModal: React.FC<{
   lote: Lote;
@@ -221,7 +124,7 @@ export const TransferirModal: React.FC<{
 
   return (
     <ModalShell
-      title="Transferir lote"
+      title="Movimentar lote"
       subtitle={`Lote ${lote.codigo || lote.nome} — Transferência de Lote`}
       info="O lote inteiro muda de local. Cada animal herda o novo local; o anterior fica preservado na linha do tempo."
       onClose={onClose}
@@ -345,13 +248,14 @@ export const RegistrarReproModal: React.FC<{
 export const LoteFormModal: React.FC<{
   modo: 'novo' | 'editar';
   inicial?: Partial<Lote>;
+  /** Fazenda › Retiro em que o lote será criado (modo "novo"), herdado do header. */
+  contexto?: string;
   onClose: () => void;
-  onSubmit: (data: { codigo: string | null; nome: string; finalidade: string | null; sistema: string | null; dataInicio: string; descricao: string | null }) => Promise<void>;
-}> = ({ modo, inicial, onClose, onSubmit }) => {
+  onSubmit: (data: { codigo: string | null; nome: string; finalidade: string | null; dataInicio: string; descricao: string | null }) => Promise<void>;
+}> = ({ modo, inicial, contexto, onClose, onSubmit }) => {
   const [codigo, setCodigo] = useState(inicial?.codigo ?? '');
   const [nome, setNome] = useState(inicial?.nome ?? '');
   const [finalidade, setFinalidade] = useState(inicial?.finalidade ?? '');
-  const [sistema, setSistema] = useState(inicial?.sistema ?? '');
   const [dataInicio, setDataInicio] = useState(inicial?.dataInicio ?? todayISO());
   const [descricao, setDescricao] = useState(inicial?.descricao ?? '');
   const [saving, setSaving] = useState(false);
@@ -366,7 +270,6 @@ export const LoteFormModal: React.FC<{
         codigo: codigo.trim() || null,
         nome: nome.trim(),
         finalidade: finalidade || null,
-        sistema: sistema.trim() || null,
         dataInicio,
         descricao: descricao.trim() || null,
       });
@@ -381,6 +284,11 @@ export const LoteFormModal: React.FC<{
       onClose={onClose}
       footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} label="Salvar" /></>}
     >
+      {modo === 'novo' && contexto && (
+        <div className="-mt-1 flex items-center gap-1.5 rounded-lg bg-[#f0fdf4] px-3 py-2 text-[12.5px] font-semibold text-[#16a34a]">
+          <MapPin size={14} /> {contexto}
+        </div>
+      )}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="sm:w-40">
           <label className={labelCls}>Código {reqMark}</label>
@@ -403,10 +311,6 @@ export const LoteFormModal: React.FC<{
           <label className={labelCls}>Data de abertura {reqMark}</label>
           <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className={inputCls} disabled={modo === 'editar'} />
         </div>
-      </div>
-      <div>
-        <label className={labelCls}>Sistema</label>
-        <input type="text" value={sistema} onChange={(e) => setSistema(e.target.value)} placeholder="Ex.: Pasto + suplemento" className={inputCls} />
       </div>
       <div>
         <label className={labelCls}>Observações</label>

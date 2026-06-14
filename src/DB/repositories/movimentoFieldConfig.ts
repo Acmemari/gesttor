@@ -10,7 +10,7 @@ export interface MovimentoFieldConfigBlob {
 }
 
 /** Tipos de movimento que persistem configuração de campos nesta tabela. */
-export type MovimentoTipo = 'compra' | 'venda' | 'morte';
+export type MovimentoTipo = 'compra' | 'venda' | 'morte' | 'consumo';
 
 export async function getByOrgAndTipo(organizationId: string, tipo: MovimentoTipo) {
   const [row] = await db

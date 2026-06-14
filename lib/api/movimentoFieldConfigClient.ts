@@ -3,7 +3,7 @@ import type { MovimentoFieldConfig } from '../../agents/pecuario/fichas/types';
 const API_BASE = '/api/movimento-field-config';
 
 /** Tipos de movimento que persistem configuração de campos neste endpoint. */
-export type MovimentoTipo = 'compra' | 'venda' | 'morte';
+export type MovimentoTipo = 'compra' | 'venda' | 'morte' | 'consumo';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { credentials: 'include', ...init });

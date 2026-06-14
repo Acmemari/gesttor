@@ -1,80 +1,23 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Search, Check, ChevronDown, Loader2, Tag, ArrowLeftRight, X } from 'lucide-react';
+import { Search, Check, ChevronDown, Loader2, Tag, ArrowLeftRight } from 'lucide-react';
 import type { Lote } from '../../../lib/api/lotesClient';
 import type { CategoriaLookup, AnimalLite, LoteEventoRow } from './types';
 import { todayISO, ledgerLoteByAnimal as buildLedgerMap, resolveLoteIdFromText } from './util';
 import { resolveSituacao } from '../fichaAnimal/AnimalStatusBadge';
 import { ModalShell, inputCls, labelCls, type EventoDraft } from './LoteModals';
+import { MultiSelect, AcaoBadge } from './IncluirPorIdModal';
 
 /** Sentinelas dos filtros (animais sem vínculo / sem categoria). */
 const SEM_LOTE = '__sem_lote__';
 const SEM_CAT = '__sem_cat__';
 
-/** Ação encenada por animal (derivada do destino). */
-export type Acao = 'none' | 'incluir' | 'remover' | 'transferir';
+// ── Botão "Mover para" (escolhe destino: qualquer lote ou Sem lote) ───────────
 
-// ── Lista suspensa com seleção múltipla (filtros) ─────────────────────────────
-
-export const MultiSelect: React.FC<{
-  label: string;
-  options: { value: string; label: string }[];
-  selected: Set<string>;
-  onChange: (next: Set<string>) => void;
-  emptyLabel?: string;
-}> = ({ label, options, selected, onChange, emptyLabel = 'Todos' }) => {
-  const [open, setOpen] = useState(false);
-  const summary = selected.size === 0 ? emptyLabel : `${selected.size} selecionado${selected.size > 1 ? 's' : ''}`;
-  const toggle = (v: string) => {
-    const n = new Set(selected);
-    if (n.has(v)) n.delete(v); else n.add(v);
-    onChange(n);
-  };
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 text-sm transition-colors ${selected.size ? 'border-[#16a34a] text-gray-800' : 'border-gray-200 text-gray-600'} hover:border-gray-300`}
-      >
-        <span className="truncate"><span className="font-semibold text-gray-700">{label}:</span> {summary}</span>
-        <ChevronDown size={15} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 mt-1 max-h-64 w-full min-w-[210px] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-            <div className="flex items-center justify-between px-3 py-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
-              {selected.size > 0 && (
-                <button type="button" onClick={() => onChange(new Set())} className="text-[11.5px] font-semibold text-[#16a34a] hover:underline">
-                  Limpar
-                </button>
-              )}
-            </div>
-            {options.length === 0 ? (
-              <p className="px-3 py-2 text-[12.5px] text-gray-400">Sem opções.</p>
-            ) : (
-              options.map((o) => (
-                <label key={o.value} className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50">
-                  <input type="checkbox" checked={selected.has(o.value)} onChange={() => toggle(o.value)} />
-                  <span className="text-[13px] text-gray-700">{o.label}</span>
-                </label>
-              ))
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// ── Botão "Transferir para" (escolhe o lote destino e aplica) ─────────────────
-
-const TransferirParaBtn: React.FC<{
-  outrosLotes: Lote[];
+const MoverParaBtn: React.FC<{
+  lotesDestino: Lote[];
   disabled: boolean;
-  onPick: (loteId: string) => void;
-}> = ({ outrosLotes, disabled, onPick }) => {
+  onPick: (destino: string) => void; // loteId | SEM_LOTE
+}> = ({ lotesDestino, disabled, onPick }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -84,17 +27,25 @@ const TransferirParaBtn: React.FC<{
         onClick={() => setOpen((o) => !o)}
         className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#0891b2] bg-[#e0f5fb] px-2.5 text-[12px] font-bold text-[#0891b2] hover:bg-[#cdeef7] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <ArrowLeftRight size={13} /> Transferir para <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ArrowLeftRight size={13} /> Mover para <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-50 mt-1 max-h-64 w-60 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-            <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Transferir para</div>
-            {outrosLotes.length === 0 ? (
-              <p className="px-3 py-2 text-[12.5px] text-gray-400">Não há outros lotes.</p>
+            <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Mover para</div>
+            <button
+              type="button"
+              onClick={() => { onPick(SEM_LOTE); setOpen(false); }}
+              className="flex w-full items-center px-3 py-1.5 text-left text-[13px] font-semibold text-[#DC2626] hover:bg-[#fdeaea]"
+            >
+              Sem lote (remover)
+            </button>
+            <div className="my-1 border-t border-gray-100" />
+            {lotesDestino.length === 0 ? (
+              <p className="px-3 py-2 text-[12.5px] text-gray-400">Nenhum lote disponível.</p>
             ) : (
-              outrosLotes.map((l) => (
+              lotesDestino.map((l) => (
                 <button
                   key={l.id}
                   type="button"
@@ -112,28 +63,9 @@ const TransferirParaBtn: React.FC<{
   );
 };
 
-// ── Badge da ação encenada (na coluna "Ação") ─────────────────────────────────
+// ── Tela: Manejo de lotes (toda a fazenda — mover qualquer animal) ────────────
 
-export const AcaoBadge: React.FC<{ acao: Acao; label: string; onClear: () => void }> = ({ acao, label, onClear }) => {
-  if (acao === 'none') return <span className="text-[12px] text-gray-300">—</span>;
-  const cls =
-    acao === 'incluir' ? 'bg-[#e7f6ec] text-[#16a34a]'
-      : acao === 'remover' ? 'bg-[#fdeaea] text-[#DC2626]'
-        : 'bg-[#e0f5fb] text-[#0891b2]';
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full py-0.5 pl-2 pr-1 text-[11.5px] font-bold ${cls}`}>
-      {label}
-      <button type="button" onClick={(e) => { e.stopPropagation(); onClear(); }} className="rounded-full p-0.5 hover:bg-black/10" title="Desfazer">
-        <X size={11} />
-      </button>
-    </span>
-  );
-};
-
-// ── Tela: incluir / transferir / remover animais por ID ───────────────────────
-
-export const IncluirPorIdModal: React.FC<{
-  lote: Lote;
+export const ManejoLotesModal: React.FC<{
   lotes: Lote[];
   categorias: CategoriaLookup[];
   animais: AnimalLite[];
@@ -142,7 +74,7 @@ export const IncluirPorIdModal: React.FC<{
   eventosByLote: Record<string, LoteEventoRow[]>;
   onClose: () => void;
   onSubmit: (eventos: EventoDraft[]) => Promise<void>;
-}> = ({ lote, lotes, categorias, animais, animaisLoading, eventosByLote, onClose, onSubmit }) => {
+}> = ({ lotes, categorias, animais, animaisLoading, eventosByLote, onClose, onSubmit }) => {
   const [busca, setBusca] = useState('');
   const [filtroLotes, setFiltroLotes] = useState<Set<string>>(new Set());
   const [filtroCats, setFiltroCats] = useState<Set<string>>(new Set());
@@ -152,13 +84,13 @@ export const IncluirPorIdModal: React.FC<{
   // Seleção transitória (caixas marcadas) para a barra de ações.
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   // Mudanças ENCENADAS por animal: id → destino. Ausente = sem mudança.
-  //   valor = lote.id (incluir) | SEM_LOTE (remover) | outroLoteId (transferir).
+  //   valor = loteId (mover/atribuir) | SEM_LOTE (remover).
   const [destino, setDestino] = useState<Map<string, string>>(new Map());
-  // Aviso quando parte da seleção é ignorada por não se aplicar à ação.
   const [aviso, setAviso] = useState<string | null>(null);
 
   const loteById = useMemo(() => new Map(lotes.map((l) => [l.id, l])), [lotes]);
-  const outrosLotes = useMemo(() => lotes.filter((l) => l.id !== lote.id), [lotes, lote.id]);
+  // Destinos válidos: lotes não encerrados.
+  const lotesDestino = useMemo(() => lotes.filter((l) => !l.finalizado), [lotes]);
   const catNome = useCallback((id: string | null) => categorias.find((c) => c.id === id)?.nome, [categorias]);
   const loteLabel = useCallback((id: string) => {
     const l = loteById.get(id);
@@ -176,9 +108,8 @@ export const IncluirPorIdModal: React.FC<{
     (a: AnimalLite): string | null => ledger.get(a.id) ?? resolveLoteIdFromText(a.lote, lotes),
     [ledger, lotes],
   );
-  // Origem só do ledger (para o outroLoteId da inclusão — null se vínculo é só texto).
+  // Origem só do ledger (para o outroLoteId — null se vínculo é só texto).
   const ledgerLoteId = useCallback((a: AnimalLite): string | null => ledger.get(a.id) ?? null, [ledger]);
-  const isInThisLote = useCallback((a: AnimalLite) => currentLoteId(a) === lote.id, [currentLoteId, lote.id]);
 
   // Só animais no plantel (exclui morte/venda).
   const animaisAtivos = useMemo(
@@ -186,14 +117,12 @@ export const IncluirPorIdModal: React.FC<{
     [animais],
   );
 
-  // Ação encenada de um animal (a partir do mapa `destino`).
-  const acaoDe = useCallback((a: AnimalLite): Acao => {
+  // Ação encenada: SEM_LOTE → remover; outro valor → mover (atribuir lote).
+  const acaoDe = useCallback((a: AnimalLite): 'none' | 'mover' | 'remover' => {
     const t = destino.get(a.id);
     if (t === undefined) return 'none';
-    if (t === lote.id) return 'incluir';
-    if (t === SEM_LOTE) return 'remover';
-    return 'transferir';
-  }, [destino, lote.id]);
+    return t === SEM_LOTE ? 'remover' : 'mover';
+  }, [destino]);
 
   // ── Filtros ────────────────────────────────────────────────────────────────
   const loteOptions = useMemo(
@@ -247,34 +176,23 @@ export const IncluirPorIdModal: React.FC<{
     [animaisAtivos, selecionados],
   );
 
-  // ── Aplicar ações à seleção (relativo ao lote aberto) ─────────────────────────
-  const aplicarDestino = (elegiveis: AnimalLite[], valor: string) =>
+  // ── Aplicar destino à seleção (qualquer animal → qualquer lote / sem lote) ─────
+  const moverPara = (target: string) => {
+    if (animaisSelecionados.length === 0) return;
+    const elig =
+      target === SEM_LOTE
+        ? animaisSelecionados.filter((a) => currentLoteId(a) !== null)
+        : animaisSelecionados.filter((a) => currentLoteId(a) !== target);
     setDestino((prev) => {
       const n = new Map(prev);
-      for (const a of elegiveis) n.set(a.id, valor);
+      for (const a of elig) n.set(a.id, target);
       return n;
     });
-
-  const notaIgnorados = (aplicados: number, total: number, motivo: string) =>
-    setAviso(aplicados < total ? `${aplicados} de ${total} aplicado(s) — ${motivo}.` : null);
-
-  const aplicarIncluir = () => {
-    const elig = animaisSelecionados.filter((a) => !isInThisLote(a));
-    if (animaisSelecionados.length === 0) return;
-    aplicarDestino(elig, lote.id);
-    notaIgnorados(elig.length, animaisSelecionados.length, 'os demais já estão neste lote');
-  };
-  const aplicarRemover = () => {
-    const elig = animaisSelecionados.filter((a) => isInThisLote(a));
-    if (animaisSelecionados.length === 0) return;
-    aplicarDestino(elig, SEM_LOTE);
-    notaIgnorados(elig.length, animaisSelecionados.length, 'só animais deste lote podem ser removidos');
-  };
-  const aplicarTransferir = (loteX: string) => {
-    const elig = animaisSelecionados.filter((a) => isInThisLote(a));
-    if (animaisSelecionados.length === 0) return;
-    aplicarDestino(elig, loteX);
-    notaIgnorados(elig.length, animaisSelecionados.length, 'só animais deste lote podem ser transferidos');
+    setAviso(
+      elig.length < animaisSelecionados.length
+        ? `${elig.length} de ${animaisSelecionados.length} aplicado(s) — os demais já estão ${target === SEM_LOTE ? 'sem lote' : 'neste lote'}.`
+        : null,
+    );
   };
   const limparAcao = () => {
     setAviso(null);
@@ -286,62 +204,56 @@ export const IncluirPorIdModal: React.FC<{
   };
 
   // ── Resumo das mudanças encenadas ─────────────────────────────────────────────
-  const { nIncluir, nTransferir, nRemover } = useMemo(() => {
-    let nIncluir = 0, nTransferir = 0, nRemover = 0;
+  const { nMover, nRemover } = useMemo(() => {
+    let nMover = 0, nRemover = 0;
     for (const a of animaisAtivos) {
       const acao = acaoDe(a);
-      if (acao === 'incluir') nIncluir++;
-      else if (acao === 'transferir') nTransferir++;
+      if (acao === 'mover') nMover++;
       else if (acao === 'remover') nRemover++;
     }
-    return { nIncluir, nTransferir, nRemover };
+    return { nMover, nRemover };
   }, [animaisAtivos, acaoDe]);
 
-  const semAlteracoes = nIncluir + nTransferir + nRemover === 0;
+  const semAlteracoes = nMover + nRemover === 0;
   const temSelecao = selecionados.size > 0;
 
-  // ── Salvar: monta os movimentos de alocação ───────────────────────────────────
+  // ── Salvar: monta os movimentos de alocação (cada draft fixa seu loteId) ───────
   const handleSave = async () => {
     if (semAlteracoes) {
-      window.alert('Nenhuma alteração para salvar. Selecione animais e escolha uma ação.');
+      window.alert('Nenhuma alteração para salvar. Selecione animais e escolha um destino.');
       return;
     }
     const drafts: EventoDraft[] = [];
 
-    // 1) Inclusões → ENTRADA neste lote, por (origem do ledger, categoria).
-    const addGroups = new Map<string, { origem: string | null; catId: string | null; ids: string[] }>();
-    // 2) Remoções → SAÍDA sem destino, por categoria.
-    const remGroups = new Map<string, { catId: string | null; ids: string[] }>();
-    // 3) Transferências → SAÍDA com destino X, por (X, categoria).
-    const transGroups = new Map<string, { destinoId: string; catId: string | null; ids: string[] }>();
+    // Mover/atribuir → ENTRADA no lote destino, por (destino, origem do ledger, categoria).
+    const moveGroups = new Map<string, { destinoId: string; origem: string | null; catId: string | null; ids: string[] }>();
+    // Remover → SAÍDA sem destino, no lote de origem, por (origem, categoria).
+    const remGroups = new Map<string, { origem: string; catId: string | null; ids: string[] }>();
 
     for (const a of animaisAtivos) {
       const acao = acaoDe(a);
       if (acao === 'none') continue;
       const catId = a.categoriaId ?? null;
-      if (acao === 'incluir') {
-        const origem = ledgerLoteId(a); // null = entrada nova; outro lote = transferência p/ cá
-        const key = `${origem ?? ''}|${catId ?? ''}`;
-        const g = addGroups.get(key) ?? { origem, catId, ids: [] };
+      if (acao === 'mover') {
+        const destinoId = destino.get(a.id)!; // lote destino
+        const origem = ledgerLoteId(a);        // null = entrada nova; outro lote = transferência
+        const key = `${destinoId}|${origem ?? ''}|${catId ?? ''}`;
+        const g = moveGroups.get(key) ?? { destinoId, origem, catId, ids: [] };
         g.ids.push(a.id);
-        addGroups.set(key, g);
-      } else if (acao === 'remover') {
-        const key = catId ?? '';
-        const g = remGroups.get(key) ?? { catId, ids: [] };
+        moveGroups.set(key, g);
+      } else {
+        const origem = currentLoteId(a);
+        if (!origem) continue; // sem lote → nada a remover
+        const key = `${origem}|${catId ?? ''}`;
+        const g = remGroups.get(key) ?? { origem, catId, ids: [] };
         g.ids.push(a.id);
         remGroups.set(key, g);
-      } else {
-        const destinoId = destino.get(a.id)!; // lote X
-        const key = `${destinoId}|${catId ?? ''}`;
-        const g = transGroups.get(key) ?? { destinoId, catId, ids: [] };
-        g.ids.push(a.id);
-        transGroups.set(key, g);
       }
     }
 
-    for (const g of addGroups.values()) {
+    for (const g of moveGroups.values()) {
       drafts.push({
-        tipo: 'alocacao', data, resp: null, syncFichas: true,
+        tipo: 'alocacao', data, resp: null, syncFichas: true, loteId: g.destinoId,
         dados: {
           sentido: 'entrada', outroLoteId: g.origem, qtd: g.ids.length,
           categoriaId: g.catId, categoriaNome: catNome(g.catId) ?? undefined, naoIdent: 0, animais: g.ids,
@@ -350,18 +262,9 @@ export const IncluirPorIdModal: React.FC<{
     }
     for (const g of remGroups.values()) {
       drafts.push({
-        tipo: 'alocacao', data, resp: null, syncFichas: true,
+        tipo: 'alocacao', data, resp: null, syncFichas: true, loteId: g.origem,
         dados: {
           sentido: 'saida', outroLoteId: null, qtd: g.ids.length,
-          categoriaId: g.catId, categoriaNome: catNome(g.catId) ?? undefined, naoIdent: 0, animais: g.ids,
-        },
-      });
-    }
-    for (const g of transGroups.values()) {
-      drafts.push({
-        tipo: 'alocacao', data, resp: null, syncFichas: true,
-        dados: {
-          sentido: 'saida', outroLoteId: g.destinoId, qtd: g.ids.length,
           categoriaId: g.catId, categoriaNome: catNome(g.catId) ?? undefined, naoIdent: 0, animais: g.ids,
         },
       });
@@ -378,16 +281,15 @@ export const IncluirPorIdModal: React.FC<{
 
   return (
     <ModalShell
-      title="Incluir / transferir / remover animais por ID"
-      subtitle={`Lote ${lote.codigo || lote.nome} — selecione animais e escolha incluir, transferir ou remover`}
-      info="Selecione um ou mais animais e use a barra de ações: Incluir neste lote, Transferir para outro lote ou Remover (fica sem lote). Remoção e transferência valem para animais que já estão neste lote. As mudanças só são aplicadas ao salvar."
+      title="Manejo de lotes — animais por ID"
+      subtitle="Todos os animais da fazenda — selecione e mova para qualquer lote"
+      info="Selecione um ou mais animais e use “Mover para” para atribuí-los a um lote ou removê-los (fica sem lote). Vale para qualquer animal, esteja ele em qualquer lote. As mudanças só são aplicadas ao salvar."
       onClose={onClose}
       maxWidthClass="max-w-5xl"
       footer={
         <>
           <div className="mr-auto flex items-center gap-3 text-[12.5px] font-semibold">
-            {nIncluir > 0 && <span className="text-[#16a34a]">+{nIncluir} incluir</span>}
-            {nTransferir > 0 && <span className="inline-flex items-center gap-1 text-[#0891b2]"><ArrowLeftRight size={12} />{nTransferir} transferir</span>}
+            {nMover > 0 && <span className="inline-flex items-center gap-1 text-[#0891b2]"><ArrowLeftRight size={12} />{nMover} mover</span>}
             {nRemover > 0 && <span className="text-[#DC2626]">−{nRemover} remover</span>}
             {semAlteracoes && <span className="text-gray-400">Nenhuma alteração</span>}
           </div>
@@ -454,23 +356,7 @@ export const IncluirPorIdModal: React.FC<{
           {temSelecao ? `${selecionados.size} selecionado(s)` : 'Selecione animais para aplicar uma ação'}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={!temSelecao}
-            onClick={aplicarIncluir}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#16a34a] bg-[#e7f6ec] px-2.5 text-[12px] font-bold text-[#16a34a] hover:bg-[#d6f0df] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Check size={13} /> Incluir aqui
-          </button>
-          <TransferirParaBtn outrosLotes={outrosLotes} disabled={!temSelecao} onPick={aplicarTransferir} />
-          <button
-            type="button"
-            disabled={!temSelecao}
-            onClick={aplicarRemover}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#DC2626] bg-[#fdeaea] px-2.5 text-[12px] font-bold text-[#DC2626] hover:bg-[#fbdada] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Remover do lote
-          </button>
+          <MoverParaBtn lotesDestino={lotesDestino} disabled={!temSelecao} onPick={moverPara} />
           <button
             type="button"
             disabled={!temSelecao}
@@ -500,7 +386,7 @@ export const IncluirPorIdModal: React.FC<{
           <span className="w-36 shrink-0">ID de manejo</span>
           <span className="flex-1 min-w-0">Categoria</span>
           <span className="w-44 shrink-0 text-right">Lote atual</span>
-          <span className="w-32 shrink-0 text-right">Ação</span>
+          <span className="w-32 shrink-0 text-right">Destino</span>
         </div>
         <div className="max-h-[42vh] overflow-y-auto">
           {animaisLoading ? (
@@ -510,18 +396,17 @@ export const IncluirPorIdModal: React.FC<{
           ) : (
             filtrados.map((a) => {
               const cl = currentLoteId(a);
-              const inLote = cl === lote.id;
               const sel = selecionados.has(a.id);
               const acao = acaoDe(a);
               const rowBg =
-                acao === 'incluir' ? 'bg-[#f1faf4]'
-                  : acao === 'transferir' ? 'bg-[#ecfeff]'
-                    : acao === 'remover' ? 'bg-[#fef2f2]'
-                      : sel ? 'bg-gray-50' : 'hover:bg-gray-50';
+                acao === 'mover' ? 'bg-[#ecfeff]'
+                  : acao === 'remover' ? 'bg-[#fef2f2]'
+                    : sel ? 'bg-gray-50' : 'hover:bg-gray-50';
               const acaoLabel =
-                acao === 'incluir' ? 'Incluir'
-                  : acao === 'remover' ? 'Remover'
-                    : acao === 'transferir' ? `→ ${loteCurto(destino.get(a.id)!)}` : '';
+                acao === 'remover' ? 'Remover'
+                  : acao === 'mover' ? `→ ${loteCurto(destino.get(a.id)!)}` : '';
+              // Reusa o AcaoBadge: 'mover' usa a cor de transferência (ciano).
+              const badgeAcao = acao === 'mover' ? 'transferir' : acao === 'remover' ? 'remover' : 'none';
               return (
                 <div
                   key={a.id}
@@ -541,9 +426,7 @@ export const IncluirPorIdModal: React.FC<{
                       {a.raca && <span className="text-gray-400"> · {a.raca}</span>}
                     </span>
                     <span className="w-44 shrink-0 truncate text-right text-[12px]">
-                      {inLote ? (
-                        <span className="rounded-full bg-[#e7f6ec] px-2 py-0.5 font-semibold text-[#16a34a]">Neste lote</span>
-                      ) : cl ? (
+                      {cl ? (
                         <span className="text-gray-500">{loteLabel(cl)}</span>
                       ) : (
                         <span className="text-gray-400">Sem lote</span>
@@ -551,7 +434,7 @@ export const IncluirPorIdModal: React.FC<{
                     </span>
                   </button>
                   <span className="flex w-32 shrink-0 justify-end">
-                    <AcaoBadge acao={acao} label={acaoLabel} onClear={() => setDestino((prev) => { const n = new Map(prev); n.delete(a.id); return n; })} />
+                    <AcaoBadge acao={badgeAcao} label={acaoLabel} onClear={() => setDestino((prev) => { const n = new Map(prev); n.delete(a.id); return n; })} />
                   </span>
                 </div>
               );
@@ -567,11 +450,11 @@ export const IncluirPorIdModal: React.FC<{
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={inputCls} />
         </div>
         <div className="flex items-center pb-2.5 text-[11.5px] text-gray-400">
-          <Tag size={13} className="mr-1 shrink-0" /> Inclusões, transferências e remoções viram movimentos de alocação.
+          <Tag size={13} className="mr-1 shrink-0" /> As movimentações viram movimentos de alocação.
         </div>
       </div>
     </ModalShell>
   );
 };
 
-export default IncluirPorIdModal;
+export default ManejoLotesModal;

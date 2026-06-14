@@ -13,6 +13,7 @@ export async function getFarmMap(mapId: string) {
 
 export async function createFarmMap(data: {
   farmId: string;
+  uploadedBy: string;
   fileName: string;
   originalName: string;
   fileType: string;
@@ -22,6 +23,7 @@ export async function createFarmMap(data: {
 }) {
   const [row] = await db.insert(farmMaps).values({
     farmId: data.farmId,
+    uploadedBy: data.uploadedBy,
     fileName: data.fileName,
     originalName: data.originalName,
     fileType: data.fileType,

@@ -36,6 +36,9 @@ export type CreateFarmInput = {
   commercializesGenetics?: boolean;
   productionSystem?: string | null;
   ativo?: boolean;
+  // Perímetro da fazenda (mapa de áreas): anel [lat,lng][] cru + fonte.
+  perimeterGeometry?: [number, number][] | null;
+  perimeterSource?: string | null;
 };
 
 export type UpdateFarmInput = Partial<Omit<CreateFarmInput, 'id'>>;
@@ -114,6 +117,9 @@ export async function updateFarm(id: string, data: UpdateFarmInput) {
   if (data.productionSystem !== undefined) updates.productionSystem = data.productionSystem;
   if (data.commercializesGenetics !== undefined) updates.commercializesGenetics = data.commercializesGenetics;
   if (data.ativo !== undefined) updates.ativo = data.ativo;
+  // Perímetro (jsonb/text) — passthrough, não são numéricos.
+  if (data.perimeterGeometry !== undefined) updates.perimeterGeometry = data.perimeterGeometry;
+  if (data.perimeterSource !== undefined) updates.perimeterSource = data.perimeterSource;
   // Numeric fields — coerce to string for Drizzle numeric columns
   const numericFields = [
     'totalArea', 'pastureArea', 'agricultureArea', 'forageProductionArea',
