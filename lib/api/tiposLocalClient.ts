@@ -1,3 +1,5 @@
+import { getAuthHeaders } from '../session';
+
 const API_BASE = '/api/tipos-local';
 
 export interface TipoLocalCategoria {
@@ -43,7 +45,13 @@ export interface TiposLocalData {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { credentials: 'include', ...init });
+  // Auth por Bearer token (sessionStorage) — o app não usa cookie de sessão.
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(url, {
+    credentials: 'include',
+    ...init,
+    headers: { ...authHeaders, ...(init?.headers as Record<string, string> | undefined) },
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
   return json.data ?? json;

@@ -4,6 +4,10 @@ import './index.css';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { registerServiceWorker } from './src/lib/sw-register';
+import { installAuthFetch } from './lib/api/installAuthFetch';
+
+// Injeta o Bearer token em toda chamada /api/* (antes de qualquer fetch do app).
+installAuthFetch();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

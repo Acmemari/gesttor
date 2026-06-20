@@ -13,6 +13,7 @@
  */
 import { cleanRing, areaM2 } from './util';
 import type { Area, Nivel, Uso, Fonte } from './types';
+import { getAuthHeaders } from '../../../lib/session';
 
 const API = '/api/farm-locations';
 const FARMS_API = '/api/farms';
@@ -32,7 +33,13 @@ interface BundleDTO {
 }
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { credentials: 'include', ...init });
+  // Auth por Bearer token (sessionStorage) — o app não usa cookie de sessão.
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(url, {
+    credentials: 'include',
+    ...init,
+    headers: { ...authHeaders, ...(init?.headers as Record<string, string> | undefined) },
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
   return (json.data ?? json) as T;

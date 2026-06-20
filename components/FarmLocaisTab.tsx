@@ -5,21 +5,19 @@ import {
   Check,
   X,
   Loader2,
-  Layers,
   ChevronRight,
-  ChevronLeft,
   Upload,
   AlertTriangle,
   Link2,
   Sparkles,
 } from 'lucide-react';
 import { useHierarchy } from '../contexts/HierarchyContext';
+import { getAuthHeaders } from '../lib/session';
 import CadastroAreasView from '../agents/pecuario/areas/CadastroAreasView';
 import { fazRootId, updateAreaGeometry } from '../agents/pecuario/areas/areasClient';
 import { parseKmlPolygons, KmlError } from '../agents/pecuario/areas/kml';
 import { importarKmlGoogleEarth } from '../agents/pecuario/areas/kmlImport';
 import { centroid, pointInPoly, cleanRing } from '../agents/pecuario/areas/util';
-import DateInputBR from './DateInputBR';
 
 type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
@@ -104,7 +102,13 @@ interface FarmLocaisTabProps {
 const API_BASE = '/api/farm-locations';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { credentials: 'include', ...init });
+  // Auth por Bearer token (sessionStorage) — o app não usa cookie de sessão.
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(url, {
+    credentials: 'include',
+    ...init,
+    headers: { ...authHeaders, ...(init?.headers as Record<string, string> | undefined) },
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
   return json.data ?? json;
@@ -243,10 +247,15 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   const [modal, setModal] = useState<{ key: ColKey; id: string } | null>(null);
 
   // Painel das colunas recolhível → o mapa ocupa toda a largura quando recolhido.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Modo mapa: a tela INICIAL é a de "Cadastro de Áreas" (tela mestra sobre o
+  // mapa); a aba "Colunas" no rodapé volta às colunas das áreas cadastradas.
+  // Em readOnly começa nas colunas (não força a tela de edição).
+  const [mapaView, setMapaView] = useState<'cadastro' | 'colunas'>(readOnly ? 'colunas' : 'cadastro');
 
   // Data inicial única da tela: carimbada em todo registro criado/editado aqui.
-  const [dataInicial, setDataInicial] = useState<string>(todayIso());
+  // Data dos registros criados nas colunas; a do mapa é perguntada ao Salvar.
+  const [dataInicial] = useState<string>(todayIso());
 
   // Troca de fazenda → próxima carga é "primeira" de novo (mostra o spinner).
   useEffect(() => {
@@ -843,9 +852,6 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     { key: 'fazenda', style: FAZENDA_STYLE },
     ...LEVELS.map((l) => ({ key: l.key as ColKey, style: l.s })),
   ];
-  // Fazenda/Retiro/Setor sobem para o topo; Locais vira a caixa larga de baixo.
-  const topCols = cols.filter((c) => c.key !== 'local');
-  const localCol = cols.find((c) => c.key === 'local') ?? null;
 
   // Modo "sem mapa": a fazenda controla os locais só pelas colunas (sem o mapa
   // Leaflet). Escolhido no rodapé de "Dados Gerais" (NiveisInline) e lido do bundle.
@@ -916,9 +922,10 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     };
   })();
 
-  // Render compartilhado de uma coluna (estreita no topo / larga em grade embaixo).
-  const renderColumn = (key: ColKey, style: LevelStyle, opts: { wide?: boolean; grow?: boolean } = {}) => {
-    const { wide = false, grow = false } = opts;
+  // Render compartilhado de uma coluna (todas estreitas, lado a lado, crescendo
+  // para preencher a largura — Fazenda/Retiro/Setor/Local em paralelo).
+  const renderColumn = (key: ColKey, style: LevelStyle, opts: { grow?: boolean } = {}) => {
+    const { grow = false } = opts;
     const col = columnFor(key);
     // Faixa "Sem vínculo": órfãos pós-ativação de nível, só nas colunas ativas e
     // editáveis de Local e Setor.
@@ -939,7 +946,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         <div
           key={key}
           className={`flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white py-12 ${
-            wide ? 'h-full w-full' : grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] lg:h-full'
+            grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] lg:h-full'
           }`}
         >
           <Loader2 size={18} className="animate-spin text-gray-300" />
@@ -949,7 +956,6 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     return (
       <LevelColumn
         key={key}
-        wide={wide}
         grow={grow}
         style={style}
         rows={col.rows}
@@ -1002,69 +1008,8 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
 
   return (
     <div className="space-y-4">
-      {/* ── Seletores de nível ──────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-3.5">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Layers size={15} className="text-gray-400" />
-          <span className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
-            Níveis de localização
-          </span>
-          <span className="text-[11px] text-gray-400 normal-case font-normal">
-            · a Fazenda é a raiz (sempre ativa) · ative os níveis que esta fazenda usa
-          </span>
-          {/* Data única da tela: carimbada em todo registro criado/editado aqui. */}
-          <div className="ml-auto flex items-center gap-2">
-            <label className="whitespace-nowrap text-[11px] font-medium text-gray-500">
-              Registros a partir de
-            </label>
-            <DateInputBR
-              value={dataInicial}
-              onChange={(v) => setDataInicial(v || todayIso())}
-              disabled={readOnly}
-              className="w-36"
-            />
-          </div>
-        </div>
-        {/* Mesma largura/distribuição das 4 colunas abaixo (4×100px + gaps) */}
-        <div className="flex w-[424px] max-w-full flex-wrap items-center gap-2">
-          <div className="flex w-[100px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-2 py-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-slate-600" />
-            <span className="text-xs font-semibold text-slate-700">Fazenda</span>
-          </div>
-          {LEVELS.map((lvl) => {
-            const on = levels[lvl.key];
-            const busy = togglingKey === lvl.key;
-            return (
-              <button
-                key={lvl.key}
-                type="button"
-                disabled={readOnly || !!togglingKey || loading}
-                onClick={() => toggleLevel(lvl.key)}
-                className={`group inline-flex w-[100px] shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 transition-colors disabled:cursor-not-allowed ${
-                  on ? 'border-gray-300 bg-white shadow-sm' : 'border-dashed border-gray-200 bg-gray-50/60'
-                } ${readOnly ? 'opacity-70' : 'hover:border-gray-400'}`}
-                title={on ? `Desativar nível ${lvl.s.label}` : `Ativar nível ${lvl.s.label}`}
-              >
-                <span
-                  className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-                    on ? lvl.s.dot : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-                      on ? 'translate-x-3.5' : 'translate-x-0.5'
-                    }`}
-                  />
-                </span>
-                <span className={`text-xs font-semibold ${on ? 'text-gray-800' : 'text-gray-400'}`}>
-                  {lvl.s.label}
-                </span>
-                {busy && <Loader2 size={12} className="animate-spin text-gray-400" />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* A data dos registros é perguntada ao Salvar no Cadastro de Áreas; os níveis
+          de localização são definidos no cadastro da fazenda. */}
 
       {/* ── Banner-resumo de órfãos: avisa que há registros ocultos sem vínculo ── */}
       {!readOnly && (orphanLocais.length > 0 || orphanSetores.length > 0) && (
@@ -1085,51 +1030,55 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         </div>
       )}
 
-      {/* ── Colunas (lateral esq., largura do conteúdo) + Mapa grande ────────── */}
-      <div className="flex flex-col gap-2 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:flex-row">
-        {/* Painel: 3 colunas no topo (~40%) + caixa larga de Locais embaixo (~60%).
-            Sem mapa, ocupa a largura toda (mesmo layout, sem o mapa ao lado). */}
-        <div
-          className={`flex w-full flex-col gap-2 lg:h-full ${
-            semMapa ? 'lg:w-full lg:flex-1' : 'lg:w-auto lg:max-w-[44%] lg:shrink-0'
-          } ${!semMapa && sidebarCollapsed ? 'hidden' : ''}`}
-        >
-          {/* Topo: Fazenda › Retiro › Setor (colunas estreitas) */}
-          <div
-            className={`flex gap-2 overflow-x-auto pb-1 lg:min-h-0 ${
-              localCol ? 'lg:flex-[2]' : 'lg:flex-1'
-            }`}
-          >
-            {topCols.map(({ key, style }) => renderColumn(key, style, { grow: true }))}
+      {/* ── Conteúdo: tela principal de Áreas (abas no topo) OU só colunas ────── */}
+      {semMapa ? (
+        /* Sem mapa: as colunas ocupam a largura toda (o Leaflet nem é montado). */
+        <div className="flex flex-col gap-2 lg:h-[calc(100vh-200px)] lg:min-h-[560px]">
+          <div className="flex h-full w-full flex-col gap-2">
+            <div className="flex flex-1 gap-2 overflow-x-auto pb-1 lg:min-h-0">
+              {cols.map(({ key, style }) => renderColumn(key, style, { grow: true }))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Com mapa: tela PRINCIPAL de Cadastro de Áreas, com abas internas fixas no
+           topo. Cada aba ocupa a tela toda (não flutua): "Cadastro de áreas" abre a
+           tela mestra EMBUTIDA no mapa; "Colunas" mostra as colunas das áreas. */
+        <div className="flex flex-col gap-2 lg:h-[calc(100vh-200px)] lg:min-h-[560px]">
+          {/* Abas fixas no topo */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
+              {([
+                { key: 'cadastro', label: 'Cadastro de áreas' },
+                { key: 'colunas', label: 'Colunas' },
+              ] as const).map((t) => {
+                const on = mapaView === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setMapaView(t.key)}
+                    className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+                      on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11.5px] text-gray-400">
+              {mapaView === 'cadastro'
+                ? 'Cadastre as áreas no mapa: escolha uma categoria e desenhe áreas ou insira pontos.'
+                : 'Veja e organize as colunas das áreas já cadastradas.'}
+            </span>
           </div>
 
-          {/* Base: Locais em grade larga */}
-          {localCol && (
-            <div className="min-h-0 lg:flex-[3]">{renderColumn('local', localCol.style, { wide: true })}</div>
-          )}
-        </div>
-
-        {/* Botão recolher + mapa: só no modo "com mapa". Sem mapa, as colunas
-            ocupam a largura toda e o Leaflet nem é montado. */}
-        {!semMapa && (
-          <>
-            {/* Botão recolher/expandir o painel — o mapa cresce quando recolhido */}
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((v) => !v)}
-              title={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
-              aria-label={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
-              className="flex shrink-0 items-center justify-center self-stretch rounded-xl border border-gray-200 bg-white py-1.5 text-gray-400 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 lg:px-0.5"
-            >
-              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-
-            {/* Mapa de áreas (mesma hierarquia, com geometria) — ~70% */}
-            <div
-              className={`min-h-[460px] w-full flex-1 lg:h-full lg:min-h-0 ${
-                sidebarCollapsed ? 'h-[78vh]' : 'h-[58vh]'
-              }`}
-            >
+          {/* Conteúdo da aba — ocupa a tela toda */}
+          <div className="flex min-h-[460px] flex-1 flex-col lg:min-h-0">
+            {/* Cadastro de áreas: tela mestra EMBUTIDA no mapa (não flutua). Fica
+                montada e só escondida na aba Colunas, para não recarregar o mapa. */}
+            <div className={`min-h-0 flex-1 ${mapaView === 'colunas' ? 'hidden' : ''}`}>
               <CadastroAreasView
                 farmId={selFarmId}
                 farmName={selFarmName}
@@ -1143,12 +1092,25 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
                 dataInicial={dataInicial}
                 onMutated={onMapMutated}
                 reloadToken={mapReloadToken}
-                resizeSignal={sidebarCollapsed ? 1 : 0}
+                resizeSignal={mapaView === 'cadastro' ? 1 : 0}
+                mestreOpen={mapaView === 'cadastro'}
+                onMestreOpenChange={(open) => setMapaView(open ? 'cadastro' : 'colunas')}
+                mestreColumnsTab
+                mestreEmbedded
               />
             </div>
-          </>
-        )}
-      </div>
+
+            {/* Colunas: ocupam a tela toda quando ativas */}
+            {mapaView === 'colunas' && (
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
+                <div className="flex flex-1 gap-2 overflow-x-auto pb-1 lg:min-h-0">
+                  {cols.map(({ key, style }) => renderColumn(key, style, { grow: true }))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Input único de import; o card-alvo é guardado em importTargetRef. */}
       <input
@@ -1207,9 +1169,7 @@ interface LevelColumnProps {
   style: LevelStyle;
   rows: Row[];
   selId: string | null;
-  /** Caixa larga com grade de cards (Locais embaixo) em vez de coluna estreita. */
-  wide?: boolean;
-  /** Coluna estreita que cresce para preencher a largura do topo. */
+  /** Coluna estreita que cresce para preencher a largura disponível. */
   grow?: boolean;
   /** Nível desativado: coluna cinza, somente leitura, mostra só o registro automático. */
   inactive?: boolean;
@@ -1244,7 +1204,6 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
   style,
   rows,
   selId,
-  wide = false,
   grow = false,
   inactive = false,
   drillable,
@@ -1275,7 +1234,7 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
     <div
       className={`flex min-w-0 flex-col rounded-xl border ${
         inactive ? 'border-dashed border-gray-200 bg-gray-50/70' : 'border-gray-200 bg-white'
-      } ${wide ? 'h-full w-full' : grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] shrink-0 lg:h-full'}`}
+      } ${grow ? 'min-w-[96px] flex-1 lg:h-full' : 'w-[100px] shrink-0 lg:h-full'}`}
     >
       {/* Header */}
       <div className="flex items-center gap-1 border-b border-gray-100 px-1.5 py-1.5">
@@ -1405,15 +1364,9 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
       )}
 
       {/* List */}
-      <div
-        className={`flex-1 overflow-y-auto p-1.5 ${
-          wide
-            ? 'grid max-h-[50vh] content-start auto-rows-min gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(132px,1fr))] lg:max-h-none'
-            : 'flex max-h-[42vh] min-h-[60px] flex-col gap-1 lg:max-h-none'
-        }`}
-      >
+      <div className="flex max-h-[42vh] min-h-[60px] flex-1 flex-col gap-1 overflow-y-auto p-1.5 lg:max-h-none">
         {rows.length === 0 && !adding ? (
-          <div className={`px-2 py-6 text-center text-[11.5px] italic text-gray-400 ${wide ? 'col-span-full' : ''}`}>
+          <div className="px-2 py-6 text-center text-[11.5px] italic text-gray-400">
             {emptyHint
               ? emptyHint
               : parentChosen

@@ -35,7 +35,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { areaM2, cleanRing, fmtArea, sugerirParent } from './util';
+import { areaM2, cleanRing, fmtArea } from './util';
 import { NIVEIS, ORDEM, TIPOS_LOCAL, type Area, type Fonte, type Nivel } from './types';
 import { importarKmlGoogleEarth, KmlImportError, type KmlImportResult } from './kmlImport';
 import { createVertexEditor, type VertexEditor } from './mapEditing';
@@ -46,7 +46,14 @@ import {
 } from '../../../lib/api/tiposLocalClient';
 import { TipoIcon } from '../../tiposLocalIcons';
 import { buildCatalogIndex, pointDivIcon, pointLatLng, type CatalogIndex } from './mapPoints';
+import DateInputBR from '../../../components/DateInputBR';
 import './cadastroAreas.css';
+
+/** Data local de hoje em ISO 'YYYY-MM-DD' (sem deslocamento de fuso). */
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
@@ -93,6 +100,8 @@ export interface MestreSavePayload {
   saveOverlay: boolean;
   file: File | null;
   geojson: GeoJSON.FeatureCollection | null;
+  /** data de referência escolhida ao salvar (ISO 'YYYY-MM-DD') — carimba os registros. */
+  dataReferencia: string;
 }
 
 /** Resultado da persistência: ids dos rascunhos efetivamente gravados (idempotência). */
@@ -115,6 +124,18 @@ interface Props {
   onClose: () => void;
   onConfirm: (payload: MestreSavePayload) => Promise<MestreSaveResult | void> | void;
   onToast?: ToastFn;
+  /**
+   * Quando definido, esta tela é usada como tela inicial (não modal transitório)
+   * e o rodapé ganha abas: "Cadastro de áreas" (ativa) e "Colunas". Selecionar
+   * "Colunas" chama isto para o container exibir as colunas das áreas cadastradas.
+   */
+  onShowColumns?: () => void;
+  /**
+   * Renderiza embutida (preenche o container pai, sem `fixed`/backdrop) em vez de
+   * modal flutuante. Esconde o chrome de modal (X, tela cheia, abas do rodapé,
+   * Cancelar) — a navegação fica a cargo das abas do container.
+   */
+  embedded?: boolean;
 }
 
 const SAT_TILES =
@@ -300,6 +321,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
   onClose,
   onConfirm,
   onToast,
+  onShowColumns,
+  embedded = false,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -312,10 +335,11 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [drawing, setDrawing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  /** aba ativa do painel esquerdo. */
-  const [tab, setTab] = useState<'perimetros' | 'areas'>('perimetros');
   /** tela cheia (ocupa toda a janela). */
   const [fullscreen, setFullscreen] = useState(false);
+  /** diálogo "Data de referência" ao salvar (pergunta a data e grava com ela). */
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [dataRef, setDataRef] = useState<string>(todayIso());
   /** níveis ocultos no mapa (legenda/visualizador clicável). */
   const [hiddenLevels, setHiddenLevels] = useState<Set<Nivel>>(new Set());
   const toggleLevelVisibility = useCallback((nv: Nivel) => {
@@ -385,6 +409,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const pendingFitRef = useRef(false);
   /** marcadores dos Locais-ponto (separado das camadas de polígono). */
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  /** camada read-only das áreas JÁ cadastradas (referência no mapa). */
+  const existingLayerRef = useRef<L.LayerGroup | null>(null);
+  const existingFittedRef = useRef(false);
 
   // Espelhos para callbacks imperativos do Leaflet.
   const itemsRef = useRef<DraftArea[]>(items);
@@ -688,6 +715,54 @@ const CadastroAreasMestre: React.FC<Props> = ({
     }
   }, [items, selId, selectItem, hiddenLevels, hiddenCats, hiddenTipos, catalogIndex]);
 
+  // ── Áreas JÁ cadastradas: camada de referência read-only no mapa ──────────
+  // Sem isto, a tela mestra (embutida em tela cheia) mostraria o mapa vazio mesmo
+  // havendo perímetro/retiros/setores/locais salvos — parecendo que "não persiste".
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (!existingLayerRef.current) existingLayerRef.current = L.layerGroup().addTo(map);
+    const grp = existingLayerRef.current;
+    grp.clearLayers();
+    for (const a of existingAreas) {
+      if (hiddenLevels.has(a.nivel)) continue;
+      const ring = cleanRing(a.coords);
+      if (ring.length < 3) continue;
+      const resolved = a.tipo ? catalogIndex.resolve(a.tipo) : null;
+      const cor = resolved?.cor ?? NIVEIS[a.nivel].cor;
+      const poly = L.polygon(ring, {
+        color: cor,
+        weight: a.nivel === 'fazenda' ? 3 : 1.5,
+        opacity: 0.85,
+        fillColor: cor,
+        fillOpacity: a.nivel === 'fazenda' ? 0.04 : 0.1,
+        dashArray: a.nivel === 'fazenda' ? '6 4' : undefined,
+        interactive: false, // não captura cliques → não atrapalha desenhar
+      });
+      poly.bindTooltip(`${a.nome} · já cadastrado`, { sticky: true });
+      grp.addLayer(poly);
+      poly.bringToBack(); // fica atrás dos rascunhos (que são adicionados depois)
+    }
+  }, [existingAreas, hiddenLevels, catalogIndex, mapReady]);
+
+  // ── Enquadra nas áreas já cadastradas ao abrir (quando não há rascunhos) ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || existingFittedRef.current || items.length > 0) return;
+    const rings = existingAreas.map((a) => cleanRing(a.coords)).filter((r) => r.length >= 3);
+    if (!rings.length) return;
+    try {
+      let b = L.latLngBounds(rings[0]);
+      rings.forEach((r) => (b = b.extend(L.latLngBounds(r))));
+      if (b.isValid()) {
+        map.fitBounds(b, { padding: [24, 24], maxZoom: 16 });
+        existingFittedRef.current = true;
+      }
+    } catch {
+      /* bounds inválidos — ignora */
+    }
+  }, [existingAreas, mapReady, items.length]);
+
   // ── Enquadra nas áreas assim que importa / desenha a 1ª ──────────────────
   useEffect(() => {
     const map = mapRef.current;
@@ -829,22 +904,6 @@ const CadastroAreasMestre: React.FC<Props> = ({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }, []);
 
-  const changeNivel = useCallback((id: string, nivel: Nivel) => {
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === id
-          ? {
-              ...i,
-              nivel,
-              tipo: nivel === 'local' ? i.tipo ?? 'Pasto' : null,
-              categoriaId: nivel === 'local' ? i.categoriaId : null,
-              parentId: null,
-            }
-          : i,
-      ),
-    );
-  }, []);
-
   const removeItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
     setSelId((cur) => (cur === id ? null : cur));
@@ -869,39 +928,6 @@ const CadastroAreasMestre: React.FC<Props> = ({
       }
     },
     [selectItem],
-  );
-
-  // ── Pré-visualização do pai resolvido por contenção (para a lista) ───────
-  const parentPreview = useMemo(() => {
-    const map: Record<string, { id: string; nome: string; nivel: Nivel } | null> = {};
-    for (const it of items) {
-      if (it.nivel === 'fazenda') {
-        map[it.id] = null;
-        continue;
-      }
-      const li = NIVEIS[it.nivel].idx;
-      const pool: Area[] = [
-        ...existingAreas.filter((a) => NIVEIS[a.nivel].idx < li),
-        ...items
-          .filter((d) => d.id !== it.id && d.keep && NIVEIS[d.nivel].idx < li)
-          .map((d) => ({ id: d.id, nivel: d.nivel, nome: d.nome, parent: null, tipo: d.tipo, coords: d.coords, fonte: 'desenho' as Fonte, visivel: true })),
-      ];
-      const pid = it.parentId ?? sugerirParent(pool, it.coords, it.nivel);
-      const pa = pid ? pool.find((a) => a.id === pid) : null;
-      map[it.id] = pa ? { id: pa.id, nome: pa.nome, nivel: pa.nivel } : null;
-    }
-    return map;
-  }, [items, existingAreas]);
-
-  /** Candidatos de pai (níveis acima) para o seletor de override. */
-  const candidatesFor = useCallback(
-    (it: DraftArea): Array<{ id: string; nome: string; nivel: Nivel }> => {
-      const li = NIVEIS[it.nivel].idx;
-      const ex = existingAreas.filter((a) => NIVEIS[a.nivel].idx < li).map((a) => ({ id: a.id, nome: a.nome, nivel: a.nivel }));
-      const dr = items.filter((d) => d.id !== it.id && d.keep && NIVEIS[d.nivel].idx < li).map((d) => ({ id: d.id, nome: d.nome, nivel: d.nivel }));
-      return [...ex, ...dr];
-    },
-    [existingAreas, items],
   );
 
   // ── Confirmar ────────────────────────────────────────────────────────────
@@ -936,7 +962,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
 
   const canConfirm = !parsing && !busy && !editing && !drawing && (keptItems.length > 0 || (saveOverlay && !!geojson));
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (dataReferencia: string) => {
     if (!canConfirm) return;
     const out: MestreItemOut[] = keptItems.map((i) => ({
       id: i.id,
@@ -949,7 +975,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
       geomKind: i.geomKind,
     }));
     try {
-      const res = await onConfirm({ items: out, saveOverlay, file, geojson });
+      const res = await onConfirm({ items: out, saveOverlay, file, geojson, dataReferencia });
       if (res && Array.isArray(res.savedIds)) {
         const saved = new Set(res.savedIds);
         const remaining = itemsRef.current.filter((i) => !saved.has(i.id));
@@ -967,16 +993,24 @@ const CadastroAreasMestre: React.FC<Props> = ({
   return (
     <>
     <div
-      className={`fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(16,24,40,.42)] backdrop-blur-[2px] ${
-        fullscreen ? 'p-0' : 'p-4'
-      }`}
-      onClick={onClose}
+      className={
+        embedded
+          ? fullscreen
+            ? 'fixed inset-0 z-[2000] flex' // tela cheia: cobre o viewport inteiro
+            : 'absolute inset-0 z-[800] flex' // embutida: preenche a área de conteúdo
+          : `fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(16,24,40,.42)] backdrop-blur-[2px] ${
+              fullscreen ? 'p-0' : 'p-4'
+            }`
+      }
+      onClick={embedded ? undefined : onClose}
     >
       <div
-        className={`flex flex-col overflow-hidden bg-white shadow-2xl ${
-          fullscreen
+        className={`flex flex-col overflow-hidden bg-white ${
+          embedded
             ? 'h-full w-full max-h-none max-w-none rounded-none'
-            : 'max-h-[94vh] w-[1240px] max-w-[96vw] rounded-2xl'
+            : fullscreen
+              ? 'h-full w-full max-h-none max-w-none rounded-none shadow-2xl'
+              : 'max-h-[94vh] w-[1240px] max-w-[96vw] rounded-2xl shadow-2xl'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -996,18 +1030,20 @@ const CadastroAreasMestre: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setFullscreen((v) => !v)}
-              title={fullscreen ? 'Restaurar janela' : 'Tela cheia'}
+              title={fullscreen ? 'Restaurar tamanho' : 'Tela cheia'}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50"
             >
               {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50"
-            >
-              <X size={18} />
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1094,29 +1130,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Abas: Perímetros | Áreas */}
-            <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-              {(
-                [
-                  { id: 'perimetros', label: 'Perímetros' },
-                  { id: 'areas', label: `Áreas${items.length ? ` (${items.length})` : ''}` },
-                ] as const
-              ).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  className={`flex-1 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                    tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            {tab === 'perimetros' ? (
-              /* ── Aba Perímetros: contornos de Fazenda, Retiro e Setor ── */
+            {/* ── Perímetros: contornos de Fazenda, Retiro e Setor ── */}
               <div className="flex flex-col gap-2.5">
                 <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-[12px] text-emerald-800">
                   Marque o <b>contorno da fazenda</b> e, se a fazenda usar, os de <b>retiro</b> e <b>setor</b>. O botão{' '}
@@ -1180,15 +1194,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
                       </div>
 
                       {isLocal ? (
-                        <div className="mt-1.5 flex items-center justify-between gap-2 pl-5 text-[12px] text-gray-500">
-                          <span>{list.length ? `${list.length} local(is) nesta tela.` : 'Nenhum local marcado.'}</span>
-                          <button
-                            type="button"
-                            onClick={() => setTab('areas')}
-                            className="font-semibold text-emerald-700 hover:underline"
-                          >
-                            Gerenciar na aba Áreas
-                          </button>
+                        <div className="mt-1.5 pl-5 text-[12px] text-gray-500">
+                          {list.length ? `${list.length} local(is) nesta tela.` : 'Nenhum local marcado.'}
                         </div>
                       ) : list.length === 0 ? (
                         <div className="mt-1.5 pl-5 text-[12px] text-gray-500">
@@ -1257,141 +1264,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
                   );
                 })}
 
-                <button
-                  type="button"
-                  onClick={() => setTab('areas')}
-                  className="mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-500 hover:bg-gray-50"
-                >
-                  <MapPin size={14} /> Ver todas as áreas e locais{items.length ? ` (${items.length})` : ''}
-                </button>
               </div>
-            ) : items.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4 py-6 text-center text-[12.5px] text-gray-500">
-                Nenhuma área ainda. Importe um arquivo acima <b>ou</b> use <b>Desenhar</b> no mapa para criar a
-                primeira (escolha o nível antes de desenhar).
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between px-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-gray-400">
-                  <span>Áreas detectadas ({items.length})</span>
-                  <span>{keptItems.length} a cadastrar</span>
-                </div>
-                {items.map((it) => {
-                  const selected = it.id === selId;
-                  const pp = parentPreview[it.id];
-                  const orphan =
-                    it.keep &&
-                    ((it.nivel === 'setor' && (!pp || pp.nivel !== 'retiro')) ||
-                      (it.nivel === 'local' && !pp));
-                  return (
-                    <div
-                      key={it.id}
-                      onClick={() => selectItem(it.id)}
-                      className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${
-                        selected ? 'border-emerald-300 bg-emerald-50/50 ring-1 ring-emerald-200' : it.keep ? 'border-gray-200 bg-white hover:bg-gray-50' : 'border-gray-200 bg-gray-50/60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 shrink-0 accent-emerald-600"
-                          checked={it.keep}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => patchItem(it.id, { keep: e.target.checked })}
-                        />
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                          style={{ background: it.keep ? NIVEIS[it.nivel].cor : '#cbd5e1' }}
-                        />
-                        <input
-                          type="text"
-                          value={it.nome}
-                          disabled={!it.keep}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => patchItem(it.id, { nome: e.target.value })}
-                          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[12.5px] font-semibold text-gray-800 hover:border-gray-200 focus:border-emerald-300 focus:bg-white focus:outline-none disabled:text-gray-400"
-                        />
-                        <span className="shrink-0 text-[11px] tabular-nums text-gray-500">{fmtArea(it.areaM2)}</span>
-                        <button
-                          type="button"
-                          title="Remover da lista"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeItem(it.id);
-                          }}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-300 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-
-                      {it.keep && (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
-                          <select
-                            value={it.nivel}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => changeNivel(it.id, e.target.value as Nivel)}
-                            className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11.5px] font-semibold text-gray-700 outline-none focus:border-emerald-400"
-                          >
-                            {ORDEM.map((nv) => (
-                              <option key={nv} value={nv}>
-                                {NIVEIS[nv].label}
-                              </option>
-                            ))}
-                          </select>
-
-                          {it.nivel === 'local' && (
-                            <select
-                              value={it.tipo ?? 'Pasto'}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => patchItem(it.id, { tipo: e.target.value })}
-                              className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11.5px] text-gray-700 outline-none focus:border-emerald-400"
-                            >
-                              {it.tipo && !(TIPOS_LOCAL as string[]).includes(it.tipo) && (
-                                <option value={it.tipo}>{it.tipo}</option>
-                              )}
-                              {TIPOS_LOCAL.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                          {it.nivel !== 'fazenda' && (
-                            <select
-                              value={it.parentId ?? ''}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => patchItem(it.id, { parentId: e.target.value || null })}
-                              title="Vínculo (pai). Automático resolve pela posição no mapa."
-                              className="min-w-0 max-w-[170px] rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11.5px] text-gray-600 outline-none focus:border-emerald-400"
-                            >
-                              <option value="">
-                                {pp ? `Automático · ${NIVEIS[pp.nivel].label}: ${pp.nome}` : 'Automático · (fazenda)'}
-                              </option>
-                              {candidatesFor(it).map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {NIVEIS[c.nivel].label}: {c.nome}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                          {it.nivel === 'fazenda' && hasPerimeter && (
-                            <span className="text-[11px] font-semibold text-amber-600">Vai substituir o contorno atual.</span>
-                          )}
-                          {orphan && (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-700">
-                              {it.nivel === 'setor' ? 'sem retiro' : 'direto na fazenda'}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
 
             {/* Camada de referência */}
             {geojson && (
@@ -1551,21 +1424,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
           <div className="relative min-h-[420px] bg-[#0b1f2a]">
             <div ref={mapElRef} className="absolute inset-0" />
 
-            {/* Ferramentas do mapa */}
+            {/* Ferramentas do mapa — o nível é definido pelos botões do painel
+                (Marcar no mapa / Desenhar área), então não há seletor de nível aqui. */}
             <div className="absolute left-3 top-3 z-[600] flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-white p-2 shadow-[0_2px_10px_rgba(16,24,40,.12)]">
-              <select
-                value={drawNivel}
-                disabled={editing}
-                onChange={(e) => setDrawNivel(e.target.value as Nivel)}
-                title="Nível do polígono que será desenhado"
-                className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12.5px] font-semibold text-gray-700 outline-none focus:border-emerald-400 disabled:opacity-50"
-              >
-                {ORDEM.map((nv) => (
-                  <option key={nv} value={nv}>
-                    {NIVEIS[nv].label}
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 onClick={toggleDraw}
@@ -1686,34 +1547,58 @@ const CadastroAreasMestre: React.FC<Props> = ({
 
         {/* Rodapé */}
         <div className="flex items-center justify-between gap-2.5 border-t border-gray-100 px-6 py-3.5">
-          <div className="min-w-0 text-[12px] text-gray-500">
-            {keptItems.length > 0 ? (
-              <span>
-                A cadastrar:{' '}
-                {ORDEM.filter((nv) => keptByLevel[nv] > 0)
-                  .map((nv) => `${keptByLevel[nv]} ${keptByLevel[nv] === 1 ? NIVEIS[nv].label.toLowerCase() : NIVEIS[nv].plural.toLowerCase()}`)
-                  .join(' · ')}
-              </span>
-            ) : (
-              <span>Marque ao menos uma área (ou guarde só o mapa de referência).</span>
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Abas: esta tela (Cadastro de áreas) × colunas das áreas cadastradas.
+                Embutida: as abas ficam no topo do container, então aqui escondemos. */}
+            {!embedded && onShowColumns && (
+              <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
+                <span
+                  className="rounded-md bg-white px-3 py-1.5 text-[12.5px] font-semibold text-gray-900 shadow-sm"
+                  title="Cadastro de áreas no mapa (tela atual)"
+                >
+                  Cadastro de áreas
+                </span>
+                <button
+                  type="button"
+                  onClick={onShowColumns}
+                  className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold text-gray-500 hover:text-gray-800"
+                  title="Ver as colunas das áreas cadastradas (Fazenda › Retiro › Setor › Local)"
+                >
+                  Colunas
+                </button>
+              </div>
             )}
+            <div className="hidden min-w-0 truncate text-[12px] text-gray-500 sm:block">
+              {keptItems.length > 0 ? (
+                <span>
+                  A cadastrar:{' '}
+                  {ORDEM.filter((nv) => keptByLevel[nv] > 0)
+                    .map((nv) => `${keptByLevel[nv]} ${keptByLevel[nv] === 1 ? NIVEIS[nv].label.toLowerCase() : NIVEIS[nv].plural.toLowerCase()}`)
+                    .join(' · ')}
+                </span>
+              ) : (
+                <span>Marque ao menos uma área (ou guarde só o mapa de referência).</span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2.5">
+            {!embedded && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg px-3.5 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+              >
+                {onShowColumns ? 'Fechar' : 'Cancelar'}
+              </button>
+            )}
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg px-3.5 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={submit}
+              onClick={() => { setDataRef(todayIso()); setDateDialogOpen(true); }}
               disabled={!canConfirm}
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Cadastrar áreas
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              Salvar
             </button>
           </div>
         </div>
@@ -1736,6 +1621,53 @@ const CadastroAreasMestre: React.FC<Props> = ({
           />
         );
       })()}
+
+    {/* Diálogo "Data de referência" — perguntado ao Salvar; carimba os registros. */}
+    {dateDialogOpen && (
+      <div
+        className="fixed inset-0 z-[2100] flex items-center justify-center bg-[rgba(16,24,40,.42)] p-4 backdrop-blur-[2px]"
+        onClick={() => setDateDialogOpen(false)}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+              <Save size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="m-0 text-[16px] font-bold text-gray-900">Data de referência</h3>
+              <p className="mt-0.5 text-[13px] text-gray-500">
+                Data que será carimbada nos registros cadastrados agora.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <label className="mb-1 block text-[12px] font-semibold text-gray-600">Data</label>
+            <DateInputBR value={dataRef} onChange={(v) => setDataRef(v || todayIso())} className="w-44" />
+          </div>
+          <div className="mt-5 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={() => setDateDialogOpen(false)}
+              className="rounded-lg px-3.5 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!dataRef || busy}
+              onClick={() => { setDateDialogOpen(false); submit(dataRef); }}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 };

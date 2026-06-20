@@ -11,18 +11,8 @@ import {
   Package, Soup, Container, Cylinder, BrickWall, Wrench, ShowerHead, Fuel,
   Zap, Sun, Antenna, Cctv, DoorClosed, Route, Milestone, Construction,
   SquareParking, Truck,
-  // Rebanho / animais / forragens (lucide)
-  PawPrint, Rabbit, Dog, Fish, Egg, Milk, Grape, LeafyGreen,
-  // Veículos / máquinas (lucide)
-  Forklift, Car, Bus, Caravan, Bike, Hammer, Cog, Pickaxe, Wind,
   type LucideIcon,
 } from 'lucide-react';
-import {
-  BovinoTaurino, BovinoZebu, Cavalo, Caprino, Ovino,
-  CapimAlto, CapimBaixo, Sorgo,
-  SiloBolsa, SiloSuperficie, Cascalho,
-  Quadriciclo, Moto,
-} from './tiposLocalIconsCustom';
 
 /**
  * Registro de ícones do cadastro "Tipos de Locais".
@@ -93,40 +83,6 @@ export const TIPO_ICON_PRESETS: TipoIconPreset[] = [
   { name: 'Construction', label: 'Obras / mata-burro', Icon: Construction },
   { name: 'SquareParking', label: 'Pátio de manobra', Icon: SquareParking },
   { name: 'Truck', label: 'Carga e descarga', Icon: Truck },
-  // Rebanho / animais
-  { name: 'BovinoTaurino', label: 'Bovino taurino', Icon: BovinoTaurino },
-  { name: 'BovinoZebu', label: 'Bovino zebu', Icon: BovinoZebu },
-  { name: 'Cavalo', label: 'Cavalo / equino', Icon: Cavalo },
-  { name: 'Caprino', label: 'Caprino / cabra', Icon: Caprino },
-  { name: 'Ovino', label: 'Ovino / ovelha', Icon: Ovino },
-  { name: 'PawPrint', label: 'Animais / fauna', Icon: PawPrint },
-  { name: 'Rabbit', label: 'Coelho / cunicultura', Icon: Rabbit },
-  { name: 'Dog', label: 'Cão de guarda', Icon: Dog },
-  { name: 'Fish', label: 'Piscicultura', Icon: Fish },
-  { name: 'Egg', label: 'Ovos / postura', Icon: Egg },
-  { name: 'Milk', label: 'Leite / laticínio', Icon: Milk },
-  // Forragens / lavoura
-  { name: 'CapimAlto', label: 'Capim alto', Icon: CapimAlto },
-  { name: 'CapimBaixo', label: 'Capim baixo', Icon: CapimBaixo },
-  { name: 'Sorgo', label: 'Sorgo', Icon: Sorgo },
-  { name: 'Grape', label: 'Fruticultura / parreira', Icon: Grape },
-  { name: 'LeafyGreen', label: 'Hortaliça / olericultura', Icon: LeafyGreen },
-  // Armazenamento / solo
-  { name: 'SiloBolsa', label: 'Silo bolsa', Icon: SiloBolsa },
-  { name: 'SiloSuperficie', label: 'Silo de superfície', Icon: SiloSuperficie },
-  { name: 'Cascalho', label: 'Cascalho / brita', Icon: Cascalho },
-  // Veículos / máquinas
-  { name: 'Quadriciclo', label: 'Quadriciclo', Icon: Quadriciclo },
-  { name: 'Moto', label: 'Moto', Icon: Moto },
-  { name: 'Forklift', label: 'Empilhadeira', Icon: Forklift },
-  { name: 'Car', label: 'Veículo leve', Icon: Car },
-  { name: 'Bus', label: 'Ônibus', Icon: Bus },
-  { name: 'Caravan', label: 'Reboque / carreta', Icon: Caravan },
-  { name: 'Bike', label: 'Bicicleta', Icon: Bike },
-  { name: 'Hammer', label: 'Manutenção / benfeitoria', Icon: Hammer },
-  { name: 'Cog', label: 'Maquinário', Icon: Cog },
-  { name: 'Pickaxe', label: 'Extração / britagem', Icon: Pickaxe },
-  { name: 'Wind', label: 'Cata-vento / clima', Icon: Wind },
 ];
 
 /** name → componente lucide, para resolução em O(1). */

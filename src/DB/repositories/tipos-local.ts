@@ -29,16 +29,13 @@ export interface DefaultCategoria {
 // Fonte única dos defaults consumida pelo seed (orgs novas) E pelo botão
 // "Carregar pré-cadastrados" da UI (qualquer org). Chave = nome do tipo em
 // minúsculas (casamento por `tipo.nome.toLowerCase()`). Tipo ausente = sem 3º nível.
+//
+// "Pastagem cultivada" e "Forrageira de corte/Silagem/Feno" NÃO estão aqui de
+// propósito: o 3º nível desses tipos é VINCULADO ao cadastro de Espécies
+// Forrageiras (a UI projeta/seleciona aquelas espécies), então não semeamos uma
+// lista de texto paralela que divergiria do cadastro.
 export const DEFAULTS_DETALHE_POR_TIPO: Record<string, string[]> = {
-  'pastagem cultivada': [
-    'Capim-Marandu (Braquiarão)', 'Capim-Mombaça', 'Capim-Tanzânia',
-    'Capim-Xaraés (MG-5 / Toledo)', 'Capim-Piatã', 'Braquiarinha (Brachiaria decumbens)',
-    'BRS Quênia', 'BRS Zuri', 'BRS Paiaguás', 'Humidícola', 'Tifton', 'Andropógon',
-  ],
   'pastagem nativa/natural': ['Campo nativo', 'Capim-gordura', 'Grama-batatais'],
-  'capineira / forrageira de corte': [
-    'Capiaçu', 'Cana-de-açúcar', 'Capim-Napier / Elefante', 'Cana forrageira',
-  ],
   'silagem / cultura anual': ['Milho', 'Sorgo', 'Milheto', 'Silagem de capim'],
   'agricultura perene': ['Café', 'Citros', 'Seringueira', 'Cacau'],
   'agricultura anual': ['Soja', 'Milho', 'Sorgo', 'Algodão', 'Feijão', 'Arroz'],
@@ -54,7 +51,7 @@ export const DEFAULT_CATALOGO: DefaultCategoria[] = [
       { nome: 'Pastagem cultivada', icone: 'Sprout' },
       { nome: 'Pastagem nativa/natural', icone: 'Wheat' },
       { nome: 'Pastagem em formação/reforma', icone: 'Tractor' },
-      { nome: 'Capineira / forrageira de corte', icone: 'Leaf' },
+      { nome: 'Forrageira de corte/Silagem/Feno', icone: 'Leaf' },
       { nome: 'Integração (ILP / ILPF / ILF)', icone: 'Recycle' },
       { nome: 'Silagem / Cultura anual', icone: 'Carrot' },
     ],
@@ -302,8 +299,12 @@ export async function updateTipo(id: string, data: {
 }
 
 // Tipos do sistema que NÃO podem ser excluídos (nome em minúsculas).
-// "Pastagem cultivada" é o tipo-base ligado às espécies forrageiras.
-export const TIPOS_PROTEGIDOS = new Set(['pastagem cultivada']);
+// "Pastagem cultivada" é o tipo-base ligado às espécies forrageiras (espelho read-only).
+// "Forrageira de corte/Silagem/Feno" vincula espécies forrageiras escolhidas (seletor).
+export const TIPOS_PROTEGIDOS = new Set([
+  'pastagem cultivada',
+  'forrageira de corte/silagem/feno',
+]);
 
 export async function removeTipo(id: string) {
   const [t] = await db.select({ nome: tiposLocal.nome })

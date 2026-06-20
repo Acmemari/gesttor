@@ -17,6 +17,9 @@ import {
   Lock,
   FileText,
   Tag,
+  Sprout,
+  Link2,
+  ExternalLink,
 } from 'lucide-react';
 import {
   DndContext,
@@ -56,6 +59,10 @@ import {
   type TipoLocalItem,
   type TipoLocalDetalhe,
 } from '../lib/api/tiposLocalClient';
+import {
+  listEspeciesForrageiras,
+  type EspecieForrageira,
+} from '../lib/api/especiesForrageirasClient';
 import { TIPO_ICON_PRESETS, TipoIcon } from './tiposLocalIcons';
 
 // ── Constants & helpers ─────────────────────────────────────────────────────────
@@ -71,14 +78,30 @@ const COLOR_PRESETS = [
 
 const FALLBACK_COR = '#6b7280';
 
-// Tipos do sistema que não podem ser excluídos (nome em minúsculas).
+const norm = (nome: string) => nome.trim().toLowerCase();
+
+// Tipos do sistema que não podem ser excluídos (nome normalizado).
 // Espelha TIPOS_PROTEGIDOS do repo (src/DB/repositories/tipos-local.ts) — manter em sincronia.
-const TIPOS_PROTEGIDOS = new Set(['pastagem cultivada']);
-const isTipoProtegido = (nome: string) => TIPOS_PROTEGIDOS.has(nome.trim().toLowerCase());
+const TIPOS_PROTEGIDOS = new Set(['pastagem cultivada', 'forrageira de corte/silagem/feno']);
+const isTipoProtegido = (nome: string) => TIPOS_PROTEGIDOS.has(norm(nome));
+
+// "Pastagem cultivada": 3º nível é um ESPELHO read-only de TODAS as espécies forrageiras.
+const isTipoEspeciesMirror = (nome: string) => norm(nome) === 'pastagem cultivada';
+
+// "Forrageira de corte/Silagem/Feno" (e o legado "Capineira / forrageira de corte"):
+// 3º nível é um SELETOR — o usuário escolhe quais espécies forrageiras vincular; cada
+// escolha vira um tipo_local_detalhes (subconjunto curado, editável/reordenável).
+const TIPOS_SELETOR_ESPECIE = new Set([
+  'forrageira de corte/silagem/feno',
+  'capineira / forrageira de corte',
+]);
+const isTipoSeletorEspecie = (nome: string) => TIPOS_SELETOR_ESPECIE.has(norm(nome));
 
 interface Props {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onBack?: () => void;
+  /** Navega para a tela "Espécies Forrageiras" (botão Adicionar de "Pastagem cultivada"). */
+  onNavigateToEspecies?: () => void;
   theme?: 'light' | 'dark';
 }
 
@@ -180,13 +203,34 @@ interface DetalheManagerProps {
   onDeleteDetalhe: (id: string) => void;
   onReorderDetalhes: (tipoId: string, ordered: TipoLocalDetalhe[]) => void;
   onSeedDetalhes: (tipoId: string) => void;
+  /** Quando fornecido, habilita o SELETOR de Espécies Forrageiras (catálogo da org). */
+  especies?: EspecieForrageira[];
+  /** Abre o cadastro de Espécies Forrageiras (link "cadastrar nova espécie"). */
+  onNavigateToEspecies?: () => void;
 }
 
 const DetalheManager: React.FC<DetalheManagerProps> = ({
   tipoId, detalhes, onAddDetalhe, onEditDetalhe, onDeleteDetalhe, onReorderDetalhes, onSeedDetalhes,
+  especies, onNavigateToEspecies,
 }) => {
   const [novoDetalhe, setNovoDetalhe] = useState('');
+  const [especieSel, setEspecieSel] = useState('');
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Modo seletor: lista espécies forrageiras do catálogo para o usuário vincular.
+  const seletorEspecie = !!especies;
+  const especiesDisponiveis = useMemo(() => {
+    if (!especies) return [];
+    const vinculadas = new Set(detalhes.map((d) => d.nome.trim().toLowerCase()));
+    return especies.filter((e) => !vinculadas.has(e.nome.trim().toLowerCase()));
+  }, [especies, detalhes]);
+
+  const submitEspecie = () => {
+    const nome = especieSel.trim();
+    if (!nome) return;
+    onAddDetalhe(tipoId, nome);
+    setEspecieSel('');
+  };
 
   const handleDetalheDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -211,15 +255,67 @@ const DetalheManager: React.FC<DetalheManagerProps> = ({
     <div className="rounded-lg border border-[#F1F5F9] bg-[#FAFAFA]">
       <div className="flex items-center justify-between gap-2 border-b border-[#F1F5F9] px-2.5 py-1.5">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Detalhamento</span>
-        <button
-          type="button"
-          onClick={() => onSeedDetalhes(tipoId)}
-          className="flex items-center gap-1 rounded-md border border-[#bbf7d0] bg-[#F0FDF4] px-2 py-1 text-[10.5px] font-bold text-[#15803d] transition-colors hover:bg-[#dcfce7]"
-          title="Carregar itens sugeridos para este tipo"
-        >
-          <Sparkles size={12} /> Carregar pré-cadastrados
-        </button>
+        {!seletorEspecie && (
+          <button
+            type="button"
+            onClick={() => onSeedDetalhes(tipoId)}
+            className="flex items-center gap-1 rounded-md border border-[#bbf7d0] bg-[#F0FDF4] px-2 py-1 text-[10.5px] font-bold text-[#15803d] transition-colors hover:bg-[#dcfce7]"
+            title="Carregar itens sugeridos para este tipo"
+          >
+            <Sparkles size={12} /> Carregar pré-cadastrados
+          </button>
+        )}
       </div>
+
+      {/* Seletor de Espécies Forrageiras (só para tipos vinculados ao catálogo) */}
+      {seletorEspecie && (
+        <div className="border-b border-[#F1F5F9] bg-[#F0FDF4]/40 px-2.5 py-2">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <Sprout size={12} className="text-[#15803d]" />
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[#15803d]">
+              Vincular espécie forrageira
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={especieSel}
+              onChange={(e) => setEspecieSel(e.target.value)}
+              disabled={especiesDisponiveis.length === 0}
+              className="h-8 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-[12.5px] text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[2px] focus:ring-[#16a34a]/15 disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <option value="">
+                {especiesDisponiveis.length > 0
+                  ? '— Selecionar espécie forrageira —'
+                  : especies!.length === 0
+                    ? 'Nenhuma espécie cadastrada'
+                    : 'Todas as espécies já vinculadas'}
+              </option>
+              {especiesDisponiveis.map((e) => (
+                <option key={e.id} value={e.nome}>
+                  {e.nome}{e.nomeCientifico ? ` — ${e.nomeCientifico}` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={submitEspecie}
+              disabled={!especieSel}
+              className="flex h-8 items-center gap-1 rounded-lg bg-[#16A34A] px-2.5 text-[12px] font-bold text-white transition-all hover:bg-[#15803D] disabled:opacity-40"
+            >
+              <Plus size={13} /> Vincular
+            </button>
+          </div>
+          {onNavigateToEspecies && (
+            <button
+              type="button"
+              onClick={onNavigateToEspecies}
+              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#15803d] hover:underline"
+            >
+              <Plus size={11} /> Cadastrar nova espécie forrageira <ExternalLink size={10} className="opacity-70" />
+            </button>
+          )}
+        </div>
+      )}
 
       {detalhes.length > 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDetalheDragEnd}>
@@ -233,18 +329,20 @@ const DetalheManager: React.FC<DetalheManagerProps> = ({
         </DndContext>
       ) : (
         <div className="px-2.5 py-2 text-[11.5px] text-gray-400">
-          Nenhum detalhe ainda. Use “Carregar pré-cadastrados” ou adicione abaixo.
+          {seletorEspecie
+            ? 'Nenhuma espécie vinculada ainda. Selecione uma espécie forrageira acima.'
+            : 'Nenhum detalhe ainda. Use “Carregar pré-cadastrados” ou adicione abaixo.'}
         </div>
       )}
 
-      {/* Adicionar detalhe (inline) */}
+      {/* Adicionar detalhe livre (inline) — também serve p/ itens fora do catálogo */}
       <div className="flex items-center gap-1.5 px-2.5 py-2">
         <input
           type="text"
           value={novoDetalhe}
           onChange={(e) => setNovoDetalhe(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNovo(); } }}
-          placeholder="Adicionar detalhe (ex.: Capim-Marandu)…"
+          placeholder={seletorEspecie ? 'Outro item (texto livre)…' : 'Adicionar detalhe (ex.: Capim-Marandu)…'}
           className="h-8 flex-1 rounded-lg border border-gray-200 bg-white px-2.5 text-[12.5px] text-gray-800 focus:outline-none focus:border-[#16a34a] focus:ring-[2px] focus:ring-[#16a34a]/15"
         />
         <button
@@ -260,12 +358,73 @@ const DetalheManager: React.FC<DetalheManagerProps> = ({
   );
 };
 
+// ── Espelho read-only das Espécies Forrageiras (3º nível de "Pastagem cultivada") ─
+// O detalhamento de "Pastagem cultivada" é VINCULADO ao cadastro de Espécies
+// Forrageiras: a lista abaixo reflete aquele cadastro (na mesma ordem) e não é
+// editável aqui — para alterar, use a tela "Espécies Forrageiras".
+
+interface EspeciesForrageirasMirrorProps {
+  especies: EspecieForrageira[];
+  /** Abre a tela "Espécies Forrageiras" (botão Adicionar). Sem ele, o botão some. */
+  onAdd?: () => void;
+}
+
+const EspeciesForrageirasMirror: React.FC<EspeciesForrageirasMirrorProps> = ({ especies, onAdd }) => (
+  <div className="rounded-lg border border-[#bbf7d0] bg-[#F0FDF4]/50">
+    <div className="flex items-center gap-1.5 border-b border-[#dcfce7] px-2.5 py-1.5">
+      <Link2 size={12} className="text-[#15803d]" />
+      <span className="text-[11px] font-bold uppercase tracking-wide text-[#15803d]">
+        Vinculado ao cadastro de Espécies Forrageiras
+      </span>
+    </div>
+
+    {especies.length === 0 ? (
+      <div className="px-2.5 py-2 text-[11.5px] text-gray-400">
+        Nenhuma espécie cadastrada. Use “Adicionar espécie forrageira” para cadastrar — elas aparecem aqui automaticamente.
+      </div>
+    ) : (
+      <div className="px-1 py-0.5">
+        {especies.map((e) => (
+          <div key={e.id} className="flex items-center gap-2 rounded-md px-2 py-1.5">
+            <Sprout size={13} className="shrink-0 text-[#16a34a]" />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#0F172A]">
+              {e.nome}
+              {e.nomeCientifico && (
+                <span className="ml-1.5 text-[11px] italic text-gray-400">{e.nomeCientifico}</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    )}
+
+    <div className="border-t border-[#dcfce7] px-2.5 py-1.5 text-[11px] leading-snug text-gray-400">
+      Lista somente-leitura. Adicione, renomeie, reordene ou remova espécies na tela “Espécies Forrageiras”.
+    </div>
+
+    {onAdd && (
+      <button
+        type="button"
+        onClick={onAdd}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-[#dcfce7] py-2 text-[12px] font-semibold text-[#15803d] transition-colors hover:bg-[#dcfce7]"
+        title="Abrir o cadastro de Espécies Forrageiras"
+      >
+        <Plus size={14} /> Adicionar espécie forrageira <ExternalLink size={12} className="opacity-70" />
+      </button>
+    )}
+  </div>
+);
+
 // ── Sortable Row (um tipo dentro de uma categoria) ──────────────────────────────
 
 interface TipoRowProps {
   tipo: TipoLocalItem;
   cor: string;
   detalhes: TipoLocalDetalhe[];
+  /** Espécies forrageiras da org — só usadas no espelho de "Pastagem cultivada". */
+  especies: EspecieForrageira[];
+  /** Abre o cadastro de Espécies Forrageiras (botão Adicionar do espelho). */
+  onNavigateToEspecies?: () => void;
   onEdit: (t: TipoLocalItem) => void;
   onDelete: (id: string) => void;
   onAddDetalhe: (tipoId: string, nome: string) => void;
@@ -276,7 +435,7 @@ interface TipoRowProps {
 }
 
 const TipoRow: React.FC<TipoRowProps> = ({
-  tipo, cor, detalhes, onEdit, onDelete,
+  tipo, cor, detalhes, especies, onNavigateToEspecies, onEdit, onDelete,
   onAddDetalhe, onEditDetalhe, onDeleteDetalhe, onReorderDetalhes, onSeedDetalhes,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -288,6 +447,13 @@ const TipoRow: React.FC<TipoRowProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
   const [expanded, setExpanded] = useState(false);
+
+  // 3º nível vinculado às Espécies Forrageiras:
+  //  • "Pastagem cultivada" → espelho read-only de TODAS as espécies.
+  //  • "Forrageira de corte/Silagem/Feno" → seletor (subconjunto curado em detalhes).
+  const mirror = isTipoEspeciesMirror(tipo.nome);
+  const seletor = isTipoSeletorEspecie(tipo.nome);
+  const detCount = mirror ? especies.length : detalhes.length;
 
   return (
     <div
@@ -326,9 +492,9 @@ const TipoRow: React.FC<TipoRowProps> = ({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-[13.5px] font-semibold text-[#0F172A]">{tipo.nome}</span>
-            {detalhes.length > 0 && (
+            {detCount > 0 && (
               <span className="shrink-0 rounded-full bg-[#F0FDF4] px-1.5 text-[10.5px] font-bold text-[#15803d]">
-                {detalhes.length}
+                {detCount}
               </span>
             )}
           </div>
@@ -363,18 +529,24 @@ const TipoRow: React.FC<TipoRowProps> = ({
         </div>
       </div>
 
-      {/* 3º nível: detalhamento do tipo */}
+      {/* 3º nível: detalhamento do tipo (espelho ou seletor de Espécies Forrageiras) */}
       {expanded && (
         <div className="mb-2 ml-9 mr-2">
-          <DetalheManager
-            tipoId={tipo.id}
-            detalhes={detalhes}
-            onAddDetalhe={onAddDetalhe}
-            onEditDetalhe={onEditDetalhe}
-            onDeleteDetalhe={onDeleteDetalhe}
-            onReorderDetalhes={onReorderDetalhes}
-            onSeedDetalhes={onSeedDetalhes}
-          />
+          {mirror ? (
+            <EspeciesForrageirasMirror especies={especies} onAdd={onNavigateToEspecies} />
+          ) : (
+            <DetalheManager
+              tipoId={tipo.id}
+              detalhes={detalhes}
+              onAddDetalhe={onAddDetalhe}
+              onEditDetalhe={onEditDetalhe}
+              onDeleteDetalhe={onDeleteDetalhe}
+              onReorderDetalhes={onReorderDetalhes}
+              onSeedDetalhes={onSeedDetalhes}
+              especies={seletor ? especies : undefined}
+              onNavigateToEspecies={seletor ? onNavigateToEspecies : undefined}
+            />
+          )}
         </div>
       )}
     </div>
@@ -387,6 +559,8 @@ interface CategoriaSectionProps {
   categoria: TipoLocalCategoria;
   tipos: TipoLocalItem[];
   detalhesPorTipo: Record<string, TipoLocalDetalhe[]>;
+  especies: EspecieForrageira[];
+  onNavigateToEspecies?: () => void;
   isFirst: boolean;
   isLast: boolean;
   onMove: (id: string, dir: -1 | 1) => void;
@@ -404,7 +578,7 @@ interface CategoriaSectionProps {
 }
 
 const CategoriaSection: React.FC<CategoriaSectionProps> = ({
-  categoria, tipos, detalhesPorTipo, isFirst, isLast, onMove,
+  categoria, tipos, detalhesPorTipo, especies, onNavigateToEspecies, isFirst, isLast, onMove,
   onEditCategoria, onDeleteCategoria, onEditTipo, onDeleteTipo, onReorderTipos, onAddTipo,
   onAddDetalhe, onEditDetalhe, onDeleteDetalhe, onReorderDetalhes, onSeedDetalhes,
 }) => {
@@ -490,6 +664,8 @@ const CategoriaSection: React.FC<CategoriaSectionProps> = ({
                   tipo={t}
                   cor={t.cor || cor}
                   detalhes={detalhesPorTipo[t.id] ?? []}
+                  especies={especies}
+                  onNavigateToEspecies={onNavigateToEspecies}
                   onEdit={onEditTipo}
                   onDelete={onDeleteTipo}
                   onAddDetalhe={onAddDetalhe}
@@ -591,7 +767,7 @@ const IconePicker: React.FC<{ value: string; onChange: (v: string) => void }> = 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
+const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack, onNavigateToEspecies }) => {
   const { user } = useAuth();
   const { selectedClient } = useClient();
   const organizationId = selectedClient?.id ?? user?.organizationId ?? '';
@@ -599,6 +775,8 @@ const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [categorias, setCategorias] = useState<TipoLocalCategoria[]>([]);
   const [tipos, setTipos] = useState<TipoLocalItem[]>([]);
   const [detalhes, setDetalhes] = useState<TipoLocalDetalhe[]>([]);
+  // Espécies forrageiras: fonte única do 3º nível de "Pastagem cultivada".
+  const [especies, setEspecies] = useState<EspecieForrageira[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [aba, setAba] = useState<'lancar' | 'registros'>('registros');
@@ -629,10 +807,15 @@ const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
     if (!organizationId) return;
     try {
       setLoading(true);
-      const data = await listTiposLocal(organizationId);
+      const [data, esp] = await Promise.all([
+        listTiposLocal(organizationId),
+        // Espelho de "Pastagem cultivada"; falha aqui não derruba os tipos.
+        listEspeciesForrageiras(organizationId).catch(() => [] as EspecieForrageira[]),
+      ]);
       setCategorias(data.categorias);
       setTipos(data.tipos);
       setDetalhes(data.detalhes ?? []);
+      setEspecies(esp);
       setCategoriaId((prev) => prev || data.categorias[0]?.id || '');
     } catch (err: any) {
       onToast?.(err.message || 'Erro ao carregar tipos de locais', 'error');
@@ -896,6 +1079,11 @@ const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const totalTipos = tipos.length;
   const canSave = !!nome.trim() && !!categoriaId && !saving;
 
+  // Tipo em edição vinculado às Espécies Forrageiras? (espelho ou seletor)
+  const editingTipo = editingId ? tipos.find((t) => t.id === editingId) : null;
+  const editingMirror = !!editingTipo && isTipoEspeciesMirror(editingTipo.nome);
+  const editingSeletor = !!editingTipo && isTipoSeletorEspecie(editingTipo.nome);
+
   return (
     <div className="h-full flex flex-col p-6 md:p-8 max-w-5xl mx-auto w-full min-h-screen animate-in fade-in duration-500">
       {/* Cabeçalho padrão */}
@@ -996,20 +1184,26 @@ const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
               <Layers size={14} className="text-[#16A34A]" /> Detalhamento <span className="font-normal text-gray-400">(3º nível — opcional)</span>
             </label>
             {editingId ? (
-              <>
-                <DetalheManager
-                  tipoId={editingId}
-                  detalhes={detalhesPorTipo[editingId] ?? []}
-                  onAddDetalhe={handleAddDetalhe}
-                  onEditDetalhe={handleEditDetalhe}
-                  onDeleteDetalhe={(id) => setDeleteDetalheId(id)}
-                  onReorderDetalhes={handleReorderDetalhes}
-                  onSeedDetalhes={handleSeedDetalhes}
-                />
-                <p className="mt-1 text-[11.5px] text-gray-400">
-                  As alterações de detalhamento são salvas na hora (independente do botão “Salvar alterações”).
-                </p>
-              </>
+              editingMirror ? (
+                <EspeciesForrageirasMirror especies={especies} onAdd={onNavigateToEspecies} />
+              ) : (
+                <>
+                  <DetalheManager
+                    tipoId={editingId}
+                    detalhes={detalhesPorTipo[editingId] ?? []}
+                    onAddDetalhe={handleAddDetalhe}
+                    onEditDetalhe={handleEditDetalhe}
+                    onDeleteDetalhe={(id) => setDeleteDetalheId(id)}
+                    onReorderDetalhes={handleReorderDetalhes}
+                    onSeedDetalhes={handleSeedDetalhes}
+                    especies={editingSeletor ? especies : undefined}
+                    onNavigateToEspecies={editingSeletor ? onNavigateToEspecies : undefined}
+                  />
+                  <p className="mt-1 text-[11.5px] text-gray-400">
+                    As alterações de detalhamento são salvas na hora (independente do botão “Salvar alterações”).
+                  </p>
+                </>
+              )
             ) : (
               <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2.5 text-[12.5px] text-gray-400">
                 Salve o tipo primeiro para habilitar o detalhamento (ex.: espécies de uma pastagem, culturas de uma silagem).
@@ -1053,6 +1247,8 @@ const TiposLocalManagement: React.FC<Props> = ({ onToast, onBack }) => {
                   categoria={c}
                   tipos={tiposPorCategoria[c.id] ?? []}
                   detalhesPorTipo={detalhesPorTipo}
+                  especies={especies}
+                  onNavigateToEspecies={onNavigateToEspecies}
                   isFirst={i === 0}
                   isLast={i === categorias.length - 1}
                   onMove={moveCategoria}

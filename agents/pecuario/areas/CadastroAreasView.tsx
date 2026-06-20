@@ -86,6 +86,19 @@ interface CadastroAreasViewProps {
   asOfAreas?: Area[] | null;
   /** Colore os polígonos por `uso` (cor da terra) em vez de por nível. */
   colorByUso?: boolean;
+  /**
+   * Abertura controlada da tela mestra "Cadastro de Áreas". Quando definido, o
+   * container (ex.: a aba Locais em modo mapa) decide se a tela está aberta —
+   * permitindo usá-la como tela inicial e alternar via abas no rodapé. Ausente ⇒
+   * estado interno (a tela só abre pelo botão "Cadastrar áreas").
+   */
+  mestreOpen?: boolean;
+  /** Notifica o container quando a tela mestra abre/fecha (abrir = tela inicial). */
+  onMestreOpenChange?: (open: boolean) => void;
+  /** Mostra no rodapé da tela mestra a aba "Colunas" (volta às colunas das áreas). */
+  mestreColumnsTab?: boolean;
+  /** Renderiza a tela mestra embutida (preenche este container, sem flutuar). */
+  mestreEmbedded?: boolean;
 }
 
 interface PropsDraft {
@@ -164,6 +177,10 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   resizeSignal,
   asOfAreas,
   colorByUso = false,
+  mestreOpen,
+  onMestreOpenChange,
+  mestreColumnsTab = false,
+  mestreEmbedded = false,
 }) => {
   // ── Estado de domínio ───────────────────────────────────────────────────
   const { selectedOrganization } = useHierarchy();
@@ -180,8 +197,19 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   const [basemap, setBasemap] = useState<'sat' | 'osm'>('sat');
   const [mapReady, setMapReady] = useState(false);
   const [drawing, setDrawing] = useState(false);
-  // Importação do Google Earth + camada de referência (farm_maps).
-  const [importOpen, setImportOpen] = useState(false);
+  // Tela mestra "Cadastro de Áreas" (importação Google Earth + camada de
+  // referência). Aberta de forma CONTROLADA quando o container passa `mestreOpen`
+  // (aba Locais em modo mapa, onde é a tela inicial e alterna por abas no rodapé);
+  // senão, estado interno acionado pelo botão "Cadastrar áreas".
+  const [internalMestreOpen, setInternalMestreOpen] = useState(false);
+  const importOpen = mestreOpen !== undefined ? mestreOpen : internalMestreOpen;
+  const setImportOpen = useCallback(
+    (open: boolean) => {
+      if (mestreOpen === undefined) setInternalMestreOpen(open);
+      onMestreOpenChange?.(open);
+    },
+    [mestreOpen, onMestreOpenChange],
+  );
   const [overlayMaps, setOverlayMaps] = useState<FarmMapData[]>([]);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [overlayReload, setOverlayReload] = useState(0);
@@ -195,7 +223,8 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   const toggleLevelVisibility = useCallback((nv: Nivel) => {
     setHiddenLevels((prev) => {
       const next = new Set(prev);
-      next.has(nv) ? next.delete(nv) : next.add(nv);
+      if (next.has(nv)) next.delete(nv);
+      else next.add(nv);
       return next;
     });
   }, []);
@@ -549,9 +578,12 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   // pai de cada nível por contenção espacial (`sugerirParent`/`resolveFk`).
   const handleMestreSave = useCallback(
     async (payload: MestreSavePayload): Promise<MestreSaveResult> => {
-      const { items, saveOverlay, file, geojson } = payload;
+      const { items, saveOverlay, file, geojson, dataReferencia } = payload;
+      // Data escolhida no diálogo "Salvar" carimba os registros (fallback: prop/null).
+      const dataGrava = dataReferencia ?? dataInicial ?? null;
       setBusy(true);
       const savedIds: string[] = [];
+      const errs: string[] = []; // falhas por item — surfaçadas ao usuário (não engolir).
       try {
         // Habilita de uma vez os níveis presentes (em vez de dentro do loop).
         const needed = new Set(
@@ -593,6 +625,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             nFaz++;
           } catch (e) {
             console.error('Falha ao salvar o contorno da fazenda', e);
+            errs.push(`contorno da fazenda: ${(e as Error)?.message ?? e}`);
           }
         }
 
@@ -602,7 +635,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const fk = resolveFk(created, resolveParent(it, 'retiro'), 'retiro');
             const area = await apiCreateArea(farmId, {
               nivel: 'retiro', nome: it.nome, coords: it.coords, fonte: it.fonte,
-              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -610,6 +643,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             nRet++;
           } catch (e) {
             console.error('Falha ao criar retiro', it.nome, e);
+            errs.push(`retiro "${it.nome}": ${(e as Error)?.message ?? e}`);
           }
         }
 
@@ -621,7 +655,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const fk = resolveFk(created, parentId, 'setor');
             const area = await apiCreateArea(farmId, {
               nivel: 'setor', nome: it.nome, coords: it.coords, fonte: it.fonte,
-              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -629,6 +663,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             nSet++;
           } catch (e) {
             console.error('Falha ao criar setor', it.nome, e);
+            errs.push(`setor "${it.nome}": ${(e as Error)?.message ?? e}`);
           }
         }
 
@@ -638,7 +673,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const fk = resolveFk(created, resolveParent(it, 'local'), 'local');
             const area = await apiCreateArea(farmId, {
               nivel: 'local', nome: it.nome, coords: it.coords, fonte: it.fonte,
-              tipo: it.tipo ?? 'Pasto', retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+              tipo: it.tipo ?? 'Pasto', retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -646,6 +681,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             nLoc++;
           } catch (e) {
             console.error('Falha ao criar local', it.nome, e);
+            errs.push(`local "${it.nome}": ${(e as Error)?.message ?? e}`);
           }
         }
 
@@ -682,8 +718,18 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         ]
           .filter(Boolean)
           .join(' + ');
-        if (partes) onToast?.(`Cadastrado: ${partes}.`, 'success');
-        else if (saveOverlay) onToast?.('Mapa de referência salvo.', 'success');
+        if (partes) {
+          onToast?.(`Cadastrado: ${partes}.`, 'success');
+          if (errs.length) onToast?.(`Alguns itens não foram salvos — ${errs[0]}`, 'warning');
+        } else if (saveOverlay && !errs.length) {
+          onToast?.('Mapa de referência salvo.', 'success');
+        } else {
+          // Nada foi gravado: NÃO silenciar — mostra o motivo real da falha.
+          onToast?.(
+            errs.length ? `Não foi possível salvar: ${errs[0]}` : 'Nada foi salvo. Verifique a conexão e tente novamente.',
+            'error',
+          );
+        }
         if (orphanSetores)
           onToast?.(`${orphanSetores} setor(es) sem retiro foram vinculados direto à fazenda.`, 'warning');
 
@@ -1294,6 +1340,8 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           onClose={() => setImportOpen(false)}
           onConfirm={handleMestreSave}
           onToast={onToast}
+          onShowColumns={mestreColumnsTab && !mestreEmbedded ? () => setImportOpen(false) : undefined}
+          embedded={mestreEmbedded}
         />
       )}
     </div>

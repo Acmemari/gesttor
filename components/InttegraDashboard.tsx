@@ -334,7 +334,12 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
       return (
         <Suspense fallback={<LoadingFallback />}>
           <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
-            <TiposLocalManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+            <TiposLocalManagement
+              theme="dark"
+              onToast={onToast}
+              onBack={() => setSubView('desktop')}
+              onNavigateToEspecies={() => setSubView('especies-forrageiras')}
+            />
           </div>
         </Suspense>
       );
