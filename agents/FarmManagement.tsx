@@ -30,6 +30,9 @@ import {
 } from '../lib/api/farmsClient';
 import FarmPermissionsModal from '../components/FarmPermissionsModal';
 import FarmLocaisTab from '../components/FarmLocaisTab';
+import NiveisInline from './pecuario/areas/NiveisInline';
+import { type NiveisCombo } from './pecuario/areas/NiveisSetup';
+import { getLevels, setLevels as persistLevels } from './pecuario/areas/areasClient';
 import {
   useFarmPermissions,
   useBatchFarmPermissions,
@@ -210,6 +213,12 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
   const [permissionsModalFarm, setPermissionsModalFarm] = useState<Farm | null>(null);
   const [areaWarning, setAreaWarning] = useState<string | null>(null);
   const [farmActiveTab, setFarmActiveTab] = useState<'dados' | 'locais'>('dados');
+  // Combinação de níveis da fazenda (Fazenda › Retiro › Setor › Local), editada no
+  // rodapé da aba "Dados Gerais". Carregada/salva pela mesma API da aba Locais.
+  const [niveisCombo, setNiveisCombo] = useState<NiveisCombo>({ retiro: true, setor: false, local: true, usarMapa: true });
+  const [niveisSaved, setNiveisSaved] = useState<NiveisCombo | null>(null);
+  const [niveisLoading, setNiveisLoading] = useState(false);
+  const [niveisSaving, setNiveisSaving] = useState(false);
   const isLoading = hierarchyLoading.farms;
 
   const isCliente = user?.qualification === 'cliente';
@@ -636,6 +645,59 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
       setView('list');
     }
   }, [farms.length, isLoading, view, editingFarm, isCreatingNew]);
+
+  // ── Combinação de níveis: carrega a da fazenda em edição ────────────────────
+  // (Fazendas novas ainda não têm id; o bloco de níveis só aparece ao editar.)
+  const editingFarmId = editingFarm?.id ?? null;
+  useEffect(() => {
+    if (!editingFarmId) {
+      setNiveisSaved(null);
+      return;
+    }
+    // Só recarrega quando a aba "Dados Gerais" está visível — assim, ao voltar da
+    // aba "Locais" (onde os níveis também podem ser alternados), os toggles ficam
+    // em sincronia com o back-end e não sobrescrevem alterações feitas lá.
+    if (farmActiveTab !== 'dados') return;
+    let cancelled = false;
+    setNiveisLoading(true);
+    getLevels(editingFarmId)
+      .then((lv) => {
+        if (cancelled) return;
+        const combo: NiveisCombo = { retiro: !!lv.retiro, setor: !!lv.setor, local: !!lv.local, usarMapa: lv.usarMapa !== false };
+        setNiveisCombo(combo);
+        setNiveisSaved(combo);
+      })
+      .catch((err) => console.error('Erro ao carregar níveis da fazenda:', err))
+      .finally(() => {
+        if (!cancelled) setNiveisLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingFarmId, farmActiveTab]);
+
+  const niveisDirty =
+    !!niveisSaved &&
+    (niveisCombo.retiro !== niveisSaved.retiro ||
+      niveisCombo.setor !== niveisSaved.setor ||
+      niveisCombo.local !== niveisSaved.local ||
+      niveisCombo.usarMapa !== niveisSaved.usarMapa);
+
+  const handleSaveNiveis = useCallback(async () => {
+    if (!editingFarmId || niveisSaving) return;
+    setNiveisSaving(true);
+    try {
+      // configured:true mantém a fazenda fora do antigo "gate" e marca a escolha deliberada.
+      await persistLevels(editingFarmId, niveisCombo, true);
+      setNiveisSaved(niveisCombo);
+      onToast?.('Estrutura de níveis salva.', 'success');
+    } catch (err) {
+      console.error('Erro ao salvar a estrutura de níveis:', err);
+      onToast?.('Não foi possível salvar a estrutura de níveis.', 'error');
+    } finally {
+      setNiveisSaving(false);
+    }
+  }, [editingFarmId, niveisCombo, niveisSaving, onToast]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -1887,6 +1949,21 @@ const FarmManagement: React.FC<FarmManagementProps> = ({ onToast, isInttegra = f
                 </div>
               </div>
             </div>
+
+            {/* ─── Estrutura de níveis da fazenda (Fazenda › Retiro › Setor › Local) ─── */}
+            {editingFarm && (
+              <div className={`mt-4 pt-4 border-t ${isInttegra ? 'border-[#E5E7EB]' : 'border-ai-border'}`}>
+                <NiveisInline
+                  value={niveisCombo}
+                  onChange={setNiveisCombo}
+                  onSave={handleSaveNiveis}
+                  dirty={niveisDirty}
+                  saving={niveisSaving}
+                  loading={niveisLoading}
+                  readOnly={formReadOnly}
+                />
+              </div>
+            )}
           </div>
         </fieldset>
         )}

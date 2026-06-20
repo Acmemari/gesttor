@@ -15,14 +15,20 @@ export type TipoLocal =
   | 'Reserva'
   | 'Outro';
 
+/** Uso da terra (eixo distinto de TipoLocal). Versionado em area_versoes. */
+export type Uso = 'Pastagem' | 'Agricultura' | 'Reserva' | 'Silvicultura' | 'Outro';
+
 export interface Area {
   id: string;
   nivel: Nivel;
   nome: string;
   /** id da área de nível superior (vínculo hierárquico). */
   parent: string | null;
-  /** só para nivel === 'local'. */
-  tipo: TipoLocal | null;
+  /** só para nivel === 'local'. Texto livre: enum legado (TipoLocal) OU nome de
+   *  tipo do catálogo "Tipos de Locais" (ex.: "Pastagem cultivada"). */
+  tipo: string | null;
+  /** uso da terra (só nivel === 'local'); muda pela Conversão de Uso. */
+  uso?: Uso | null;
   /** anel do polígono em [lat, lng] (sem ponto de fechamento duplicado). */
   coords: [number, number][];
   /** 'desenho' (mão) ou 'kml' (importado). */
@@ -62,6 +68,17 @@ export const TIPOS_LOCAL: TipoLocal[] = [
   'Reserva',
   'Outro',
 ];
+
+export const USOS: Uso[] = ['Pastagem', 'Agricultura', 'Reserva', 'Silvicultura', 'Outro'];
+
+/** Cor por uso da terra (para colorir o mapa por uso). */
+export const USO_COR: Record<Uso, string> = {
+  Pastagem: '#16a34a',
+  Agricultura: '#ca8a04',
+  Reserva: '#0e7490',
+  Silvicultura: '#15803d',
+  Outro: '#6b7280',
+};
 
 /* ===== Movimentação de Áreas — ledger (/api/area-movimentos) ===== */
 

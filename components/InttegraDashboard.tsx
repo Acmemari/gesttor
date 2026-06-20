@@ -19,6 +19,9 @@ type SubView =
   | 'campos-personalizados'
   | 'tipos-chifre'
   | 'lotes'
+  | 'estacao-monta'
+  | 'especies-forrageiras'
+  | 'tipos-local'
   | 'people'
   | 'ficha-animal'
   | 'propriedades';
@@ -36,6 +39,9 @@ const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'campos-personalizados',
   'tipos-chifre',
   'lotes',
+  'estacao-monta',
+  'especies-forrageiras',
+  'tipos-local',
   'people',
   'ficha-animal',
   'propriedades',
@@ -65,6 +71,9 @@ const MotivosMorteManagement = lazyWithRetry(() => import('../agents/MotivosMort
 const CamposPersonalizadosManagement = lazyWithRetry(() => import('../agents/CamposPersonalizadosManagement'));
 const TiposChifreManagement = lazyWithRetry(() => import('../agents/TiposChifreManagement'));
 const LotesManagement = lazyWithRetry(() => import('../agents/LotesManagement'));
+const EstacaoMontaManagement = lazyWithRetry(() => import('../agents/EstacaoMontaManagement'));
+const EspeciesForrageirasManagement = lazyWithRetry(() => import('../agents/EspeciesForrageirasManagement'));
+const TiposLocalManagement = lazyWithRetry(() => import('../agents/TiposLocalManagement'));
 const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
 const PeopleManagement = lazyWithRetry(() => import('../agents/PeopleManagement'));
 
@@ -303,6 +312,33 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         </Suspense>
       );
     }
+    if (subView === 'estacao-monta') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <EstacaoMontaManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
+    if (subView === 'especies-forrageiras') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <EspeciesForrageirasManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
+    if (subView === 'tipos-local') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <TiposLocalManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
     if (subView === 'people') {
       return (
         <Suspense fallback={<LoadingFallback />}>
@@ -346,6 +382,9 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
           onSelectCamposPersonalizados={() => setSubView('campos-personalizados')}
           onSelectTiposChifre={() => setSubView('tipos-chifre')}
           onSelectLotes={() => setSubView('lotes')}
+          onSelectEstacaoMonta={() => setSubView('estacao-monta')}
+          onSelectEspeciesForrageiras={() => setSubView('especies-forrageiras')}
+          onSelectTiposLocal={() => setSubView('tipos-local')}
           onSelectPessoas={() => setSubView('people')}
           onSelectFichaAnimal={() => setSubView('ficha-animal')}
           onSelectPropriedades={() => setSubView('propriedades')}

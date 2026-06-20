@@ -23,7 +23,7 @@ const TEXT_FIELDS = [
   'pelagem', 'chifre', 'frame', 'categoriaGenealogica', 'ceip', 'porte', 'lote',
   'rfid', 'sisbov', 'rgn', 'rgd', 'serie', 'pesagem', 'obs', 'eventoEntrada',
   'dataEntrada', 'data', 'colostro', 'parto', 'fazendaNascimento', 'pai',
-  'mae', 'avoPaterno', 'avoMaterno',
+  'mae', 'avoPaterno', 'avoPaterna', 'avoMaterno', 'avoMaterna',
 ] as const;
 
 /** Colunas numéricas (peso em Kg). Aceita vírgula decimal; inválido → null. */

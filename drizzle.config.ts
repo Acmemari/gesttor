@@ -29,6 +29,8 @@ export default defineConfig({
     'consulting_firms', 'app_settings', 'animal_categories',
     // Fazenda: hierarquia de localização (Retiro › Setor › Local) + config de níveis
     'farm_setores', 'farm_location_levels',
+    // Movimentação de Áreas: ledger + versões (linha do tempo)
+    'area_movimentos', 'area_versoes',
     // Gestão Orçamentária
     'plano_contas', 'orcamentos', 'orcamento_farms', 'orcamento_colaboradores',
     'orcamento_versoes', 'premissas', 'log_auditoria_orcamento',

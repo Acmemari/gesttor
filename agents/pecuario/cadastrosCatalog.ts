@@ -18,6 +18,9 @@ export const PECUARIO_CADASTROS: CadastroRef[] = [
   { id: 'motivos-morte', label: 'Motivos de Morte' },
   { id: 'tipos-chifre', label: 'Tipo de Chifre - Aspas' },
   { id: 'lotes', label: 'Cadastro de Lotes' },
+  { id: 'estacao-monta', label: 'Estação de Monta' },
+  { id: 'especies-forrageiras', label: 'Espécies Forrageiras' },
+  { id: 'tipos-local', label: 'Tipos de Locais' },
   { id: 'people', label: 'Cadastro de Pessoas' },
   { id: 'propriedades', label: 'Cadastro de Fazendas' },
 ];

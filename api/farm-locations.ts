@@ -5,8 +5,8 @@
  *   GET    ?bundle=farmId               — { retiros, setores, locais, levels }
  *
  * Níveis ativos por fazenda:
- *   GET    ?levels=farmId               — { retiro, setor, local }
- *   POST   { type:'levels', farmId, retiro, setor, local }
+ *   GET    ?levels=farmId               — { retiro, setor, local, configured, usarMapa }
+ *   POST   { type:'levels', farmId, retiro, setor, local, configured?, usarMapa? }
  *
  * Retiros:
  *   GET    ?farmId=xxx                  — list retiros
@@ -129,7 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { type } = req.body ?? {};
 
       if (type === 'levels') {
-        const { farmId, retiro, setor, local, autoNames, configured } = req.body;
+        const { farmId, retiro, setor, local, autoNames, configured, usarMapa } = req.body;
         if (!farmId) {
           jsonError(res, 'Campo obrigatório: farmId', { status: 400 });
           return;
@@ -154,6 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           names,
           // Só repassa quando vier booleano explícito; ausência preserva o atual.
           typeof configured === 'boolean' ? configured : undefined,
+          typeof usarMapa === 'boolean' ? usarMapa : undefined,
         );
         jsonSuccess(res, row);
         return;

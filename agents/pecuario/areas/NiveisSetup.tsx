@@ -14,6 +14,10 @@ export interface NiveisCombo {
   retiro: boolean;
   setor: boolean;
   local: boolean;
+  // Controlar os locais com mapa (colunas + mapa) ou sem mapa (só colunas)?
+  // Opcional aqui (os presets de níveis não o definem); o cadastro de fazenda
+  // sempre fornece um valor concreto ao editar a estrutura.
+  usarMapa?: boolean;
 }
 
 interface NiveisSetupProps {

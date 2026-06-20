@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
   Trash2,
-  Pencil,
   Check,
   X,
   Loader2,
@@ -18,8 +17,8 @@ import { useHierarchy } from '../contexts/HierarchyContext';
 import CadastroAreasView from '../agents/pecuario/areas/CadastroAreasView';
 import { fazRootId, updateAreaGeometry } from '../agents/pecuario/areas/areasClient';
 import { parseKmlPolygons, KmlError } from '../agents/pecuario/areas/kml';
+import { importarKmlGoogleEarth } from '../agents/pecuario/areas/kmlImport';
 import { centroid, pointInPoly, cleanRing } from '../agents/pecuario/areas/util';
-import NiveisSetup, { type NiveisCombo } from '../agents/pecuario/areas/NiveisSetup';
 import DateInputBR from './DateInputBR';
 
 type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -71,6 +70,8 @@ interface Levels {
   local: boolean;
   /** O usuário já escolheu a combinação de níveis desta fazenda? (gate do mapa) */
   configured?: boolean;
+  /** Controla os locais com mapa (colunas + mapa) ou sem mapa (só colunas)? */
+  usarMapa?: boolean;
 }
 
 /** Atalho de re-vínculo sugerido pela posição no mapa (ponto-em-polígono). */
@@ -207,8 +208,6 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   // Fazenda selecionada na 1ª coluna (default = fazenda em edição).
   const [selFarmId, setSelFarmId] = useState<string>(farmId);
   useEffect(() => setSelFarmId(farmId), [farmId]);
-  // Trocar de fazenda fecha o modo "reconfigurar" (cada fazenda tem seu gate).
-  useEffect(() => setReopenSetup(false), [selFarmId]);
 
   const [levels, setLevels] = useState<Levels>({ retiro: true, setor: false, local: true });
   const [retiros, setRetiros] = useState<Retiro[]>([]);
@@ -233,15 +232,15 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [togglingKey, setTogglingKey] = useState<LevelKey | null>(null);
-
-  // Gate da combinação de níveis: enquanto a fazenda não tiver a combinação
-  // escolhida (configured), mostra o cadastro de níveis antes do mapa. `reopenSetup`
-  // reabre o cadastro para reconfigurar uma fazenda já configurada.
-  const [savingLevels, setSavingLevels] = useState(false);
-  const [reopenSetup, setReopenSetup] = useState(false);
+  // Primeira carga desta fazenda: só nela mostramos o spinner de tela cheia; nos
+  // reloads (toggle de nível, mutação do mapa) mantemos as colunas/mapa montados.
+  const didFirstLoad = useRef(false);
 
   const [adding, setAdding] = useState<{ key: LevelKey; name: string; area: string } | null>(null);
-  const [editing, setEditing] = useState<{ key: LevelKey; id: string; name: string; area: string } | null>(null);
+  // Card clicado → abre a "tela" (modal) com os dados do item para preenchimento.
+  // A Fazenda também abre, porém somente leitura. A navegação/drill saiu do corpo
+  // do card e passou para a setinha (chevron).
+  const [modal, setModal] = useState<{ key: ColKey; id: string } | null>(null);
 
   // Painel das colunas recolhível → o mapa ocupa toda a largura quando recolhido.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -249,13 +248,18 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   // Data inicial única da tela: carimbada em todo registro criado/editado aqui.
   const [dataInicial, setDataInicial] = useState<string>(todayIso());
 
+  // Troca de fazenda → próxima carga é "primeira" de novo (mostra o spinner).
+  useEffect(() => {
+    didFirstLoad.current = false;
+  }, [selFarmId]);
+
   // ── Carrega o bundle da fazenda selecionada ─────────────────────────────────
   useEffect(() => {
     if (!selFarmId) return;
     let cancelled = false;
     setLoading(true);
     setAdding(null);
-    setEditing(null);
+    setModal(null);
     fetchJson<{ retiros: Retiro[]; setores: Setor[]; locais: Local[]; levels: Levels }>(
       `${API_BASE}?bundle=${selFarmId}`,
     )
@@ -278,7 +282,11 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         setSelSetor((prev) => (b.setores.some((s) => !s.isDefault && s.id === prev) ? prev : null));
       })
       .catch((err) => console.error('Erro ao carregar locais:', err))
-      .finally(() => !cancelled && setLoading(false));
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+        didFirstLoad.current = true;
+      });
     return () => {
       cancelled = true;
     };
@@ -463,7 +471,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
       setLevels(next);
       setTogglingKey(key);
       setAdding(null);
-      setEditing(null);
+      setModal(null);
       // Espelha na hora o registro automático que o back-end vai gravar, para a
       // coluna desativada já aparecer com o nome do nível anterior (sem refetch).
       if (turningOff && parentName) {
@@ -526,25 +534,45 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     }
   };
 
-  const commitEdit = async () => {
-    if (!editing || !editing.name.trim()) return;
-    const { key, id, name, area } = editing;
+  // Salva os dados da "tela" (modal) do card. Grava nome + área + vínculo (pai) num
+  // único PATCH — o back-end só toca nos campos enviados (os demais ficam intactos).
+  // A Fazenda é somente leitura, então nunca chega aqui.
+  const saveModal = async (data: { name: string; area: string; parentId: string | null }) => {
+    if (!modal || modal.key === 'fazenda') return;
+    const key = modal.key as LevelKey;
+    const id = modal.id;
+    const name = data.name.trim();
+    if (!name) return;
+    const area = data.area.trim() || null;
     setSaving(true);
     try {
       if (key === 'retiro') {
-        const row = await patchJson<Retiro>({ id, name: name.trim(), totalArea: area.trim() || null, dataInicial });
+        const row = await patchJson<Retiro>({ id, name, totalArea: area, dataInicial });
         setRetiros((p) => p.map((r) => (r.id === id ? row : r)));
       } else if (key === 'setor') {
-        const row = await patchJson<Setor>({ type: 'setor', id, name: name.trim(), area: area.trim() || null, dataInicial });
+        const retiroId = levels.retiro ? data.parentId : null;
+        const row = await patchJson<Setor>({ type: 'setor', id, name, area, retiroId, dataInicial });
         setSetores((p) => p.map((s) => (s.id === id ? row : s)));
       } else {
-        const row = await patchJson<Local>({ type: 'local', id, name: name.trim(), area: area.trim() || null, dataInicial });
+        // Local ancora no nível ativo mais profundo acima dele: setor (herdando o
+        // retiro do setor escolhido) ou, sem setor, o retiro.
+        let setorId: string | null = null;
+        let retiroId: string | null = null;
+        if (levels.setor) {
+          setorId = data.parentId;
+          const setor = setores.find((s) => s.id === data.parentId);
+          retiroId = setor?.retiroId ?? (levels.retiro ? effRetiro : null);
+        } else if (levels.retiro) {
+          retiroId = data.parentId;
+        }
+        const row = await patchJson<Local>({ type: 'local', id, name, area, setorId, retiroId, dataInicial });
         setLocais((p) => p.map((l) => (l.id === id ? row : l)));
       }
       setMapReloadToken((v) => v + 1);
-      setEditing(null);
+      setModal(null);
     } catch (err) {
       console.error('Erro ao atualizar:', err);
+      onToast?.('Não foi possível salvar as alterações.', 'error');
     } finally {
       setSaving(false);
     }
@@ -600,7 +628,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     } else {
       setSelId(id);
     }
-    setEditing(null);
+    setModal(null);
   };
 
   // ── Integração com o mapa ───────────────────────────────────────────────────
@@ -649,29 +677,6 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   // Mapa mutou a hierarquia → recarrega a lista.
   const onMapMutated = useCallback(() => setListReloadVersion((v) => v + 1), []);
 
-  // ── Gate: confirma a combinação de níveis escolhida no cadastro ─────────────
-  // Persiste a combinação com configured:true (libera o mapa) e recarrega tudo.
-  const confirmCombination = useCallback(
-    async (combo: NiveisCombo) => {
-      if (readOnly) return;
-      setSavingLevels(true);
-      try {
-        const row = await postJson<Levels>({ type: 'levels', farmId: selFarmId, ...combo, configured: true });
-        setLevels({ ...row, configured: true });
-        setReopenSetup(false);
-        setMapReloadToken((v) => v + 1);
-        setListReloadVersion((v) => v + 1);
-        onToast?.('Estrutura de níveis salva. Agora aloque os locais no mapa.', 'success');
-      } catch (err) {
-        console.error('Erro ao salvar a combinação de níveis:', err);
-        onToast?.('Não foi possível salvar a combinação de níveis.', 'error');
-      } finally {
-        setSavingLevels(false);
-      }
-    },
-    [selFarmId, readOnly, onToast],
-  );
-
   // ── Importar KMZ/KML direto num card → vira o contorno daquele registro ─────
   // (Fazenda → perímetro; Retiro/Setor/Local → geometria da linha.) Reaproveita
   // updateAreaGeometry, que também recalcula o ha a partir do polígono.
@@ -693,8 +698,17 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
       setSaving(true);
       try {
         const polys = await parseKmlPolygons(file);
-        if (!polys.length) {
-          onToast?.('Nenhum polígono: o arquivo não contém áreas para importar.', 'warning');
+        let ring = polys[0]?.ring ?? null;
+        if (!ring) {
+          // Arquivo só com linhas/pontos (típico do Google Earth) → reconstrói 1 contorno.
+          const r = await importarKmlGoogleEarth(file);
+          if (r.perimeter) ring = r.perimeter;
+        }
+        if (!ring) {
+          onToast?.(
+            'Nenhuma área encontrada: o arquivo não tem polígonos nem linhas que formem um contorno.',
+            'warning',
+          );
           return;
         }
         if (polys.length > 1) {
@@ -705,7 +719,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         }
         // Para a Fazenda, o perímetro é gravado na própria fazenda do card.
         const fid = target.level === 'fazenda' ? target.id : selFarmId;
-        await updateAreaGeometry(fid, { id: target.id, nivel: target.level, fonte: 'kml' }, polys[0].ring);
+        await updateAreaGeometry(fid, { id: target.id, nivel: target.level, fonte: 'kml' }, ring);
         if (target.level === 'fazenda' && target.id !== selFarmId) setSelFarmId(target.id);
         setMapReloadToken((v) => v + 1);
         setListReloadVersion((v) => v + 1);
@@ -721,6 +735,35 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
       }
     },
     [selFarmId, onToast],
+  );
+
+  // ── Excluir o mapa (contorno) importado de um card ──────────────────────────
+  // Limpa a geometria do registro (não exclui o registro em si). Para a Fazenda,
+  // remove o perímetro; para os demais níveis, zera o contorno daquele item.
+  const clearMap = useCallback(
+    async (id: string, level: ColKey, label: string) => {
+      if (readOnly) return;
+      if (
+        !window.confirm(
+          `Excluir o mapa (contorno) de "${label}"?\nA geometria importada será removida do mapa. O registro "${label}" continua existindo.`,
+        )
+      )
+        return;
+      setSaving(true);
+      try {
+        const fid = level === 'fazenda' ? id : selFarmId;
+        await updateAreaGeometry(fid, { id, nivel: level, fonte: 'kml' }, []);
+        setMapReloadToken((v) => v + 1);
+        setListReloadVersion((v) => v + 1);
+        onToast?.(`Mapa de "${label}" excluído.`, 'success');
+      } catch (err) {
+        console.error('Falha ao excluir o mapa do card:', err);
+        onToast?.('Não foi possível excluir o mapa.', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [readOnly, selFarmId, onToast],
   );
 
   const selFarmName = useMemo(
@@ -804,6 +847,75 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   const topCols = cols.filter((c) => c.key !== 'local');
   const localCol = cols.find((c) => c.key === 'local') ?? null;
 
+  // Modo "sem mapa": a fazenda controla os locais só pelas colunas (sem o mapa
+  // Leaflet). Escolhido no rodapé de "Dados Gerais" (NiveisInline) e lido do bundle.
+  const semMapa = levels.usarMapa === false;
+
+  // Dados do item aberto na "tela" (modal) ao clicar no card. A Fazenda sempre
+  // abre somente leitura; os demais níveis são editáveis (salvo readOnly global).
+  // "Vínculo" é o pai do item: vira um seletor quando há um nível-pai ativo com
+  // opções; senão (ex.: retiro sob a fazenda) aparece só como informação.
+  const modalCtx = (() => {
+    if (!modal) return null;
+    const { key, id } = modal;
+    const farmDisplayName = farms.find((f) => f.id === selFarmId)?.name ?? farmName ?? 'Fazenda';
+    if (key === 'fazenda') {
+      const f = fazendaRows.find((r) => r.id === id);
+      if (!f) return null;
+      return {
+        style: FAZENDA_STYLE, readOnly: true,
+        name: f.name, area: f.area ?? '',
+        parentId: null as string | null, parentLabel: null as string | null,
+        parentName: null as string | null, parentOptions: null as { id: string; name: string }[] | null,
+      };
+    }
+    const style = LEVELS.find((l) => l.key === key)!.s;
+    const ro = !!readOnly;
+    if (key === 'retiro') {
+      const r = retiros.find((x) => x.id === id);
+      if (!r) return null;
+      return {
+        style, readOnly: ro, name: r.name, area: r.totalArea ?? '',
+        parentId: null, parentLabel: 'Fazenda', parentName: farmDisplayName, parentOptions: null,
+      };
+    }
+    if (key === 'setor') {
+      const s = setores.find((x) => x.id === id);
+      if (!s) return null;
+      const hasRetiro = levels.retiro;
+      return {
+        style, readOnly: ro, name: s.name, area: s.area ?? '',
+        parentId: hasRetiro ? s.retiroId : null,
+        parentLabel: hasRetiro ? 'Retiro' : 'Fazenda',
+        parentName: hasRetiro ? (retiros.find((r) => r.id === s.retiroId)?.name ?? null) : farmDisplayName,
+        parentOptions: hasRetiro ? retiros.map((r) => ({ id: r.id, name: r.name })) : null,
+      };
+    }
+    // local
+    const l = locais.find((x) => x.id === id);
+    if (!l) return null;
+    if (levels.setor) {
+      return {
+        style, readOnly: ro, name: l.name, area: l.area ?? '',
+        parentId: l.setorId, parentLabel: 'Setor',
+        parentName: setores.find((s) => s.id === l.setorId)?.name ?? null,
+        parentOptions: setores.map((s) => ({ id: s.id, name: s.name })),
+      };
+    }
+    if (levels.retiro) {
+      return {
+        style, readOnly: ro, name: l.name, area: l.area ?? '',
+        parentId: l.retiroId, parentLabel: 'Retiro',
+        parentName: retiros.find((r) => r.id === l.retiroId)?.name ?? null,
+        parentOptions: retiros.map((r) => ({ id: r.id, name: r.name })),
+      };
+    }
+    return {
+      style, readOnly: ro, name: l.name, area: l.area ?? '',
+      parentId: null, parentLabel: 'Fazenda', parentName: farmDisplayName, parentOptions: null,
+    };
+  })();
+
   // Render compartilhado de uma coluna (estreita no topo / larga em grade embaixo).
   const renderColumn = (key: ColKey, style: LevelStyle, opts: { wide?: boolean; grow?: boolean } = {}) => {
     const { wide = false, grow = false } = opts;
@@ -855,24 +967,20 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         }
         saving={saving}
         adding={key !== 'fazenda' && adding?.key === key ? adding : null}
-        editing={key !== 'fazenda' && editing?.key === key ? editing : null}
         onStartAdd={() => {
-          setEditing(null);
+          setModal(null);
           setAdding({ key: key as LevelKey, name: '', area: '' });
         }}
         onChangeAdd={(name, area) => setAdding({ key: key as LevelKey, name, area })}
         onCommitAdd={commitAdd}
         onCancelAdd={() => setAdding(null)}
-        onStartEdit={(id, name, area) => {
+        onOpenData={(id) => {
           setAdding(null);
-          setEditing({ key: key as LevelKey, id, name, area: area ?? '' });
+          setModal({ key, id });
         }}
-        onChangeEdit={(name, area) => setEditing((e) => (e ? { ...e, name, area } : e))}
-        onCommitEdit={commitEdit}
-        onCancelEdit={() => setEditing(null)}
         onSelect={(id) => onSelect(key, id)}
         onDelete={(id) => removeItem(key as LevelKey, id)}
-        onImport={readOnly || col.colReadOnly ? undefined : (id, name) => startImport(id, key, name)}
+        onImport={readOnly || col.colReadOnly || semMapa ? undefined : (id, name) => startImport(id, key, name)}
         orphans={orphans}
         orphanDestName={orphanDestName}
         orphanAttachEnabled={attachEnabled}
@@ -881,28 +989,10 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
     );
   };
 
-  // ── Gate da combinação de níveis ────────────────────────────────────────────
-  // Enquanto a fazenda não tiver a combinação confirmada (ou ao reconfigurar),
-  // mostra o cadastro de níveis no lugar das colunas/mapa.
-  const showGate = reopenSetup || (!loading && !levels.configured);
-  if (showGate) {
-    return (
-      <div className="py-2">
-        <NiveisSetup
-          farmName={selFarmName}
-          initial={{ retiro: levels.retiro, setor: levels.setor, local: levels.local }}
-          readOnly={readOnly}
-          saving={savingLevels}
-          reconfiguring={reopenSetup && !!levels.configured}
-          onConfirm={confirmCombination}
-          onCancel={() => setReopenSetup(false)}
-        />
-      </div>
-    );
-  }
-  // Primeira carga (ainda não sabemos se está configurada): evita montar o mapa
-  // só para trocá-lo pelo gate logo em seguida.
-  if (loading && !levels.configured) {
+  // A combinação de níveis é definida no rodapé da aba "Dados Gerais" da fazenda;
+  // aqui a aba abre direto nas colunas/mapa. Na primeira carga da fazenda mostra
+  // só o spinner para não montar o mapa e logo recarregá-lo.
+  if (loading && !didFirstLoad.current) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 size={22} className="animate-spin text-gray-300" />
@@ -924,16 +1014,6 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
           </span>
           {/* Data única da tela: carimbada em todo registro criado/editado aqui. */}
           <div className="ml-auto flex items-center gap-2">
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => setReopenSetup(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50"
-                title="Escolher de novo a combinação de níveis desta fazenda"
-              >
-                <Layers size={13} /> Alterar combinação
-              </button>
-            )}
             <label className="whitespace-nowrap text-[11px] font-medium text-gray-500">
               Registros a partir de
             </label>
@@ -1007,11 +1087,12 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
 
       {/* ── Colunas (lateral esq., largura do conteúdo) + Mapa grande ────────── */}
       <div className="flex flex-col gap-2 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:flex-row">
-        {/* Painel: 3 colunas no topo (~40%) + caixa larga de Locais embaixo (~60%) */}
+        {/* Painel: 3 colunas no topo (~40%) + caixa larga de Locais embaixo (~60%).
+            Sem mapa, ocupa a largura toda (mesmo layout, sem o mapa ao lado). */}
         <div
-          className={`flex w-full flex-col gap-2 lg:h-full lg:w-auto lg:max-w-[44%] lg:shrink-0 ${
-            sidebarCollapsed ? 'hidden' : ''
-          }`}
+          className={`flex w-full flex-col gap-2 lg:h-full ${
+            semMapa ? 'lg:w-full lg:flex-1' : 'lg:w-auto lg:max-w-[44%] lg:shrink-0'
+          } ${!semMapa && sidebarCollapsed ? 'hidden' : ''}`}
         >
           {/* Topo: Fazenda › Retiro › Setor (colunas estreitas) */}
           <div
@@ -1028,38 +1109,45 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
           )}
         </div>
 
-        {/* Botão recolher/expandir o painel — o mapa cresce quando recolhido */}
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed((v) => !v)}
-          title={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
-          aria-label={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
-          className="flex shrink-0 items-center justify-center self-stretch rounded-xl border border-gray-200 bg-white py-1.5 text-gray-400 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 lg:px-0.5"
-        >
-          {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        {/* Botão recolher + mapa: só no modo "com mapa". Sem mapa, as colunas
+            ocupam a largura toda e o Leaflet nem é montado. */}
+        {!semMapa && (
+          <>
+            {/* Botão recolher/expandir o painel — o mapa cresce quando recolhido */}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              title={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
+              aria-label={sidebarCollapsed ? 'Mostrar painel de áreas' : 'Recolher painel de áreas'}
+              className="flex shrink-0 items-center justify-center self-stretch rounded-xl border border-gray-200 bg-white py-1.5 text-gray-400 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 lg:px-0.5"
+            >
+              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
 
-        {/* Mapa de áreas (mesma hierarquia, com geometria) — ~70% */}
-        <div
-          className={`min-h-[460px] w-full flex-1 lg:h-full lg:min-h-0 ${
-            sidebarCollapsed ? 'h-[78vh]' : 'h-[58vh]'
-          }`}
-        >
-          <CadastroAreasView
-            farmId={selFarmId}
-            farmName={selFarmName}
-            readOnly={readOnly}
-            onToast={onToast}
-            selId={selId}
-            onSelect={selectFromMap}
-            levels={levels}
-            onEnsureLevel={ensureLevel}
-            dataInicial={dataInicial}
-            onMutated={onMapMutated}
-            reloadToken={mapReloadToken}
-            resizeSignal={sidebarCollapsed ? 1 : 0}
-          />
-        </div>
+            {/* Mapa de áreas (mesma hierarquia, com geometria) — ~70% */}
+            <div
+              className={`min-h-[460px] w-full flex-1 lg:h-full lg:min-h-0 ${
+                sidebarCollapsed ? 'h-[78vh]' : 'h-[58vh]'
+              }`}
+            >
+              <CadastroAreasView
+                farmId={selFarmId}
+                farmName={selFarmName}
+                readOnly={readOnly}
+                onToast={onToast}
+                selId={selId}
+                onSelect={selectFromMap}
+                levels={levels}
+                onEnsureLevel={ensureLevel}
+                onToggleLevel={toggleLevel}
+                dataInicial={dataInicial}
+                onMutated={onMapMutated}
+                reloadToken={mapReloadToken}
+                resizeSignal={sidebarCollapsed ? 1 : 0}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Input único de import; o card-alvo é guardado em importTargetRef. */}
@@ -1070,6 +1158,41 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
         className="hidden"
         onChange={(e) => handleImportFile(e.target)}
       />
+
+      {/* Tela (modal) de dados do card clicado. */}
+      {modal && modalCtx && (
+        <AreaDataModal
+          key={`${modal.key}:${modal.id}`}
+          style={modalCtx.style}
+          levelLabel={modalCtx.style.label}
+          readOnly={modalCtx.readOnly}
+          saving={saving}
+          initialName={modalCtx.name}
+          initialArea={modalCtx.area}
+          initialParentId={modalCtx.parentId}
+          parentLabel={modalCtx.parentLabel}
+          parentName={modalCtx.parentName}
+          parentOptions={modalCtx.parentOptions}
+          onClose={() => setModal(null)}
+          onSave={saveModal}
+          onImport={
+            readOnly || semMapa
+              ? undefined
+              : () => {
+                  setModal(null);
+                  startImport(modal.id, modal.key, modalCtx.name);
+                }
+          }
+          onClearMap={
+            readOnly || semMapa
+              ? undefined
+              : () => {
+                  setModal(null);
+                  clearMap(modal.id, modal.key, modalCtx.name);
+                }
+          }
+        />
+      )}
     </div>
   );
 };
@@ -1096,15 +1219,13 @@ interface LevelColumnProps {
   emptyHint?: string;
   saving: boolean;
   adding: { name: string; area: string } | null;
-  editing: { id: string; name: string; area: string } | null;
   onStartAdd: () => void;
   onChangeAdd: (name: string, area: string) => void;
   onCommitAdd: () => void;
   onCancelAdd: () => void;
-  onStartEdit: (id: string, name: string, area: string | null) => void;
-  onChangeEdit: (name: string, area: string) => void;
-  onCommitEdit: () => void;
-  onCancelEdit: () => void;
+  /** Clique no corpo do card → abre a tela (modal) de dados do item. */
+  onOpenData: (id: string) => void;
+  /** Clique na setinha (chevron) → navega/drill para o nível seguinte. */
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   /** Importar KMZ/KML como contorno deste card (independe de colReadOnly). */
@@ -1132,15 +1253,11 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
   emptyHint,
   saving,
   adding,
-  editing,
   onStartAdd,
   onChangeAdd,
   onCommitAdd,
   onCancelAdd,
-  onStartEdit,
-  onChangeEdit,
-  onCommitEdit,
-  onCancelEdit,
+  onOpenData,
   onSelect,
   onDelete,
   orphans = [],
@@ -1305,51 +1422,12 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
           </div>
         ) : (
           rows.map((row) => {
-            const isEditing = editing?.id === row.id;
             const selected = selId === row.id;
-            if (isEditing && editing) {
-              return (
-                <div
-                  key={row.id}
-                  className={`flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white p-1.5 ${
-                    wide ? 'col-span-full' : ''
-                  }`}
-                >
-                  <input
-                    autoFocus
-                    type="text"
-                    value={editing.name}
-                    onChange={(e) => onChangeEdit(e.target.value, editing.area)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') onCommitEdit();
-                      if (e.key === 'Escape') onCancelEdit();
-                    }}
-                    className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1 text-sm"
-                  />
-                  <input
-                    type="text"
-                    value={editing.area}
-                    placeholder="ha"
-                    onChange={(e) => onChangeEdit(editing.name, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') onCommitEdit();
-                      if (e.key === 'Escape') onCancelEdit();
-                    }}
-                    className="w-14 rounded border border-gray-200 px-2 py-1 text-sm"
-                  />
-                  <button type="button" onClick={onCommitEdit} disabled={saving || !editing.name.trim()} className={`p-1 ${style.text} disabled:opacity-40`}>
-                    <Check size={14} />
-                  </button>
-                  <button type="button" onClick={onCancelEdit} className="p-1 text-gray-400 hover:text-gray-600">
-                    <X size={14} />
-                  </button>
-                </div>
-              );
-            }
             return (
               <div
                 key={row.id}
-                onClick={inactive ? undefined : () => onSelect(row.id)}
+                onClick={inactive ? undefined : () => onOpenData(row.id)}
+                title={inactive ? undefined : 'Abrir dados'}
                 className={`group flex items-center gap-0.5 rounded-lg border px-1.5 py-1 transition-colors ${
                   inactive
                     ? 'cursor-default border-dashed border-gray-200 bg-gray-50'
@@ -1377,42 +1455,236 @@ const LevelColumn: React.FC<LevelColumnProps> = ({
                     </button>
                   )}
                   {!readOnly && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onStartEdit(row.id, row.name, row.area);
-                        }}
-                        className="p-0.5 text-gray-400 hover:text-gray-700"
-                        title="Editar"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(row.id);
-                        }}
-                        className="p-0.5 text-gray-400 hover:text-red-500"
-                        title="Excluir"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(row.id);
+                      }}
+                      className="p-0.5 text-gray-400 hover:text-red-500"
+                      title="Excluir"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   )}
                 </span>
                 {drillable && (
-                  <ChevronRight
-                    size={12}
-                    className={`shrink-0 ${selected ? style.accent : 'text-gray-300'}`}
-                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(row.id);
+                    }}
+                    title="Abrir / ver o que há dentro"
+                    className="shrink-0 rounded p-0.5 hover:bg-black/5"
+                  >
+                    <ChevronRight size={14} className={selected ? style.accent : 'text-gray-400'} />
+                  </button>
                 )}
               </div>
             );
           })
         )}
+      </div>
+    </div>
+  );
+};
+
+/* ===== Tela (modal) com os dados do card clicado =====
+ * Abre ao clicar no corpo de um card de qualquer nível. Editável para
+ * Retiro/Setor/Local (nome, área e vínculo); a Fazenda abre somente leitura.
+ */
+interface AreaDataModalProps {
+  style: LevelStyle;
+  levelLabel: string;
+  readOnly: boolean;
+  saving: boolean;
+  initialName: string;
+  initialArea: string;
+  initialParentId: string | null;
+  /** Rótulo do nível-pai ("Fazenda" / "Retiro" / "Setor"); null ⇒ sem campo de vínculo. */
+  parentLabel: string | null;
+  /** Nome do pai atual (exibição quando o vínculo é só leitura). */
+  parentName: string | null;
+  /** Opções de vínculo; quando presente (e editável), o campo vira um seletor. */
+  parentOptions: { id: string; name: string }[] | null;
+  onClose: () => void;
+  onSave: (d: { name: string; area: string; parentId: string | null }) => void;
+  /** Importar KMZ/KML como contorno deste item; ausente ⇒ não mostra o botão. */
+  onImport?: () => void;
+  /** Excluir o mapa (contorno) deste item; ausente ⇒ não mostra o botão. */
+  onClearMap?: () => void;
+}
+
+const AreaDataModal: React.FC<AreaDataModalProps> = ({
+  style,
+  levelLabel,
+  readOnly,
+  saving,
+  initialName,
+  initialArea,
+  initialParentId,
+  parentLabel,
+  parentName,
+  parentOptions,
+  onClose,
+  onSave,
+  onImport,
+  onClearMap,
+}) => {
+  const [name, setName] = useState(initialName);
+  const [area, setArea] = useState(initialArea);
+  const [parentId, setParentId] = useState<string | null>(initialParentId);
+
+  const canSave = !readOnly && !saving && name.trim().length > 0;
+  const submit = () => {
+    if (canSave) onSave({ name, area, parentId });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(16,24,40,.42)] p-6 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div className="w-[460px] max-w-full overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* Cabeçalho */}
+        <div className="flex items-start gap-2.5 px-6 pb-3 pt-5">
+          <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${style.dot}`} />
+          <div className="min-w-0 flex-1">
+            <h3 className="m-0 text-[16px] font-bold text-gray-900">
+              {readOnly ? levelLabel : `Editar ${levelLabel.toLowerCase()}`}
+            </h3>
+            <div className="mt-0.5 text-[12.5px] text-gray-500">
+              {readOnly ? 'Somente visualização.' : 'Preencha os dados deste item.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Campos */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 px-6 pb-2">
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <label className="text-[12.5px] font-semibold text-gray-700">
+              Nome {!readOnly && <span className="text-red-500">*</span>}
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={readOnly}
+              autoFocus={!readOnly}
+              placeholder={`Nome do ${levelLabel.toLowerCase()}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit();
+                if (e.key === 'Escape') onClose();
+              }}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-[13.5px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50 disabled:text-gray-500"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12.5px] font-semibold text-gray-700">Área (ha)</label>
+            <input
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              disabled={readOnly}
+              placeholder="ha"
+              inputMode="decimal"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit();
+                if (e.key === 'Escape') onClose();
+              }}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-[13.5px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50 disabled:text-gray-500"
+            />
+          </div>
+
+          {parentLabel && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] font-semibold text-gray-700">{parentLabel}</label>
+              {parentOptions && !readOnly ? (
+                <select
+                  value={parentId ?? ''}
+                  onChange={(e) => setParentId(e.target.value || null)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-[13.5px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">— sem vínculo —</option>
+                  {parentOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[13.5px] text-gray-600">
+                  {parentName ?? '— sem vínculo —'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé */}
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 px-6 py-3.5">
+          <div className="flex items-center gap-2">
+            {onImport && (
+              <button
+                type="button"
+                onClick={onImport}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                title="Importar KMZ/KML como contorno deste item"
+              >
+                <Upload size={14} />
+                Importar KMZ
+              </button>
+            )}
+            {onClearMap && (
+              <button
+                type="button"
+                onClick={onClearMap}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                title="Excluir o mapa (contorno) deste item"
+              >
+                <Trash2 size={14} />
+                Excluir mapa
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+          {readOnly ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Fechar
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!canSave}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${style.dot}`}
+              >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                Salvar
+              </button>
+            </>
+          )}
+          </div>
+        </div>
       </div>
     </div>
   );

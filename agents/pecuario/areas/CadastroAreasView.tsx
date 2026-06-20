@@ -14,14 +14,15 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Globe,
 } from 'lucide-react';
 import {
   NIVEIS,
   ORDEM,
   TIPOS_LOCAL,
+  USO_COR,
   type Area,
   type Nivel,
-  type TipoLocal,
 } from './types';
 import { areaM2, fmtArea, sugerirParent, cleanRing } from './util';
 import {
@@ -30,12 +31,29 @@ import {
   updateAreaGeometry as apiUpdateGeometry,
   updateAreaProps as apiUpdateProps,
   deleteArea as apiDeleteArea,
+  saveFarmPerimeter,
   countLocalDependents,
   isFazRoot,
   fazRootId,
   type AreaWrite,
 } from './areasClient';
+import { listFarmMaps, createFarmMap, deleteFarmMapApi, type FarmMapData } from '../../../lib/api/farmMapsClient';
+import { redesenhar } from '../../../lib/api/areaMovimentosClient';
+import { useHierarchy } from '../../../contexts/HierarchyContext';
+import CadastroAreasMestre, {
+  type MestreSavePayload,
+  type MestreSaveResult,
+} from './CadastroAreasMestre';
+import { listTiposLocal } from '../../../lib/api/tiposLocalClient';
+import { buildCatalogIndex, isPointCoords, pointDivIcon, pointLatLng, type CatalogIndex } from './mapPoints';
 import './cadastroAreas.css';
+
+/** ha (string) a partir do anel [lat,lng][], ou null se inválido. */
+function haFromCoords(coords: [number, number][]): string | null {
+  const m2 = areaM2(coords);
+  return m2 ? String(Math.round((m2 / 10000) * 100) / 100) : null;
+}
+const hojeISODia = () => new Date().toISOString().slice(0, 10);
 
 type ToastFn = (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
@@ -51,6 +69,8 @@ interface CadastroAreasViewProps {
   /** Níveis ativos da fazenda (para auto-ativar ao desenhar um nível desligado). */
   levels?: { retiro: boolean; setor: boolean; local: boolean };
   onEnsureLevel?: (nivel: 'retiro' | 'setor' | 'local') => void;
+  /** Liga/desliga um nível da fazenda (níveis ativos) — repassado à tela mestra. */
+  onToggleLevel?: (nivel: 'retiro' | 'setor' | 'local') => void | Promise<void>;
   /** Data inicial única da tela (ISO 'YYYY-MM-DD') — carimbada ao criar/editar área. */
   dataInicial?: string | null;
   /** Avisa o container que a hierarquia mudou (para recarregar a lista). */
@@ -59,6 +79,13 @@ interface CadastroAreasViewProps {
   reloadToken?: number;
   /** Muda quando o layout em volta do mapa muda (ex.: recolher o painel) → invalidateSize. */
   resizeSignal?: number;
+  /**
+   * Foto histórica fornecida pelo container (slider da linha do tempo). Quando
+   * presente, o mapa NÃO carrega do banco — renderiza estas áreas (modo passado).
+   */
+  asOfAreas?: Area[] | null;
+  /** Colore os polígonos por `uso` (cor da terra) em vez de por nível. */
+  colorByUso?: boolean;
 }
 
 interface PropsDraft {
@@ -66,18 +93,20 @@ interface PropsDraft {
   coords: [number, number][];
   nome: string;
   nivel: Nivel;
-  tipo: TipoLocal | null;
+  /** texto livre: enum legado OU nome de tipo do catálogo. */
+  tipo: string | null;
   parent: string | null;
 }
 
-/** Estilo Leaflet de um polígono conforme nível/seleção. */
-function styleFor(a: Area, selected: boolean): L.PathOptions {
+/** Estilo Leaflet de um polígono conforme nível/seleção (ou por uso da terra). */
+function styleFor(a: Area, selected: boolean, colorByUso = false): L.PathOptions {
   const n = NIVEIS[a.nivel];
+  const cor = colorByUso && a.uso ? (USO_COR[a.uso] ?? n.cor) : n.cor;
   return {
-    color: n.cor,
+    color: cor,
     weight: a.nivel === 'fazenda' ? 3.5 : selected ? 3.5 : 2,
     opacity: 1,
-    fillColor: n.cor,
+    fillColor: cor,
     fillOpacity: selected ? n.fill + 0.14 : n.fill,
     dashArray: a.nivel === 'fazenda' ? '7 5' : undefined,
   };
@@ -107,6 +136,18 @@ function resolveFk(
 
 const FZ_FALLBACK_CENTER: [number, number] = [-15.553, -52.104];
 
+/** Ícones dos manipuladores de edição de forma (vértice arrastável e ponto-médio). */
+const VERTEX_ICON = L.divIcon({ className: 'fz-edit-vertex', iconSize: [14, 14] });
+const MID_ICON = L.divIcon({ className: 'fz-edit-midpoint', iconSize: [11, 11] });
+/** Acima desse nº de vértices, não criamos pontos-médios (polígonos densos de KML). */
+const MAX_VERTICES_FOR_MIDPOINTS = 40;
+
+/** Ponto médio entre dois vértices [lat,lng]. */
+const midOf = (a: [number, number], b: [number, number]): [number, number] => [
+  (a[0] + b[0]) / 2,
+  (a[1] + b[1]) / 2,
+];
+
 const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   farmId,
   farmName,
@@ -116,12 +157,20 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   onSelect,
   levels,
   onEnsureLevel,
+  onToggleLevel,
   dataInicial,
   onMutated,
   reloadToken,
   resizeSignal,
+  asOfAreas,
+  colorByUso = false,
 }) => {
   // ── Estado de domínio ───────────────────────────────────────────────────
+  const { selectedOrganization } = useHierarchy();
+  const organizationId = selectedOrganization?.id ?? '';
+  // Catálogo "Tipos de Locais" — resolve cor/ícone dos Locais por tipo (e dos pontos).
+  const [tiposCatalog, setTiposCatalog] = useState<Awaited<ReturnType<typeof listTiposLocal>> | null>(null);
+  const catalogIndex = useMemo<CatalogIndex>(() => buildCatalogIndex(tiposCatalog), [tiposCatalog]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -129,7 +178,14 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   const selId = selIdProp !== undefined ? selIdProp : internalSel;
   const [active, setActive] = useState<Nivel>('local');
   const [basemap, setBasemap] = useState<'sat' | 'osm'>('sat');
+  const [mapReady, setMapReady] = useState(false);
   const [drawing, setDrawing] = useState(false);
+  // Importação do Google Earth + camada de referência (farm_maps).
+  const [importOpen, setImportOpen] = useState(false);
+  const [overlayMaps, setOverlayMaps] = useState<FarmMapData[]>([]);
+  const [overlayVisible, setOverlayVisible] = useState(true);
+  const [overlayReload, setOverlayReload] = useState(0);
+  const [localReload, setLocalReload] = useState(0);
   const [editingShape, setEditingShape] = useState(false);
   const [propsModal, setPropsModal] = useState<PropsDraft | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -156,12 +212,23 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<Map<string, L.Polygon>>(new Map());
+  const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const overlayLayersRef = useRef<L.Layer[]>([]);
   const baseSatRef = useRef<L.TileLayer | null>(null);
   const baseOSMRef = useRef<L.TileLayer | null>(null);
   const drawHandlerRef = useRef<{ enable: () => void; disable: () => void } | null>(null);
   const areasRef = useRef<Area[]>(areas);
   const activeRef = useRef<Nivel>(active);
   const pendingFitRef = useRef(false);
+  // Edição de forma própria (vértices arrastáveis) — não depende do L.Edit do leaflet-draw,
+  // que é instável na combinação leaflet 1.9 + leaflet-draw 1.0.4.
+  const editVertexRef = useRef<L.Marker[]>([]);
+  const editMidRef = useRef<L.Marker[]>([]);
+  const editCoordsRef = useRef<[number, number][]>([]);
+  const editLayerRef = useRef<L.Polygon | null>(null);
+  const editAreaIdRef = useRef<string | null>(null);
+  const editingShapeRef = useRef(false);
+  editingShapeRef.current = editingShape;
 
   areasRef.current = areas;
   activeRef.current = active;
@@ -177,7 +244,15 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   }, [selId]);
 
   // ── Carrega áreas do banco (e recarrega quando a lista muda) ─────────────
+  // Modo passado (slider): o container fornece a foto histórica em `asOfAreas` —
+  // não carregamos do banco; renderizamos exatamente o que veio da reconstrução.
   useEffect(() => {
+    if (asOfAreas) {
+      setAreas(asOfAreas);
+      pendingFitRef.current = true;
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     apiLoadAreas(farmId, farmName)
@@ -195,12 +270,13 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [farmId, reloadToken]);
+  }, [farmId, reloadToken, localReload, asOfAreas]);
 
   // ── Inicializa o mapa (1x) + carrega leaflet-draw dinamicamente ─────────
   useEffect(() => {
     let cancelled = false;
     const store = layersRef.current;
+    const markerStore = markersRef.current;
     (async () => {
       // leaflet-draw é UMD e espera o global L antes de registrar L.Draw.
       (window as unknown as { L?: typeof L }).L = L;
@@ -227,6 +303,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       baseSatRef.current = sat;
       baseOSMRef.current = osm;
       mapRef.current = map;
+      setMapReady(true);
 
       map.on('draw:created', (e: { layer: L.Polygon }) => {
         const coords = (e.layer.getLatLngs()[0] as L.LatLng[]).map(
@@ -261,6 +338,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       mapRef.current?.remove();
       mapRef.current = null;
       store.clear();
+      markerStore.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -315,6 +393,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     const map = mapRef.current;
     if (!map) return;
     const store = layersRef.current;
+    const markStore = markersRef.current;
     const present = new Set(areas.map((a) => a.id));
 
     for (const [id, layer] of store) {
@@ -323,9 +402,56 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         store.delete(id);
       }
     }
+    for (const [id, mk] of markStore) {
+      if (!present.has(id)) {
+        map.removeLayer(mk);
+        markStore.delete(id);
+      }
+    }
 
     for (const a of areas) {
       const ring = cleanRing(a.coords);
+
+      // ── Local-ponto (geometria de 1 coordenada) → marcador com o ícone do tipo ──
+      if (isPointCoords(a.coords)) {
+        const stalePoly = store.get(a.id);
+        if (stalePoly) {
+          map.removeLayer(stalePoly);
+          store.delete(a.id);
+        }
+        const pt = pointLatLng(a.coords);
+        let mk = markStore.get(a.id);
+        if (!pt) {
+          if (mk) {
+            map.removeLayer(mk);
+            markStore.delete(a.id);
+          }
+          continue;
+        }
+        const r = catalogIndex.resolve(a.tipo);
+        const icon = pointDivIcon(r?.icone ?? null, r?.cor ?? NIVEIS.local.cor);
+        if (!mk) {
+          mk = L.marker(pt, { icon });
+          mk.on('click', (e) => {
+            L.DomEvent.stop(e);
+            selectArea(a.id);
+          });
+          mk.bindTooltip(a.nome, { direction: 'top', opacity: 0.95 });
+          markStore.set(a.id, mk);
+        } else {
+          mk.setLatLng(pt);
+          mk.setIcon(icon);
+          if (mk.getTooltip()) mk.setTooltipContent(a.nome);
+        }
+        if (hiddenLevels.has(a.nivel)) {
+          if (map.hasLayer(mk)) map.removeLayer(mk);
+          continue;
+        }
+        if (!map.hasLayer(mk)) mk.addTo(map);
+        mk.setZIndexOffset(a.id === selId ? 1000 : 0);
+        continue;
+      }
+
       let layer = store.get(a.id);
       if (ring.length < 3) {
         if (layer) {
@@ -341,7 +467,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         layer = undefined;
       }
       if (!layer) {
-        layer = L.polygon(ring, styleFor(a, a.id === selId));
+        layer = L.polygon(ring, styleFor(a, a.id === selId, colorByUso));
         (layer as unknown as { _fzNivel?: Nivel })._fzNivel = a.nivel;
         layer.on('click', (e) => {
           L.DomEvent.stop(e);
@@ -350,8 +476,9 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         layer.bindTooltip(a.nome, { permanent: true, direction: 'center', className, opacity: 1 });
         store.set(a.id, layer);
       } else {
-        layer.setStyle(styleFor(a, a.id === selId));
-        layer.setLatLngs(ring);
+        layer.setStyle(styleFor(a, a.id === selId, colorByUso));
+        // Não sobrescreve a geometria do polígono enquanto o usuário edita os vértices.
+        if (!(editingShapeRef.current && editLayerRef.current === layer)) layer.setLatLngs(ring);
         if (layer.getTooltip()) layer.setTooltipContent(a.nome);
       }
       if (hiddenLevels.has(a.nivel)) {
@@ -361,7 +488,275 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       if (!map.hasLayer(layer)) layer.addTo(map);
       if (a.id === selId) layer.bringToFront();
     }
-  }, [areas, selId, selectArea, hiddenLevels]);
+  }, [areas, selId, selectArea, hiddenLevels, colorByUso, catalogIndex]);
+
+  // ── Carrega o catálogo "Tipos de Locais" (cor/ícone dos Locais e pontos) ──
+  useEffect(() => {
+    if (!organizationId) return;
+    const ac = new AbortController();
+    listTiposLocal(organizationId, ac.signal)
+      .then((d) => {
+        if (!ac.signal.aborted) setTiposCatalog(d);
+      })
+      .catch(() => {
+        /* catálogo indisponível — degrada para cor por nível */
+      });
+    return () => ac.abort();
+  }, [organizationId]);
+
+  // ── Camada de referência (mapas importados do Google Earth) ──────────────
+  useEffect(() => {
+    let cancelled = false;
+    listFarmMaps(farmId)
+      .then((m) => !cancelled && setOverlayMaps(m))
+      .catch(() => !cancelled && setOverlayMaps([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId, overlayReload]);
+
+  // Renderiza o GeoJSON cru (linhas + pontos) abaixo das áreas estruturadas.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    overlayLayersRef.current.forEach((l) => map.removeLayer(l));
+    overlayLayersRef.current = [];
+    if (!overlayVisible) return;
+    for (const m of overlayMaps) {
+      if (!m.geojson) continue;
+      try {
+        const gj = L.geoJSON(m.geojson as GeoJSON.GeoJsonObject, {
+          style: () => ({ color: '#f59e0b', weight: 2, opacity: 0.9, fillColor: '#f59e0b', fillOpacity: 0.07 }),
+          pointToLayer: (_f, latlng) =>
+            L.circleMarker(latlng, { radius: 5, color: '#fff', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.95 }),
+          onEachFeature: (f, lyr) => {
+            const nm = f.properties && (f.properties.name as string);
+            if (nm) lyr.bindPopup(String(nm)); // só ao clicar — não polui o mapa
+          },
+        });
+        gj.addTo(map);
+        gj.bringToBack();
+        overlayLayersRef.current.push(gj);
+      } catch {
+        /* geojson inválido — ignora */
+      }
+    }
+  }, [overlayMaps, overlayVisible, mapReady]);
+
+  // ── Confirma o cadastro de áreas (tela mestra) ───────────────────────────
+  // Grava a hierarquia inteira em ORDEM DE DEPENDÊNCIA (perímetro → retiros →
+  // setores → locais), acumulando as áreas criadas (ids reais) para resolver o
+  // pai de cada nível por contenção espacial (`sugerirParent`/`resolveFk`).
+  const handleMestreSave = useCallback(
+    async (payload: MestreSavePayload): Promise<MestreSaveResult> => {
+      const { items, saveOverlay, file, geojson } = payload;
+      setBusy(true);
+      const savedIds: string[] = [];
+      try {
+        // Habilita de uma vez os níveis presentes (em vez de dentro do loop).
+        const needed = new Set(
+          items.map((i) => i.nivel).filter((n) => n !== 'fazenda'),
+        ) as Set<'retiro' | 'setor' | 'local'>;
+        needed.forEach((nv) => {
+          if (!levelOf(nv)) onEnsureLevel?.(nv);
+        });
+
+        // Pool para resolução de pai por contenção: áreas existentes + as criadas.
+        const created: Area[] = [...areasRef.current];
+        const draftToArea = new Map<string, Area>();
+        let nFaz = 0, nRet = 0, nSet = 0, nLoc = 0;
+        let orphanSetores = 0;
+
+        const resolveParent = (it: MestreSavePayload['items'][number], nivel: Nivel): string | null => {
+          if (it.parentId) {
+            const fromDraft = draftToArea.get(it.parentId);
+            if (fromDraft) return fromDraft.id;
+            if (created.some((a) => a.id === it.parentId)) return it.parentId; // pai já existente
+          }
+          return sugerirParent(created, it.coords, nivel);
+        };
+
+        // 1) Fazenda (perímetro).
+        for (const it of items.filter((i) => i.nivel === 'fazenda')) {
+          try {
+            await saveFarmPerimeter(farmId, it.coords, it.fonte);
+            const rootId = fazRootId(farmId);
+            const idx = created.findIndex((a) => a.id === rootId);
+            const rootArea: Area =
+              idx >= 0
+                ? { ...created[idx], coords: it.coords }
+                : { id: rootId, nivel: 'fazenda', nome: farmName, parent: null, tipo: null, coords: it.coords, fonte: it.fonte, visivel: true };
+            if (idx >= 0) created[idx] = rootArea;
+            else created.push(rootArea);
+            draftToArea.set(it.id, rootArea);
+            savedIds.push(it.id);
+            nFaz++;
+          } catch (e) {
+            console.error('Falha ao salvar o contorno da fazenda', e);
+          }
+        }
+
+        // 2) Retiros (sempre filhos da raiz da fazenda).
+        for (const it of items.filter((i) => i.nivel === 'retiro')) {
+          try {
+            const fk = resolveFk(created, resolveParent(it, 'retiro'), 'retiro');
+            const area = await apiCreateArea(farmId, {
+              nivel: 'retiro', nome: it.nome, coords: it.coords, fonte: it.fonte,
+              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+            });
+            created.push(area);
+            draftToArea.set(it.id, area);
+            savedIds.push(it.id);
+            nRet++;
+          } catch (e) {
+            console.error('Falha ao criar retiro', it.nome, e);
+          }
+        }
+
+        // 3) Setores (pai = retiro que o contém; sem retiro → solto na fazenda).
+        for (const it of items.filter((i) => i.nivel === 'setor')) {
+          try {
+            const parentId = resolveParent(it, 'setor');
+            if (!parentId || isFazRoot(parentId)) orphanSetores++;
+            const fk = resolveFk(created, parentId, 'setor');
+            const area = await apiCreateArea(farmId, {
+              nivel: 'setor', nome: it.nome, coords: it.coords, fonte: it.fonte,
+              retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+            });
+            created.push(area);
+            draftToArea.set(it.id, area);
+            savedIds.push(it.id);
+            nSet++;
+          } catch (e) {
+            console.error('Falha ao criar setor', it.nome, e);
+          }
+        }
+
+        // 4) Locais (pai = setor ou retiro que o contém).
+        for (const it of items.filter((i) => i.nivel === 'local')) {
+          try {
+            const fk = resolveFk(created, resolveParent(it, 'local'), 'local');
+            const area = await apiCreateArea(farmId, {
+              nivel: 'local', nome: it.nome, coords: it.coords, fonte: it.fonte,
+              tipo: it.tipo ?? 'Pasto', retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataInicial ?? null,
+            });
+            created.push(area);
+            draftToArea.set(it.id, area);
+            savedIds.push(it.id);
+            nLoc++;
+          } catch (e) {
+            console.error('Falha ao criar local', it.nome, e);
+          }
+        }
+
+        // 5) Camada de referência (KML cru).
+        if (saveOverlay && file && geojson) {
+          const ext = file.name.toLowerCase().endsWith('.kml') ? 'kml' : 'kmz';
+          try {
+            await createFarmMap({
+              farmId,
+              fileName: `${crypto.randomUUID()}.${ext}`,
+              originalName: file.name,
+              fileType: ext,
+              fileSize: file.size,
+              storagePath: `farm-maps/${farmId}/${crypto.randomUUID()}.${ext}`,
+              geojson,
+            });
+            setOverlayVisible(true);
+            setOverlayReload((v) => v + 1);
+          } catch (e) {
+            console.error('Falha ao salvar a camada de referência:', e);
+            onToast?.('Áreas cadastradas, mas a camada de referência não pôde ser salva.', 'warning');
+          }
+        }
+
+        // 6) Atualiza o mapa principal + resumo.
+        pendingFitRef.current = true;
+        setLocalReload((v) => v + 1);
+        onMutated?.();
+        const partes = [
+          nFaz ? 'contorno' : '',
+          nRet ? `${nRet} retiro(s)` : '',
+          nSet ? `${nSet} setor(es)` : '',
+          nLoc ? `${nLoc} local(is)` : '',
+        ]
+          .filter(Boolean)
+          .join(' + ');
+        if (partes) onToast?.(`Cadastrado: ${partes}.`, 'success');
+        else if (saveOverlay) onToast?.('Mapa de referência salvo.', 'success');
+        if (orphanSetores)
+          onToast?.(`${orphanSetores} setor(es) sem retiro foram vinculados direto à fazenda.`, 'warning');
+
+        return { savedIds };
+      } catch (err) {
+        console.error('Falha no cadastro de áreas:', err);
+        onToast?.('Não foi possível concluir o cadastro.', 'error');
+        return { savedIds };
+      } finally {
+        setBusy(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [farmId, farmName, levels, onEnsureLevel, dataInicial, onMutated, onToast],
+  );
+
+  // ── Excluir uma camada de referência importada (farm_maps) ───────────────
+  const deleteOverlay = useCallback(
+    async (m: FarmMapData) => {
+      if (
+        !window.confirm(
+          `Excluir o mapa importado "${m.original_name}"?\nA camada de referência some do mapa. O contorno da fazenda e os Locais NÃO são afetados.`,
+        )
+      )
+        return;
+      try {
+        setBusy(true);
+        await deleteFarmMapApi(m.id);
+        setOverlayReload((v) => v + 1);
+        onToast?.('Mapa importado excluído.', 'success');
+      } catch (e) {
+        console.error('Falha ao excluir o mapa importado:', e);
+        onToast?.('Não foi possível excluir o mapa importado.', 'error');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onToast],
+  );
+
+  // ── Excluir em lote os Locais criados pela importação (fonte = kml) ───────
+  const deleteKmlLocais = useCallback(async () => {
+    const alvos = areasRef.current.filter((a) => a.nivel === 'local' && a.fonte === 'kml');
+    if (!alvos.length) return;
+    if (
+      !window.confirm(
+        `Excluir ${alvos.length} Local(is) importado(s) do Google Earth?\nEsta ação não pode ser desfeita.`,
+      )
+    )
+      return;
+    try {
+      setBusy(true);
+      const ids = new Set(alvos.map((a) => a.id));
+      for (const a of alvos) {
+        try {
+          await apiDeleteArea(a);
+        } catch (e) {
+          console.error('Falha ao excluir local importado', a.nome, e);
+        }
+      }
+      setAreas((prev) =>
+        prev.filter((x) => !ids.has(x.id)).map((x) => (x.parent && ids.has(x.parent) ? { ...x, parent: null } : x)),
+      );
+      if (selId && ids.has(selId)) selectArea(null);
+      onMutated?.();
+      onToast?.(`${alvos.length} local(is) importado(s) excluído(s).`, 'warning');
+    } catch (e) {
+      console.error('Falha ao excluir locais importados:', e);
+      onToast?.('Não foi possível excluir os locais importados.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }, [selId, selectArea, onMutated, onToast]);
 
   // ── Desenhar ─────────────────────────────────────────────────────────────
   const startDraw = useCallback(() => {
@@ -393,13 +788,88 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
 
   const focusArea = useCallback((id: string) => {
     selectArea(id);
+    const map = mapRef.current;
+    if (!map) return;
     const layer = layersRef.current.get(id);
-    if (layer && mapRef.current) {
-      mapRef.current.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    const mk = markersRef.current.get(id);
+    if (layer) {
+      map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    } else if (mk) {
+      map.setView(mk.getLatLng(), Math.max(map.getZoom(), 16));
     }
   }, [selectArea]);
 
-  // ── Editar forma (vértices) ──────────────────────────────────────────────
+  // ── Editar forma (vértices arrastáveis — implementação própria) ───────────
+  // Reconstrói os manipuladores (vértices + pontos-médios) a partir do anel atual.
+  const rebuildEditHandles = useCallback(() => {
+    const map = mapRef.current;
+    const poly = editLayerRef.current;
+    if (!map || !poly) return;
+
+    // Limpa marcadores anteriores.
+    editVertexRef.current.forEach((m) => map.removeLayer(m));
+    editMidRef.current.forEach((m) => map.removeLayer(m));
+    editVertexRef.current = [];
+    editMidRef.current = [];
+
+    const coords = editCoordsRef.current;
+    const sync = () => poly.setLatLngs(coords);
+
+    // Um marcador arrastável por vértice.
+    coords.forEach((c, i) => {
+      const mk = L.marker(c, { draggable: true, icon: VERTEX_ICON, zIndexOffset: 1000, keyboard: false });
+      mk.on('drag', () => {
+        const ll = mk.getLatLng();
+        coords[i] = [ll.lat, ll.lng];
+        sync(); // a forma acompanha o vértice em tempo real
+        // Reposiciona os pontos-médios vizinhos durante o arraste.
+        const prev = (i - 1 + coords.length) % coords.length;
+        if (editMidRef.current[prev]) editMidRef.current[prev].setLatLng(midOf(coords[prev], coords[i]));
+        if (editMidRef.current[i]) editMidRef.current[i].setLatLng(midOf(coords[i], coords[(i + 1) % coords.length]));
+      });
+      mk.on('contextmenu', (e) => {
+        L.DomEvent.stop(e);
+        if (coords.length <= 3) {
+          onToast?.('A forma precisa de pelo menos 3 vértices.', 'warning');
+          return;
+        }
+        coords.splice(i, 1);
+        sync();
+        rebuildEditHandles();
+      });
+      mk.addTo(map);
+      editVertexRef.current.push(mk);
+    });
+
+    // Pontos-médios (inserir vértice) — só em formas pouco densas.
+    if (coords.length <= MAX_VERTICES_FOR_MIDPOINTS) {
+      coords.forEach((c, i) => {
+        const next = (i + 1) % coords.length;
+        const mid = L.marker(midOf(c, coords[next]), { icon: MID_ICON, zIndexOffset: 900, keyboard: false });
+        mid.on('click', (e) => {
+          L.DomEvent.stop(e);
+          const at = mid.getLatLng();
+          coords.splice(i + 1, 0, [at.lat, at.lng]); // novo vértice no ponto-médio
+          sync();
+          rebuildEditHandles();
+        });
+        mid.addTo(map);
+        editMidRef.current.push(mid);
+      });
+    }
+  }, [onToast]);
+
+  const teardownEditHandles = useCallback(() => {
+    const map = mapRef.current;
+    editVertexRef.current.forEach((m) => map?.removeLayer(m));
+    editMidRef.current.forEach((m) => map?.removeLayer(m));
+    editVertexRef.current = [];
+    editMidRef.current = [];
+    editLayerRef.current = null;
+    editCoordsRef.current = [];
+    editAreaIdRef.current = null;
+  }, []);
+
   const toggleEditShape = useCallback(async () => {
     if (readOnly) return;
     if (!selId) {
@@ -408,17 +878,26 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     }
     const layer = layersRef.current.get(selId);
     if (!layer) return;
-    const editing = (layer as unknown as { editing?: { enable: () => void; disable: () => void } }).editing;
-    if (!editing) return;
+
     if (editingShape) {
-      editing.disable();
-      const coords = (layer.getLatLngs()[0] as L.LatLng[]).map((p) => [p.lat, p.lng] as [number, number]);
-      const area = areasRef.current.find((a) => a.id === selId);
+      // Concluir: lê o anel editado, persiste e limpa os manipuladores.
+      const coords = editCoordsRef.current.map((c) => [c[0], c[1]] as [number, number]);
+      teardownEditHandles();
       setEditingShape(false);
+      const area = areasRef.current.find((a) => a.id === selId);
       if (!area) return;
       try {
         setBusy(true);
-        await apiUpdateGeometry(farmId, area, coords);
+        // Append-only: redesenho de um LOCAL passa pelo ledger (remodelar) e vira
+        // nova versão na linha do tempo. Retiro/setor seguem o patch direto.
+        if (area.nivel === 'local' && organizationId) {
+          await redesenhar({
+            organizationId, farmId, data: hojeISODia(), areaId: area.id,
+            geometry: coords, geometrySource: 'desenho', area: haFromCoords(coords),
+          });
+        } else {
+          await apiUpdateGeometry(farmId, area, coords);
+        }
         setAreas((prev) => prev.map((a) => (a.id === selId ? { ...a, coords } : a)));
         onMutated?.();
         onToast?.('Forma atualizada.', 'success');
@@ -429,11 +908,37 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         setBusy(false);
       }
     } else {
-      editing.enable();
+      // Entrar em edição: copia o anel atual e cria os vértices arrastáveis.
+      const ring = cleanRing((layer.getLatLngs()[0] as L.LatLng[]).map((p) => [p.lat, p.lng]));
+      if (ring.length < 3) {
+        onToast?.('Esta área não tem uma forma editável.', 'warning');
+        return;
+      }
+      editLayerRef.current = layer;
+      editAreaIdRef.current = selId;
+      editCoordsRef.current = ring.map((c) => [c[0], c[1]] as [number, number]);
       setEditingShape(true);
-      onToast?.('Arraste os vértices no mapa e clique em "Concluir forma".', 'info');
+      rebuildEditHandles();
+      layer.bringToFront();
+      onToast?.('Arraste os vértices. Clique no ponto azul-claro para inserir e botão direito para remover. Depois clique em "Concluir forma".', 'info');
     }
-  }, [selId, editingShape, onToast, readOnly, farmId, onMutated]);
+  }, [selId, editingShape, onToast, readOnly, farmId, onMutated, rebuildEditHandles, teardownEditHandles]);
+
+  // Cancela a edição de forma (descarta) se o usuário selecionar outra área.
+  useEffect(() => {
+    if (editingShapeRef.current) {
+      // Restaura a forma salva no polígono (descarta a edição em andamento).
+      const prevId = editAreaIdRef.current;
+      const poly = editLayerRef.current;
+      const area = prevId ? areasRef.current.find((a) => a.id === prevId) : null;
+      if (poly && area) {
+        const ring = cleanRing(area.coords);
+        if (ring.length >= 3) poly.setLatLngs(ring);
+      }
+      teardownEditHandles();
+      setEditingShape(false);
+    }
+  }, [selId, teardownEditHandles]);
 
   // ── Salvar propriedades (criar / editar) ─────────────────────────────────
   const savePropsDraft = useCallback(
@@ -552,6 +1057,10 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
 
   // ── Render ──────────────────────────────────────────────────────────────
   const selectedArea = useMemo(() => (selId ? areas.find((a) => a.id === selId) ?? null : null), [selId, areas]);
+  const kmlLocaisCount = useMemo(
+    () => areas.filter((a) => a.nivel === 'local' && a.fonte === 'kml').length,
+    [areas],
+  );
   const deleteArea = deleteId ? areas.find((a) => a.id === deleteId) ?? null : null;
   const deleteChildren = deleteId ? areas.filter((a) => a.parent === deleteId).length : 0;
 
@@ -595,6 +1104,15 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
               {editingShape ? <Save size={15} /> : <Crosshair size={15} />}
               {editingShape ? 'Concluir forma' : 'Editar forma'}
             </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              disabled={busy}
+              title="Cadastro de Áreas: importe um KML/KMZ ou desenhe, classifique por nível (Fazenda/Retiro/Setor/Local) e edite no mapa"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[12.5px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Globe size={15} /> Cadastrar áreas
+            </button>
           </div>
         )}
 
@@ -625,6 +1143,62 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           </button>
         ))}
       </div>
+
+      {/* Painel da importação do Google Earth — mostrar/ocultar e EXCLUIR */}
+      {(overlayMaps.length > 0 || kmlLocaisCount > 0) && (
+        <div className="absolute right-3 top-14 z-[600] w-[212px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-[0_2px_10px_rgba(16,24,40,.12)]">
+          {overlayMaps.length > 0 && (
+            <>
+              <div className="flex items-center justify-between gap-1 px-1.5 py-0.5">
+                <span className="flex items-center gap-1.5 text-[11.5px] font-bold text-gray-700">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: overlayVisible ? '#f59e0b' : '#d1d5db' }}
+                  />
+                  Mapa importado
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOverlayVisible((v) => !v)}
+                  title={overlayVisible ? 'Ocultar no mapa' : 'Mostrar no mapa'}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-50"
+                >
+                  {overlayVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
+              <div className="max-h-[120px] overflow-auto">
+                {overlayMaps.map((m) => (
+                  <div key={m.id} className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-gray-50">
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-gray-600" title={m.original_name}>
+                      {m.original_name}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteOverlay(m)}
+                      title="Excluir este mapa importado"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {kmlLocaisCount > 0 && !readOnly && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={deleteKmlLocais}
+              title="Excluir os Locais criados a partir dos pontos do Google Earth"
+              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 px-2 py-1.5 text-[11.5px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 size={13} /> Excluir {kmlLocaisCount} local(is) importado(s)
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Legenda clicável (canto inf. esq.) — mostra/oculta cada nível no mapa */}
       <div className="absolute bottom-6 left-3 z-[600] flex flex-col gap-0.5 rounded-xl border border-gray-200 bg-white px-1.5 py-1.5 shadow-[0_2px_10px_rgba(16,24,40,.12)]">
@@ -708,6 +1282,20 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           onConfirm={confirmDelete}
         />
       )}
+
+      {importOpen && (
+        <CadastroAreasMestre
+          existingAreas={areas}
+          organizationId={organizationId}
+          hasPerimeter={areas.some((a) => a.nivel === 'fazenda' && cleanRing(a.coords).length >= 3)}
+          busy={busy}
+          levels={levels}
+          onToggleLevel={onToggleLevel}
+          onClose={() => setImportOpen(false)}
+          onConfirm={handleMestreSave}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 };
@@ -723,7 +1311,7 @@ interface AreaPropsModalProps {
 const AreaPropsModal: React.FC<AreaPropsModalProps> = ({ draft, areas, onClose, onSave }) => {
   const [nome, setNome] = useState(draft.nome);
   const [nivel, setNivel] = useState<Nivel>(draft.nivel);
-  const [tipo, setTipo] = useState<TipoLocal | null>(draft.tipo ?? 'Pasto');
+  const [tipo, setTipo] = useState<string | null>(draft.tipo ?? 'Pasto');
   const [parent, setParent] = useState<string | null>(draft.parent);
 
   const editing = !!draft.editId;
@@ -809,9 +1397,10 @@ const AreaPropsModal: React.FC<AreaPropsModalProps> = ({ draft, areas, onClose, 
                 <label className="text-[12.5px] font-semibold text-gray-700">Tipo de local</label>
                 <select
                   value={tipo ?? 'Pasto'}
-                  onChange={(e) => setTipo(e.target.value as TipoLocal)}
+                  onChange={(e) => setTipo(e.target.value)}
                   className="rounded-lg border border-gray-200 px-3 py-2 text-[13.5px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 >
+                  {tipo && !(TIPOS_LOCAL as string[]).includes(tipo) && <option value={tipo}>{tipo}</option>}
                   {TIPOS_LOCAL.map((t) => (
                     <option key={t} value={t}>
                       {t}

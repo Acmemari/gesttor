@@ -19,6 +19,7 @@ import {
   abrir,
   renomear,
   remodelar,
+  conversaoUso,
   mover,
   aposentar,
   reativar,
@@ -28,9 +29,14 @@ import {
 } from '../src/DB/repositories/area-movimentos.js';
 
 const VALID_TIPOS = [
-  'abertura', 'renomear', 'remodelar', 'mover',
+  'abertura', 'renomear', 'remodelar', 'conversao_uso', 'mover',
   'aposentar', 'reativar', 'dividir', 'unir', 'nivel',
 ];
+
+const USOS_VALIDOS = ['Pastagem', 'Agricultura', 'Reserva', 'Silvicultura', 'Outro'];
+
+/** Erros de regra de negócio que viram 400 (validação) em vez de 500. */
+const VALIDATION_ERRORS = ['LOCAL_APOSENTADO', 'GEOMETRY_INVALIDA', 'REALOCACAO_DESTINO_INVALIDO', 'DEFAULT_RECORD_PROTECTED'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
@@ -99,6 +105,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!b.areaId) return jsonError(res, 'remodelar exige areaId', { status: 400 });
           result = await remodelar({ ...base, areaId: b.areaId, geometry: b.geometry ?? null, geometrySource: b.geometrySource, area: b.area });
           break;
+        case 'conversao_uso':
+          if (!b.areaId || !b.uso) return jsonError(res, 'conversao_uso exige areaId e uso', { status: 400 });
+          if (!USOS_VALIDOS.includes(b.uso)) return jsonError(res, `uso inválido. Suportado: ${USOS_VALIDOS.join(', ')}`, { status: 400 });
+          result = await conversaoUso({ ...base, areaId: b.areaId, uso: String(b.uso) });
+          break;
         case 'mover':
           if (!b.areaId) return jsonError(res, 'mover exige areaId', { status: 400 });
           result = await mover({ ...base, areaId: b.areaId, retiroId: b.retiroId, setorId: b.setorId });
@@ -113,11 +124,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           break;
         case 'dividir':
           if (!b.parentId || !Array.isArray(b.filhos)) return jsonError(res, 'dividir exige parentId e filhos[]', { status: 400 });
-          result = await dividir({ ...base, parentId: b.parentId, filhos: b.filhos });
+          result = await dividir({ ...base, parentId: b.parentId, filhos: b.filhos, realocacao: b.realocacao, ackTolerancia: b.ackTolerancia });
           break;
         case 'unir':
           if (!Array.isArray(b.origemIds) || !b.destino) return jsonError(res, 'unir exige origemIds[] e destino', { status: 400 });
-          result = await unir({ ...base, origemIds: b.origemIds, destino: b.destino });
+          result = await unir({ ...base, origemIds: b.origemIds, destino: b.destino, realocacao: b.realocacao, ackTolerancia: b.ackTolerancia });
           break;
         case 'nivel':
           if (!b.nivel || typeof b.retiro !== 'boolean' || typeof b.setor !== 'boolean' || typeof b.local !== 'boolean') {
@@ -135,6 +146,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     jsonError(res, 'Método não permitido', { status: 405 });
   } catch (err: any) {
+    // 409 com payload extra (jsonError não carrega campos extras): o front precisa
+    // dos detalhes para abrir o modal de realocação / confirmar a tolerância.
+    if (err?.code === 'REBANHO_PENDENTE') {
+      res.status(409).json({ ok: false, error: err.message, code: 'REBANHO_PENDENTE', locais: err.locais });
+      return;
+    }
+    if (err?.code === 'AREA_TOLERANCIA') {
+      res.status(409).json({ ok: false, error: err.message, code: 'AREA_TOLERANCIA', esperado: err.esperado, informado: err.informado, difPct: err.difPct });
+      return;
+    }
+    if (VALIDATION_ERRORS.includes(err?.message)) {
+      jsonError(res, err.message, { code: 'VALIDATION', status: 400 });
+      return;
+    }
     console.error('[area-movimentos] error:', err);
     jsonError(res, err?.message || 'Erro ao processar movimento de área. Tente novamente.', { code: 'INTERNAL', status: 500 });
   }

@@ -12,7 +12,7 @@
  *   - ha (m²→ha) é gravado no campo numérico area/total_area, mantendo a lista em sincronia.
  */
 import { cleanRing, areaM2 } from './util';
-import type { Area, Nivel, TipoLocal, Fonte } from './types';
+import type { Area, Nivel, Uso, Fonte } from './types';
 
 const API = '/api/farm-locations';
 const FARMS_API = '/api/farms';
@@ -21,12 +21,12 @@ export const FAZ_PREFIX = 'faz:';
 export const fazRootId = (farmId: string) => FAZ_PREFIX + farmId;
 export const isFazRoot = (id: string) => id.startsWith(FAZ_PREFIX);
 
-interface LevelsDTO { retiro: boolean; setor: boolean; local: boolean; configured?: boolean }
+interface LevelsDTO { retiro: boolean; setor: boolean; local: boolean; configured?: boolean; usarMapa?: boolean }
 interface PerimeterDTO { geometry: unknown; source: string | null }
 interface BundleDTO {
   retiros: Array<{ id: string; name: string; totalArea: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null }>;
   setores: Array<{ id: string; retiroId: string | null; name: string; area: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null }>;
-  locais: Array<{ id: string; retiroId: string | null; setorId: string | null; name: string; area: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null; tipo: string | null }>;
+  locais: Array<{ id: string; retiroId: string | null; setorId: string | null; name: string; area: string | null; isDefault?: boolean; dataInicial: string | null; geometry: unknown; geometrySource: string | null; tipo: string | null; uso?: string | null }>;
   levels: LevelsDTO;
   perimeter: PerimeterDTO | null;
 }
@@ -57,7 +57,8 @@ export interface AreaWrite {
   nome: string;
   coords: [number, number][];
   fonte: Fonte;
-  tipo?: TipoLocal | null;
+  /** texto livre: enum legado OU nome de tipo do catálogo. */
+  tipo?: string | null;
   retiroId?: string | null;
   setorId?: string | null;
   /** data inicial do cadastro (ISO 'YYYY-MM-DD') — única por tela. */
@@ -93,7 +94,7 @@ export async function loadAreas(farmId: string, farmName: string): Promise<Area[
   for (const l of b.locais) {
     if (l.isDefault) continue;
     areas.push({ id: l.id, nivel: 'local', nome: l.name, parent: l.setorId || l.retiroId || root,
-      tipo: (l.tipo as TipoLocal) || null,
+      tipo: l.tipo || null, uso: (l.uso as Uso) || null,
       coords: toCoords(l.geometry), fonte: (l.geometrySource as Fonte) || 'desenho', dataInicial: l.dataInicial ?? null, visivel: true });
   }
   return areas;
@@ -158,7 +159,7 @@ export async function updateAreaGeometry(
 // ── Atualiza nome / tipo / vínculo (parent) de uma área existente ─────────────
 export async function updateAreaProps(
   area: Area,
-  w: { nome: string; tipo?: TipoLocal | null; retiroId?: string | null; setorId?: string | null; dataInicial?: string | null },
+  w: { nome: string; tipo?: string | null; retiroId?: string | null; setorId?: string | null; dataInicial?: string | null },
 ): Promise<void> {
   const di = w.dataInicial ?? null;
   if (area.nivel === 'retiro') await patch(API, { id: area.id, name: w.nome, dataInicial: di });

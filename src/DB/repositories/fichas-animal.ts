@@ -46,7 +46,9 @@ export interface FichaAnimalWritable {
   pai?: string | null;
   mae?: string | null;
   avoPaterno?: string | null;
+  avoPaterna?: string | null;
   avoMaterno?: string | null;
+  avoMaterna?: string | null;
   // Situação
   situacao?: string;
   // Campos das abas ainda não estruturadas + futuros.
@@ -99,7 +101,9 @@ export async function create(data: FichaAnimalWritable & {
     pai: data.pai ?? null,
     mae: data.mae ?? null,
     avoPaterno: data.avoPaterno ?? null,
+    avoPaterna: data.avoPaterna ?? null,
     avoMaterno: data.avoMaterno ?? null,
+    avoMaterna: data.avoMaterna ?? null,
     situacao: data.situacao ?? 'ativo',
     extras: data.extras ?? {},
     criadoPor: data.criadoPor ?? null,
@@ -115,7 +119,8 @@ export async function update(id: string, data: FichaAnimalWritable) {
     'grau', 'pelagem', 'chifre', 'frame', 'categoriaGenealogica', 'ceip', 'porte',
     'lote', 'rfid', 'sisbov', 'rgn', 'rgd', 'serie', 'peso', 'pesagem', 'obs',
     'eventoEntrada', 'dataEntrada', 'data', 'pesoNascer', 'colostro', 'parto',
-    'fazendaNascimento', 'pai', 'mae', 'avoPaterno', 'avoMaterno', 'situacao', 'extras',
+    'fazendaNascimento', 'pai', 'mae', 'avoPaterno', 'avoPaterna', 'avoMaterno', 'avoMaterna',
+    'situacao', 'extras',
   ];
   for (const k of keys) {
     if (data[k] !== undefined) patch[k] = data[k];

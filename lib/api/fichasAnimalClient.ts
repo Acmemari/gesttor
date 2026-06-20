@@ -45,7 +45,9 @@ export interface FichaAnimalRow {
   pai: string | null;
   mae: string | null;
   avoPaterno: string | null;
+  avoPaterna: string | null;
   avoMaterno: string | null;
+  avoMaterna: string | null;
   // Situação
   situacao: string;
   extras: Record<string, unknown>;
@@ -60,7 +62,7 @@ const FORM_COLUMN_FIELDS = [
   'categoriaGenealogica', 'ceip', 'porte', 'lote', 'rfid', 'sisbov', 'rgn', 'rgd',
   'serie', 'peso', 'pesagem', 'obs', 'eventoEntrada', 'dataEntrada', 'data',
   'pesoNascer', 'colostro', 'parto', 'fazendaNascimento', 'pai', 'mae',
-  'avoPaterno', 'avoMaterno', 'situacao',
+  'avoPaterno', 'avoPaterna', 'avoMaterno', 'avoMaterna', 'situacao',
 ] as const;
 
 const FORM_COLUMN_SET = new Set<string>([...FORM_COLUMN_FIELDS, 'categoria']);

@@ -648,6 +648,10 @@ export const farmLocais = pgTable('farm_locais', {
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
   tipo: text('tipo'),
+  // Uso da terra (Pastagem/Agricultura/Reserva/Silvicultura/Outro). Eixo distinto
+  // de `tipo` (função do local). Cache da versão corrente em `area_versoes.uso`;
+  // alterado pela operação `conversao_uso` da Movimentação de Áreas.
+  uso: text('uso'),
   // Ciclo de vida (Movimentação de Áreas): 'ativo' | 'aposentado'. Aposentar
   // substitui excluir — preserva a identidade (local_id) e mantém íntegros os
   // lançamentos do rebanho que apontam para o local. Ver `area_movimentos`.
@@ -668,12 +672,16 @@ export const farmLocais = pgTable('farm_locais', {
 // `configured`: o usuário já escolheu explicitamente a combinação de níveis desta
 // fazenda? Enquanto false, a aba "Locais" mostra o cadastro de combinação (gate)
 // antes de liberar a alocação de áreas no mapa.
+// `usarMapa`: a fazenda controla os locais COM mapa (colunas + mapa Leaflet) ou SEM
+// mapa (apenas as colunas Fazenda › Retiro › Setor › Local, hectares à mão)? É um
+// modo de apresentação por fazenda, NÃO-destrutivo: alternar nunca apaga geometria.
 export const farmLocationLevels = pgTable('farm_location_levels', {
   farmId: text('farm_id').primaryKey().references(() => farms.id, { onDelete: 'cascade' }),
   retiro: boolean('retiro').notNull().default(true),
   setor: boolean('setor').notNull().default(false),
   local: boolean('local').notNull().default(true),
   configured: boolean('configured').notNull().default(false),
+  usarMapa: boolean('usar_mapa').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
@@ -710,6 +718,41 @@ export const areaMovimentos = pgTable('area_movimentos', {
   index('idx_area_mov_farm_data').on(t.farmId, t.data),
   index('idx_area_mov_area').on(t.areaId),
   index('idx_area_mov_org').on(t.organizationId),
+]);
+
+// ── Versões de Área (linha do tempo / slider) ─────────────────────────────────
+// Linha do tempo materializada das áreas: cada versão é a "foto" geográfica +
+// uso vigente num intervalo [valid_from, valid_to). É DERIVADA do ledger
+// (area_movimentos) — cada operação que muda forma/uso FECHA a versão aberta e
+// ABRE uma nova, ligada ao movimento que a originou. Alimenta a reconstrução do
+// mapa por data (slider) em todos os níveis (retiro/setor/local).
+export const areaVersoes = pgTable('area_versoes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Identidade-alvo (id do retiro/setor/local). NÃO é FK — mesma semântica de
+  // area_movimentos.area_id: o local pode ser aposentado/recriado e a timeline
+  // precisa sobreviver à aposentadoria da linha de identidade.
+  areaId: uuid('area_id').notNull(),
+  nivel: text('nivel').notNull(),                          // 'retiro'|'setor'|'local'
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  farmId: text('farm_id').notNull().references(() => farms.id, { onDelete: 'cascade' }),
+  // Vigência [validFrom, validTo). validTo null = versão corrente/aberta.
+  validFrom: date('valid_from').notNull(),
+  validTo: date('valid_to'),
+  // Foto geográfica desta versão: anel [lat,lng][] cru + fonte ('desenho'|'kml').
+  geometry: jsonb('geometry'),
+  geometrySource: text('geometry_source'),
+  // Uso da terra (só significativo no nível 'local'; null em retiro/setor).
+  uso: text('uso'),
+  areaHa: numeric('area_ha'),                              // em hectares
+  // Movimento que ABRIU esta versão (null apenas no backfill da baseline).
+  movimentoId: uuid('movimento_id').references(() => areaMovimentos.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_area_versoes_farm_vigencia').on(t.farmId, t.validFrom, t.validTo),
+  index('idx_area_versoes_area').on(t.areaId),
+  index('idx_area_versoes_org').on(t.organizationId),
+  // Invariante: no máx. 1 versão aberta (valid_to IS NULL) por identidade.
+  uniqueIndex('uq_area_versoes_aberta').on(t.areaId).where(sql`${t.validTo} IS NULL`),
 ]);
 
 // ── AI / Agents ────────────────────────────────────────────────────────────────
@@ -1890,10 +1933,13 @@ export const fichasAnimal = pgTable('fichas_animal', {
   fazendaNascimento: text('fazenda_nascimento'),
 
   // ── Genealogia (GENEALOGIA_FIELDS) ───────────────────────────────────────────
+  // 4 avós: avô/avó de cada linha (paterna = pais do Pai; materna = pais da Mãe).
   pai: text('pai'),
   mae: text('mae'),
   avoPaterno: text('avo_paterno'),
+  avoPaterna: text('avo_paterna'),
   avoMaterno: text('avo_materno'),
+  avoMaterna: text('avo_materna'),
 
   // ── Situação / status (Ativo | Morte | Venda) ───────────────────────────────
   situacao: text('situacao').notNull().default('ativo'),
@@ -1975,6 +2021,116 @@ export const lotes = pgTable('lotes', {
 }, (t) => [
   index('idx_lotes_org_id').on(t.organizationId),
   index('idx_lotes_farm_id').on(t.farmId),
+]);
+
+// ── Estação de Monta ────────────────────────────────────────────────────────────
+// Ficha de cadastro da estação de monta: define o Período da Monta por
+// Fazenda/Retiro. O Período de Nascimento (monta + 281 dias de gestação) e a
+// Safra de nascimento do bezerro (ciclo julho→julho) são derivados e gravados
+// no save para ficarem disponíveis em relatórios.
+export const estacaoMonta = pgTable('estacao_monta', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  // Localização: vinculada a uma Fazenda; e ao Retiro (nome) quando houver.
+  farmId: text('farm_id').references(() => farms.id, { onDelete: 'set null' }),
+  retiro: text('retiro'),
+  // Período da Monta (informado pelo usuário).
+  montaInicio: date('monta_inicio').notNull(),
+  montaFim: date('monta_fim').notNull(),
+  // Período de Nascimento (derivado: monta + 281 dias).
+  nascimentoInicio: date('nascimento_inicio').notNull(),
+  nascimentoFim: date('nascimento_fim').notNull(),
+  // Safra de nascimento do bezerro (derivada do início do nascimento, julho→julho).
+  safra: text('safra').notNull(),
+  observacao: text('observacao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_estacao_monta_org_id').on(t.organizationId),
+  index('idx_estacao_monta_farm_id').on(t.farmId),
+]);
+
+// ── Espécies Forrageiras ──────────────────────────────────────────────────────
+// Cadastro (nível organização) das forrageiras usadas nos pastos: nome popular,
+// nome científico, alturas de pastejo por regime, fotos e uma descrição livre.
+// `alturas` guarda as alturas-alvo (cm) por regime de manejo:
+//   { continuo: { ideal },               — campo único (idealMin/idealMax = legado)
+//     rotacionado: { entrada, saida },
+//     rotatinuo:   { entrada, saida } }   — qualquer ponta pode ser null.
+export const especiesForrageiras = pgTable('especies_forrageiras', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  nomeCientifico: text('nome_cientifico'),
+  alturas: jsonb('alturas').notNull().default('{}'),
+  imagens: jsonb('imagens').notNull().default('[]'),
+  descricao: text('descricao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_especies_forrageiras_org_id').on(t.organizationId),
+]);
+
+// ── Tipos de Locais ───────────────────────────────────────────────────────────
+// Cadastro (nível organização) dos tipos de locais e infraestrutura da fazenda,
+// organizados em categorias editáveis (Pecuária, Agricultura, Silvicultura, etc.).
+// Eixo distinto do mapa de Áreas — por ora é standalone (não alimenta o seletor
+// de "Uso" do Cadastro de Áreas). Cada categoria e cada tipo carrega cor/ícone
+// opcionais; o tipo herda a cor da categoria quando não tem cor própria.
+export const tipoLocalCategorias = pgTable('tipo_local_categorias', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  cor: text('cor'),
+  icone: text('icone'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_tipo_local_categorias_org_id').on(t.organizationId),
+]);
+
+export const tiposLocal = pgTable('tipos_local', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').notNull()
+    .references(() => tipoLocalCategorias.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  cor: text('cor'),
+  icone: text('icone'),
+  descricao: text('descricao'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_tipos_local_org_id').on(t.organizationId),
+  index('idx_tipos_local_categoria_id').on(t.categoriaId),
+]);
+
+// 3º nível (opcional) de um tipo: o detalhamento. Ex.: Pastagem cultivada ›
+// Capim-Marandu/Mombaça; Silagem › Milho/Sorgo. Lista inline por tipo — um tipo
+// sem detalhes simplesmente não tem 3º nível. cor/ícone reservados p/ futuro.
+export const tipoLocalDetalhes = pgTable('tipo_local_detalhes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  tipoId: uuid('tipo_id').notNull()
+    .references(() => tiposLocal.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  cor: text('cor'),
+  icone: text('icone'),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_tipo_local_detalhes_org_id').on(t.organizationId),
+  index('idx_tipo_local_detalhes_tipo_id').on(t.tipoId),
 ]);
 
 // ── Lote Eventos ────────────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import {
   BadgeCheck,
   Fingerprint,
   Palette,
+  SlidersHorizontal,
 } from 'lucide-react';
 import FieldControl from '../nascimento/FieldControl';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
@@ -25,6 +26,7 @@ import ComedouroIcon from './ComedouroIcon';
 import ProgenieIcon from './ProgenieIcon';
 import ReprodutivoIcon from './ReprodutivoIcon';
 import UltrassomIcon from './UltrassomIcon';
+import GenealogiaTree from './GenealogiaTree';
 import {
   FIELD_BY_ID,
   COLOSTRO,
@@ -176,13 +178,38 @@ const CARACTERISTICAS_FIELDS: LrField[] = [
   FIELD_BY_ID.obs,
 ];
 
-/** Campos da aba Genealogia: Pai, Mãe, Avô Paterno e Avô Materno. */
-const GENEALOGIA_FIELDS: LrField[] = [
-  { id: 'pai', label: 'Pai', type: 'text', placeholder: 'Pai — ID/Nome', def: 'dados' },
-  { id: 'mae', label: 'Mãe', type: 'text', placeholder: 'Mãe — ID/Nome', def: 'dados' },
-  { id: 'avoPaterno', label: 'Avô Paterno', type: 'text', placeholder: 'Avô Paterno — ID/Nome', def: 'dados' },
-  { id: 'avoMaterno', label: 'Avô Materno', type: 'text', placeholder: 'Avô Materno — ID/Nome', def: 'dados' },
+/**
+ * Grupos da aba Identificação, na ordem de exibição. Reutilizado tanto para
+ * renderizar a aba quanto para montar o seletor de "quais campos exibir".
+ */
+const IDENT_GROUPS: { title: string; icon: React.ElementType; fields: LrField[] }[] = [
+  { title: 'Cadastro Essencial', icon: BadgeCheck, fields: ESSENCIAL_FIELDS },
+  { title: 'Identificadores', icon: Fingerprint, fields: IDENTIFICADORES_FIELDS },
+  { title: 'Características', icon: Palette, fields: CARACTERISTICAS_FIELDS },
 ];
+
+/** ID Manejo é a chave da ficha — nunca pode ser ocultado. */
+const LOCKED_IDENT_FIELD = 'apelido';
+/** Preferência (por usuário/navegador) de quais campos exibir na aba Identificação. */
+const IDENT_FIELD_PREF_KEY = 'inttegra:ficha-animal-ident-fields';
+
+/**
+ * Lê os campos OCULTOS da aba Identificação (set de ids). Guarda os ocultos em
+ * vez dos visíveis para que campos novos apareçam por padrão a quem já tem
+ * preferência salva.
+ */
+function loadHiddenIdentFields(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(IDENT_FIELD_PREF_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === 'string' && x !== LOCKED_IDENT_FIELD));
+  } catch {
+    return new Set();
+  }
+}
 
 /**
  * Dados de nascimento exibidos na aba "Origem".
@@ -312,6 +339,43 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
     );
   };
 
+  // ── Campos visíveis na aba Identificação (preferência por usuário/navegador) ──
+  const [hiddenIdentFields, setHiddenIdentFields] = useState<Set<string>>(loadHiddenIdentFields);
+  const [editingFields, setEditingFields] = useState(false);
+  const fieldEditorRef = useRef<HTMLDivElement | null>(null);
+
+  // Persiste a preferência (lista de ids ocultos) sempre que mudar.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(IDENT_FIELD_PREF_KEY, JSON.stringify([...hiddenIdentFields]));
+    } catch {
+      /* quota cheia ou modo privado — mantém apenas em memória */
+    }
+  }, [hiddenIdentFields]);
+
+  // Fecha o seletor de campos ao clicar fora dele.
+  useEffect(() => {
+    if (!editingFields) return;
+    const onDown = (e: MouseEvent) => {
+      if (fieldEditorRef.current && !fieldEditorRef.current.contains(e.target as Node)) {
+        setEditingFields(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [editingFields]);
+
+  const toggleIdentField = (id: string) => {
+    if (id === LOCKED_IDENT_FIELD) return; // chave da ficha — sempre visível
+    setHiddenIdentFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // ── Fotos e vídeos (pré-visualização local; o upload para storage será
   // conectado junto com a persistência da ficha). ────────────────────────────
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -377,29 +441,37 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
     Icon: React.ElementType,
     fields: LrField[],
     leading?: React.ReactNode,
-  ) => (
-    <div>
-      <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-2 text-[12.5px] font-bold uppercase tracking-wider text-[#16a34a]">
-        <Icon size={15} /> {title}
+    action?: React.ReactNode,
+  ) => {
+    // Respeita a preferência de campos visíveis da aba Identificação.
+    const visible = fields.filter((f) => !hiddenIdentFields.has(f.id));
+    // Grupo sem campos visíveis (e sem célula fixa) some por completo.
+    if (!visible.length && !leading) return null;
+    return (
+      <div>
+        <div className="mb-3 flex items-center gap-2 border-b border-gray-100 pb-2 text-[12.5px] font-bold uppercase tracking-wider text-[#16a34a]">
+          <Icon size={15} /> {title}
+          {action ? <div className="ml-auto normal-case tracking-normal">{action}</div> : null}
+        </div>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {leading}
+          {visible.map((f) => (
+            <div key={f.id} className={spanClass(f)}>
+              <FieldControl
+                field={f}
+                value={values[f.id] ?? ''}
+                onChange={(v) => handleFieldChange(f, v)}
+                categories={categories}
+                lotes={lotes}
+                optionsOverride={optionsOverride}
+                grid
+              />
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
-        {leading}
-        {fields.map((f) => (
-          <div key={f.id} className={spanClass(f)}>
-            <FieldControl
-              field={f}
-              value={values[f.id] ?? ''}
-              onChange={(v) => handleFieldChange(f, v)}
-              categories={categories}
-              lotes={lotes}
-              optionsOverride={optionsOverride}
-              grid
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const limpar = () => {
     clearMedia();
@@ -454,6 +526,77 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
     }
     updateTabsOverflow();
   }, [tab, visibleTabs, updateTabsOverflow]);
+
+  // Botão + popover de "Personalizar campos" — renderizado no cabeçalho do
+  // grupo Cadastro Essencial (mesma linha do título).
+  const fieldEditor = (
+    <div className="relative" ref={fieldEditorRef}>
+      <button
+        type="button"
+        onClick={() => setEditingFields((v) => !v)}
+        title="Escolher quais campos exibir"
+        aria-expanded={editingFields}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
+          editingFields
+            ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+            : 'border-gray-200 text-gray-500 hover:border-[#16a34a]/40 hover:text-[#16a34a]'
+        }`}
+      >
+        <SlidersHorizontal size={14} /> Personalizar campos
+        {hiddenIdentFields.size ? (
+          <span className="rounded-full bg-gray-100 px-1.5 text-[10.5px] font-bold text-gray-500">
+            {hiddenIdentFields.size} oculto{hiddenIdentFields.size > 1 ? 's' : ''}
+          </span>
+        ) : null}
+      </button>
+
+      {editingFields ? (
+        <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+          <p className="px-2 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            Campos visíveis
+          </p>
+          <div className="max-h-80 overflow-y-auto">
+            {IDENT_GROUPS.map((g) => {
+              const GIcon = g.icon;
+              return (
+                <div key={g.title} className="mb-1.5">
+                  <p className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10.5px] font-bold uppercase tracking-wide text-[#16a34a]">
+                    <GIcon size={12} /> {g.title}
+                  </p>
+                  {g.fields.map((f) => {
+                    const locked = f.id === LOCKED_IDENT_FIELD;
+                    const checked = !hiddenIdentFields.has(f.id);
+                    return (
+                      <label
+                        key={f.id}
+                        className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] ${
+                          locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 accent-[#16a34a]"
+                          checked={checked}
+                          disabled={locked}
+                          onChange={() => toggleIdentField(f.id)}
+                        />
+                        <span className="font-medium text-gray-700">{f.label}</span>
+                        {locked ? (
+                          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-gray-300">
+                            fixo
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
@@ -614,6 +757,7 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
                   motivo={values.__situacaoMotivo}
                 />
               </div>,
+              fieldEditor,
             )}
             {renderGroup('Identificadores', Fingerprint, IDENTIFICADORES_FIELDS)}
             {renderGroup('Características', Palette, CARACTERISTICAS_FIELDS)}
@@ -643,20 +787,11 @@ const FichaAnimalForm: React.FC<FichaAnimalFormProps> = ({
             </div>
           </div>
         ) : tab === 'genealogia' ? (
-          <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
-            {GENEALOGIA_FIELDS.map((f) => (
-              <div key={f.id}>
-                <FieldControl
-                  field={f}
-                  value={values[f.id] ?? ''}
-                  onChange={(v) => setValue(f.id, v)}
-                  categories={categories}
-                  lotes={lotes}
-                  optionsOverride={optionsOverride}
-                  grid
-                />
-              </div>
-            ))}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 border-b border-gray-100 pb-2 text-[12.5px] font-bold uppercase tracking-wider text-[#16a34a]">
+              <Network size={15} /> Árvore genealógica
+            </div>
+            <GenealogiaTree values={values} setValue={setValue} />
           </div>
         ) : tab === 'ultrassonografia' ? (
           <div className="flex flex-col gap-5">

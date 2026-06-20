@@ -38,6 +38,7 @@ import {
   reorderAnimalCategories,
   type AnimalCategory,
 } from '../lib/api/animalCategoriesClient';
+import { listAnimalBreeds } from '../lib/api/animalBreedsClient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -92,8 +93,12 @@ interface FormState {
   sexo: string;
   idadeFaixa: string;
   pesoKg: string;
+  raca: string;
   ativo: boolean;
 }
+
+// Valor da opção "Sem atribuição de Raça" no select (gravado como null no banco).
+const RACA_NENHUMA = '';
 
 const EMPTY_FORM: FormState = {
   nome: '',
@@ -101,6 +106,7 @@ const EMPTY_FORM: FormState = {
   sexo: 'macho',
   idadeFaixa: 'ate_12',
   pesoKg: '',
+  raca: RACA_NENHUMA,
   ativo: true,
 };
 
@@ -200,6 +206,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const organizationId = selectedClient?.id ?? user?.organizationId ?? '';
 
   const [categories, setCategories] = useState<AnimalCategory[]>([]);
+  const [racas, setRacas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -231,6 +238,22 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     loadCategories();
   }, [loadCategories]);
 
+  // Raças cadastradas e ativas — alimentam o select "Raça" do formulário.
+  useEffect(() => {
+    if (!organizationId) return;
+    let cancelled = false;
+    listAnimalBreeds(organizationId)
+      .then((rows) => {
+        if (!cancelled) setRacas(rows.filter((b) => b.ativo).map((b) => b.nome));
+      })
+      .catch(() => {
+        if (!cancelled) setRacas([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
   // ── Form helpers ──────────────────────────────────────────────────────────
 
   const novo = useCallback(() => {
@@ -246,6 +269,7 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       sexo: cat.sexo,
       idadeFaixa: cat.idadeFaixa ?? 'ate_12',
       pesoKg: cat.pesoKg ? String(parseFloat(cat.pesoKg)) : '',
+      raca: cat.raca ?? RACA_NENHUMA,
       ativo: cat.ativo ?? true,
     });
     setAba('lancar');
@@ -272,6 +296,9 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
         grupo: form.grupo,
         idadeFaixa: form.idadeFaixa || undefined,
         pesoKg: form.pesoKg ? parseFloat(form.pesoKg) : null,
+        // String vazia = "Sem atribuição de Raça"; a API converte para null
+        // (inclusive ao limpar a raça de uma categoria existente na edição).
+        raca: form.raca,
         ativo: form.ativo,
       };
 
@@ -404,6 +431,29 @@ const AnimalCategoriesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 placeholder="Ex: Bezerro Desmamado, Novilha..."
                 className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all placeholder-gray-400"
               />
+            </div>
+
+            {/* Raça — lista as raças cadastradas e ativas no sistema */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider mb-2 text-[#6B7280]">
+                Raça
+              </label>
+              <select
+                value={form.raca}
+                onChange={(e) => setForm((f) => ({ ...f, raca: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-[#E5E7EB] bg-white text-[#0F172A] rounded-lg text-sm focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/20 outline-none transition-all"
+              >
+                <option value={RACA_NENHUMA}>Sem atribuição de Raça</option>
+                {/* Raça gravada que não está mais ativa/cadastrada: preserva a seleção na edição */}
+                {form.raca && !racas.includes(form.raca) && (
+                  <option value={form.raca}>{form.raca}</option>
+                )}
+                {racas.map((nome) => (
+                  <option key={nome} value={nome}>
+                    {nome}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Grupo */}

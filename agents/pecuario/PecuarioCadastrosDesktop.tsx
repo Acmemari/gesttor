@@ -241,6 +241,9 @@ interface PecuarioCadastrosDesktopProps {
   onSelectCamposPersonalizados?: () => void;
   onSelectTiposChifre?: () => void;
   onSelectLotes?: () => void;
+  onSelectEstacaoMonta?: () => void;
+  onSelectEspeciesForrageiras?: () => void;
+  onSelectTiposLocal?: () => void;
   onSelectPessoas?: () => void;
   onSelectFichaAnimal?: () => void;
   onSelectPropriedades?: () => void;
@@ -264,6 +267,9 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectCamposPersonalizados,
   onSelectTiposChifre,
   onSelectLotes,
+  onSelectEstacaoMonta,
+  onSelectEspeciesForrageiras,
+  onSelectTiposLocal,
   onSelectPessoas,
   onSelectFichaAnimal,
   onSelectPropriedades,
@@ -779,6 +785,117 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'Os lotes cadastrados estão disponíveis para seleção nos lançamentos e no manejo do rebanho.',
               impact: 'A padronização dos lotes garante o agrupamento correto dos animais e a consistência dos relatórios.',
               actionLabel: 'Gerenciar Lotes',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectEstacaoMonta
+      ? [
+          {
+            id: 'estacao-monta',
+            label: 'Estação de Monta',
+            title: <CadastroTitle entity="Estação de Monta" theme={theme} />,
+            description: 'Defina o período de monta por fazenda e retiro; o período de nascimento e a safra do bezerro são calculados automaticamente.',
+            onClick: onSelectEstacaoMonta,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'A Estação de Monta registra o período em que as matrizes são expostas à reprodução em cada Fazenda/Retiro. A partir do período da monta, o sistema calcula automaticamente o período previsto de nascimento (gestação de 281 dias) e a safra de nascimento do bezerro (ciclo julho → julho).',
+              steps: [
+                {
+                  title: 'Selecionar Fazenda e Retiro',
+                  desc: 'Na aba "Lançamentos", escolha a fazenda e, quando houver, o retiro onde ocorrerá a monta.',
+                },
+                {
+                  title: 'Informar o Período da Monta',
+                  desc: 'Defina a data de início e de fim da estação de monta.',
+                },
+                {
+                  title: 'Conferir os Cálculos Automáticos',
+                  desc: 'O Período de Nascimento (monta + 281 dias) e a Safra do bezerro são preenchidos automaticamente — confira e clique em Salvar.',
+                },
+              ],
+              proTip: 'Estações de monta mais curtas e bem definidas concentram os nascimentos, padronizam os lotes de bezerros e facilitam o manejo e a venda por safra.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As estações de monta cadastradas alimentam a previsão de nascimentos e a safra do bezerro.',
+              impact: 'Períodos de monta bem definidos melhoram a previsão de parições e o agrupamento dos bezerros por safra.',
+              actionLabel: 'Gerenciar Estações de Monta',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectEspeciesForrageiras
+      ? [
+          {
+            id: 'especies-forrageiras',
+            label: 'Espécies Forrageiras',
+            title: <CadastroTitle entity="Espécies Forrageiras" theme={theme} />,
+            description: 'Cadastre as forrageiras dos pastos com nome científico, alturas-alvo de pastejo por regime de manejo, fotos e descrição.',
+            onClick: onSelectEspeciesForrageiras,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'As Espécies Forrageiras reúnem as plantas usadas nos pastos da fazenda. Para cada espécie você registra o nome popular e científico, as alturas-alvo de pastejo em cada regime de manejo (contínuo, rotacionado e rotatínuo), fotos para identificação e uma descrição com informações importantes.',
+              steps: [
+                {
+                  title: 'Identificar a Espécie',
+                  desc: 'Na aba "Lançamentos", informe o nome popular e, se desejar, o nome científico da forrageira.',
+                },
+                {
+                  title: 'Definir as Alturas de Pastejo',
+                  desc: 'Preencha a faixa ideal do pastejo contínuo e as alturas de entrada e saída dos regimes rotacionado e rotatínuo (em cm).',
+                },
+                {
+                  title: 'Adicionar Fotos e Descrição',
+                  desc: 'Anexe fotos da espécie e, na aba "Descrição", registre informações importantes (adaptação, manejo, solo) — depois clique em Salvar.',
+                },
+              ],
+              proTip: 'Manejar o pasto pela altura-alvo da forrageira é a forma mais prática de equilibrar a oferta de forragem, preservar o estande e ganhar produtividade por hectare.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'As espécies forrageiras cadastradas servem de referência para o manejo das pastagens por altura.',
+              impact: 'Alturas-alvo bem definidas orientam a entrada e saída dos animais nos pastos e melhoram o uso da forragem.',
+              actionLabel: 'Gerenciar Espécies Forrageiras',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectTiposLocal
+      ? [
+          {
+            id: 'tipos-local',
+            label: 'Tipos de Locais',
+            title: <CadastroTitle entity="Tipos de Locais" theme={theme} />,
+            description: 'Cadastre os tipos de locais e infraestrutura da fazenda (pastagens, agricultura, floresta, ambiental, água, infraestrutura), organizados em categorias editáveis.',
+            onClick: onSelectTiposLocal,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'Os Tipos de Locais classificam as áreas e a infraestrutura da fazenda em categorias editáveis — como Pecuária, Agricultura, Silvicultura, Ambiental/legal, Água e Infraestrutura. Cada tipo carrega uma cor, um ícone e uma descrição opcionais. O cadastro já vem pré-preenchido com uma lista padrão que você pode ajustar.',
+              steps: [
+                {
+                  title: 'Organizar por Categoria',
+                  desc: 'Use as categorias para agrupar os tipos. Você pode criar, renomear, reordenar e excluir categorias conforme a realidade da fazenda.',
+                },
+                {
+                  title: 'Cadastrar o Tipo de Local',
+                  desc: 'Na aba "Lançamentos", informe o nome, escolha a categoria e, se quiser, defina cor, ícone e descrição.',
+                },
+                {
+                  title: 'Ajustar a Lista Padrão',
+                  desc: 'Na aba "Registros", edite, exclua ou reordene os tipos dentro de cada categoria — a lista já vem populada para você começar.',
+                },
+              ],
+              proTip: 'Uma boa classificação dos tipos de locais é a base para organizar áreas, planejar uso do solo e comparar desempenho por tipo de pastagem ou cultura.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os tipos de locais cadastrados padronizam a classificação das áreas e infraestrutura da fazenda.',
+              impact: 'Tipos bem definidos facilitam a organização das áreas e a análise por finalidade de uso.',
+              actionLabel: 'Gerenciar Tipos de Locais',
             }
           },
         ]

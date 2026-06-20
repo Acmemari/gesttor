@@ -250,6 +250,7 @@ app.all('/api/evidence', (req, res) => handleApiRoute('./api/evidence.ts', req, 
 app.all('/api/farm-maps', (req, res) => handleApiRoute('./api/farm-maps.ts', req, res));
 app.all('/api/farm-locations', (req, res) => handleApiRoute('./api/farm-locations.ts', req, res));
 app.all('/api/area-movimentos', (req, res) => handleApiRoute('./api/area-movimentos.ts', req, res));
+app.all('/api/area-versoes', (req, res) => handleApiRoute('./api/area-versoes.ts', req, res));
 
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));
@@ -303,6 +304,15 @@ app.all('/api/reprodutores', (req, res) => handleApiRoute('./api/reprodutores.ts
 
 // Lotes
 app.all('/api/lotes', (req, res) => handleApiRoute('./api/lotes.ts', req, res));
+
+// Estação de Monta
+app.all('/api/estacao-monta', (req, res) => handleApiRoute('./api/estacao-monta.ts', req, res));
+
+// Espécies Forrageiras
+app.all('/api/especies-forrageiras', (req, res) => handleApiRoute('./api/especies-forrageiras.ts', req, res));
+
+// Tipos de Locais (categorias + tipos)
+app.all('/api/tipos-local', (req, res) => handleApiRoute('./api/tipos-local.ts', req, res));
 
 // Movimentação › Gestão de Lotes (ledger de eventos)
 app.all('/api/lote-eventos', (req, res) => handleApiRoute('./api/lote-eventos.ts', req, res));

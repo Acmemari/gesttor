@@ -1,8 +1,9 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../index.js';
 import {
   farmRetiros, farmSetores, farmLocais, farmLocationLevels,
   mapaRebanhoLancamentos, mapaoLancamentos,
+  mapaRebanhoHeaders, mapaoHeaders,
 } from '../schema.js';
 import { getFarm } from './hierarchy.js';
 
@@ -164,6 +165,7 @@ export async function getLocaisByFarm(farmId: string, incluirAposentados = false
     geometry: farmLocais.geometry,
     geometrySource: farmLocais.geometrySource,
     tipo: farmLocais.tipo,
+    uso: farmLocais.uso,
     status: farmLocais.status,
     aposentadoEm: farmLocais.aposentadoEm,
     createdAt: farmLocais.createdAt,
@@ -254,6 +256,59 @@ export async function countLocalDependents(localId: string): Promise<{ mapaReban
   return { mapaRebanho, mapao, total: mapaRebanho + mapao };
 }
 
+// ── Rebanho atual alocado a um Local (para realocação em dividir/unir) ──────────
+// "Rebanho atual num Local" = lançamentos do header mais recente por
+// data_referencia da fazenda — Mapão se existir, senão Estoque de Partida
+// (mapa_rebanho). NUNCA soma os dois. Prefere header status='salvo' (rascunho é
+// WIP). Só a alocação atual migra no split/merge; headers antigos são histórico.
+
+export interface AlocacaoCategoria { categoriaId: string; quantidade: number; pesoKgCabeca: string; }
+export interface RebanhoAtual {
+  fonte: 'mapao' | 'mapa_rebanho' | 'nenhuma';
+  headerId: string | null;
+  dataReferencia: string | null;
+  porCategoria: AlocacaoCategoria[];
+  total: number;
+}
+
+/** Header vigente da fazenda (Mapão preferido; salvo preferido sobre rascunho). */
+export async function resolveHeaderAtual(exec: any, farmId: string):
+  Promise<{ fonte: 'mapao' | 'mapa_rebanho'; headerId: string; dataReferencia: string } | null> {
+  const pick = async (table: any) => {
+    const salvo = await exec.select().from(table)
+      .where(and(eq(table.farmId, farmId), eq(table.status, 'salvo')))
+      .orderBy(desc(table.dataReferencia)).limit(1);
+    if (salvo[0]) return salvo[0];
+    const qualquer = await exec.select().from(table)
+      .where(eq(table.farmId, farmId)).orderBy(desc(table.dataReferencia)).limit(1);
+    return qualquer[0] ?? null;
+  };
+  const mp = await pick(mapaoHeaders);
+  if (mp) return { fonte: 'mapao', headerId: mp.id, dataReferencia: mp.dataReferencia };
+  const mr = await pick(mapaRebanhoHeaders);
+  if (mr) return { fonte: 'mapa_rebanho', headerId: mr.id, dataReferencia: mr.dataReferencia };
+  return null;
+}
+
+async function rebanhoAtual(exec: any, farmId: string, localId: string): Promise<RebanhoAtual> {
+  const h = await resolveHeaderAtual(exec, farmId);
+  if (!h) return { fonte: 'nenhuma', headerId: null, dataReferencia: null, porCategoria: [], total: 0 };
+  const lanc = h.fonte === 'mapao' ? mapaoLancamentos : mapaRebanhoLancamentos;
+  const rows = await exec.select({
+    categoriaId: lanc.categoriaId, quantidade: lanc.quantidade, pesoKgCabeca: lanc.pesoKgCabeca,
+  }).from(lanc).where(and(eq(lanc.mapaHeaderId, h.headerId as any), eq(lanc.localId, localId as any)));
+  const porCategoria: AlocacaoCategoria[] = rows
+    .map((r: any) => ({ categoriaId: r.categoriaId, quantidade: Number(r.quantidade), pesoKgCabeca: String(r.pesoKgCabeca) }))
+    .filter((c: AlocacaoCategoria) => c.quantidade > 0);
+  return {
+    fonte: h.fonte, headerId: h.headerId, dataReferencia: h.dataReferencia,
+    porCategoria, total: porCategoria.reduce((s, c) => s + c.quantidade, 0),
+  };
+}
+
+export const rebanhoAtualPorLocal = (farmId: string, localId: string) => rebanhoAtual(db, farmId, localId);
+export const rebanhoAtualPorLocalTx = (tx: any, farmId: string, localId: string) => rebanhoAtual(tx, farmId, localId);
+
 // ── Níveis ativos por fazenda ─────────────────────────────────────────────────
 // A Fazenda é sempre a raiz; aqui guardamos apenas quais níveis intermediários/
 // folha estão ativos. Sem linha ⇒ default sensato (retiro on, setor off, local on),
@@ -266,17 +321,19 @@ export interface LocationLevels {
   local: boolean;
   // O usuário já escolheu explicitamente a combinação de níveis? (gate da aba Locais)
   configured?: boolean;
+  // A fazenda controla os locais com mapa (colunas + mapa) ou sem mapa (só colunas)?
+  usarMapa?: boolean;
 }
 
 export async function getLevels(farmId: string): Promise<LocationLevels> {
   const [row] = await db.select().from(farmLocationLevels).where(eq(farmLocationLevels.farmId, farmId));
-  if (row) return { retiro: row.retiro, setor: row.setor, local: row.local, configured: row.configured };
+  if (row) return { retiro: row.retiro, setor: row.setor, local: row.local, configured: row.configured, usarMapa: row.usarMapa };
 
   // Sem config explícita: deriva um default a partir dos dados existentes.
   const retiros = await db.select().from(farmRetiros).where(eq(farmRetiros.farmId, farmId));
   const soPadrao = retiros.length === 1 && retiros[0].isDefault === true;
   const semRetiros = retiros.length === 0;
-  return { retiro: !(soPadrao || semRetiros), setor: false, local: true, configured: false };
+  return { retiro: !(soPadrao || semRetiros), setor: false, local: true, configured: false, usarMapa: true };
 }
 
 // Nome do registro automático de cada nível desligado. A aba "Locais" envia o
@@ -295,14 +352,18 @@ export async function setLevels(
   // Quando definido, grava o flag de "combinação escolhida". Omitido ⇒ preserva o
   // valor atual (toggles/auto-ativação não devem rebaixar uma fazenda já configurada).
   configured?: boolean,
+  // Idem: quando definido grava "controlar locais com mapa". Omitido ⇒ preserva o
+  // valor atual — assim os toggles de nível (que não enviam usarMapa) não o zeram.
+  usarMapa?: boolean,
 ): Promise<LocationLevels> {
   const [row] = await db.insert(farmLocationLevels)
-    .values({ farmId, retiro: levels.retiro, setor: levels.setor, local: levels.local, configured: configured ?? false })
+    .values({ farmId, retiro: levels.retiro, setor: levels.setor, local: levels.local, configured: configured ?? false, usarMapa: usarMapa ?? true })
     .onConflictDoUpdate({
       target: farmLocationLevels.farmId,
       set: {
         retiro: levels.retiro, setor: levels.setor, local: levels.local, updatedAt: new Date(),
         ...(configured !== undefined ? { configured } : {}),
+        ...(usarMapa !== undefined ? { usarMapa } : {}),
       },
     })
     .returning();
@@ -316,7 +377,7 @@ export async function setLevels(
     { retiro: row.retiro, setor: row.setor, local: row.local },
     autoNames,
   );
-  return { retiro: row.retiro, setor: row.setor, local: row.local, configured: row.configured };
+  return { retiro: row.retiro, setor: row.setor, local: row.local, configured: row.configured, usarMapa: row.usarMapa };
 }
 
 // ── Registros padrão (âncora) por nível ───────────────────────────────────────

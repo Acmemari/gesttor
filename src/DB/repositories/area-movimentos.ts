@@ -1,6 +1,42 @@
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../index.js';
-import { areaMovimentos, farmLocais, farmLocationLevels } from '../schema.js';
+import {
+  areaMovimentos, farmLocais, farmLocationLevels,
+  mapaRebanhoLancamentos, mapaoLancamentos,
+} from '../schema.js';
+import { createVersao, closeOpenVersao, getOpenVersao } from './area-versoes.js';
+import { rebanhoAtualPorLocalTx, resolveHeaderAtual, type RebanhoAtual } from './farm-locations.js';
+
+/** Tolerância de hectares: soma dos destinos pode divergir até 5% da origem. */
+export const AREA_TOLERANCIA_PCT = 0.05;
+
+/** Realocação de rebanho: origemLocalId → destinoRef (índice do filho | id do destino). */
+export type RealocacaoMap = Record<string, string>;
+
+export interface RebanhoPendenteLocal {
+  localId: string;
+  name: string;
+  total: number;
+  porCategoria: { categoriaId: string; quantidade: number; pesoKgCabeca: string }[];
+}
+
+/** Há rebanho nos locais de origem e o chamador não informou a realocação. */
+export class RebanhoPendenteError extends Error {
+  code = 'REBANHO_PENDENTE' as const;
+  constructor(public locais: RebanhoPendenteLocal[]) {
+    super('Há rebanho alocado nos locais de origem; informe a realocação.');
+    this.name = 'RebanhoPendenteError';
+  }
+}
+
+/** Soma das áreas dos destinos diverge da origem além da tolerância (sem ack). */
+export class ToleranciaError extends Error {
+  code = 'AREA_TOLERANCIA' as const;
+  constructor(public esperado: number, public informado: number, public difPct: number) {
+    super(`Soma das áreas (${informado}) diverge ${(difPct * 100).toFixed(1)}% do esperado (${esperado}).`);
+    this.name = 'ToleranciaError';
+  }
+}
 
 /**
  * Repositório do ledger de eventos da Movimentação de Áreas (area_movimentos).
@@ -22,7 +58,7 @@ type Coords = [number, number][];
 export type AreaMovimentoTipo =
   | 'abertura' | 'renomear' | 'remodelar' | 'mover'
   | 'aposentar' | 'reativar' | 'dividir' | 'criado_divisao'
-  | 'unir' | 'unido' | 'nivel' | 'correcao';
+  | 'unir' | 'unido' | 'nivel' | 'conversao_uso' | 'correcao';
 
 export interface AreaSnapshot {
   name: string;
@@ -30,6 +66,7 @@ export interface AreaSnapshot {
   geometry: Coords | null;
   geometrySource: string | null;
   tipo: string | null;
+  uso: string | null;
   retiroId: string | null;
   setorId: string | null;
 }
@@ -51,9 +88,36 @@ function snapshotLocal(row: any): AreaSnapshot {
     geometry: (row.geometry ?? null) as Coords | null,
     geometrySource: row.geometrySource ?? null,
     tipo: row.tipo ?? null,
+    uso: row.uso ?? null,
     retiroId: row.retiroId ?? null,
     setorId: row.setorId ?? null,
   };
+}
+
+/** Lança se o local-alvo já está aposentado (só a nova identidade é editável). */
+async function isAposentadoTx(tx: any, areaId: string): Promise<boolean> {
+  const [row] = await tx.select({ status: farmLocais.status })
+    .from(farmLocais).where(eq(farmLocais.id, areaId as any));
+  return row?.status === 'aposentado';
+}
+
+/**
+ * Abre a versão (area_versoes) de um local a partir do seu snapshot `depois`,
+ * ligada ao movimento. Chamado dentro da tx do evento.
+ */
+async function abrirVersaoLocal(tx: any, base: BaseInput, areaId: string, snap: AreaSnapshot, movimentoId: string | null) {
+  await createVersao(tx, {
+    areaId,
+    nivel: 'local',
+    organizationId: base.organizationId,
+    farmId: base.farmId,
+    validFrom: base.data,
+    geometry: snap.geometry,
+    geometrySource: snap.geometrySource,
+    uso: snap.uso,
+    areaHa: snap.area,
+    movimentoId,
+  });
 }
 
 async function inserirEvento(tx: any, e: {
@@ -126,13 +190,22 @@ export async function abrir(i: BaseInput & {
       const [row] = await tx.select().from(farmLocais).where(eq(farmLocais.id, i.areaId as any));
       if (row) depois = snapshotLocal(row);
     }
-    return inserirEvento(tx, { base: i, nivel: i.nivel ?? 'local', tipo: 'abertura', areaId: i.areaId, depois, dados: {} });
+    const nivel = i.nivel ?? 'local';
+    const ev = await inserirEvento(tx, { base: i, nivel, tipo: 'abertura', areaId: i.areaId, depois, dados: {} });
+    // Abre a versão da linha do tempo se ainda não houver uma aberta (o backfill
+    // já semeou as áreas pré-existentes; abertura retroativa pode ser a primeira).
+    if (nivel === 'local' && depois && !(await getOpenVersao(tx, i.areaId))) {
+      await abrirVersaoLocal(tx, i, i.areaId, depois, ev.id);
+    }
+    return ev;
   });
 }
 
 export async function renomear(i: BaseInput & { areaId: string; name: string }) {
   return db.transaction(async (tx) => {
+    if (await isAposentadoTx(tx, i.areaId)) throw new Error('LOCAL_APOSENTADO');
     const { antes, depois } = await patchLocalTx(tx, i.areaId, { name: i.name });
+    // Nome é identidade-nível (lido ao vivo na reconstrução) — sem nova versão.
     return inserirEvento(tx, { base: i, nivel: 'local', tipo: 'renomear', areaId: i.areaId, antes, depois, dados: {} });
   });
 }
@@ -141,10 +214,31 @@ export async function remodelar(i: BaseInput & {
   areaId: string; geometry: Coords | null; geometrySource?: string | null; area?: string | null;
 }) {
   return db.transaction(async (tx) => {
+    if (await isAposentadoTx(tx, i.areaId)) throw new Error('LOCAL_APOSENTADO');
+    if (i.geometry != null && i.geometry.length < 3) throw new Error('GEOMETRY_INVALIDA');
     const { antes, depois } = await patchLocalTx(tx, i.areaId, {
       geometry: i.geometry, geometrySource: i.geometrySource, area: i.area,
     });
-    return inserirEvento(tx, { base: i, nivel: 'local', tipo: 'remodelar', areaId: i.areaId, antes, depois, dados: {} });
+    const ev = await inserirEvento(tx, { base: i, nivel: 'local', tipo: 'remodelar', areaId: i.areaId, antes, depois, dados: {} });
+    // Redesenho: fecha a versão vigente e abre uma nova com a geometria/área nova.
+    await closeOpenVersao(tx, i.areaId, i.data);
+    await abrirVersaoLocal(tx, i, i.areaId, depois, ev.id);
+    return ev;
+  });
+}
+
+/** Conversão de uso: mesma identidade/geometria, novo `uso`, nova versão. */
+export async function conversaoUso(i: BaseInput & { areaId: string; uso: string }) {
+  return db.transaction(async (tx) => {
+    if (await isAposentadoTx(tx, i.areaId)) throw new Error('LOCAL_APOSENTADO');
+    const { antes, depois } = await patchLocalTx(tx, i.areaId, { uso: i.uso });
+    const ev = await inserirEvento(tx, {
+      base: i, nivel: 'local', tipo: 'conversao_uso', areaId: i.areaId,
+      antes, depois, dados: { de: antes.uso ?? null, para: i.uso },
+    });
+    await closeOpenVersao(tx, i.areaId, i.data);
+    await abrirVersaoLocal(tx, i, i.areaId, depois, ev.id);
+    return ev;
   });
 }
 
@@ -152,7 +246,9 @@ export async function mover(i: BaseInput & {
   areaId: string; retiroId?: string | null; setorId?: string | null;
 }) {
   return db.transaction(async (tx) => {
+    if (await isAposentadoTx(tx, i.areaId)) throw new Error('LOCAL_APOSENTADO');
     const { antes, depois } = await patchLocalTx(tx, i.areaId, { retiroId: i.retiroId, setorId: i.setorId });
+    // Pai (retiro/setor) é identidade-nível (lido ao vivo) — sem nova versão.
     return inserirEvento(tx, {
       base: i, nivel: 'local', tipo: 'mover', areaId: i.areaId, antes, depois,
       dados: {
@@ -170,23 +266,30 @@ export async function aposentar(i: BaseInput & { areaId: string; motivo?: string
     await tx.update(farmLocais)
       .set({ status: 'aposentado', aposentadoEm: new Date(), updatedAt: new Date() })
       .where(eq(farmLocais.id, i.areaId as any));
-    return inserirEvento(tx, {
+    const ev = await inserirEvento(tx, {
       base: i, nivel: 'local', tipo: 'aposentar', areaId: i.areaId,
       antes: snapshotLocal(row), depois: null, dados: { motivo: i.motivo ?? null },
     });
+    // Fecha a versão vigente (a área deixa de ter estado corrente).
+    await closeOpenVersao(tx, i.areaId, i.data);
+    return ev;
   });
 }
 
 export async function reativar(i: BaseInput & { areaId: string }) {
   return db.transaction(async (tx) => {
     const { antes, depois } = await patchLocalTx(tx, i.areaId, { status: 'ativo', aposentadoEm: null });
-    return inserirEvento(tx, { base: i, nivel: 'local', tipo: 'reativar', areaId: i.areaId, antes, depois, dados: {} });
+    const ev = await inserirEvento(tx, { base: i, nivel: 'local', tipo: 'reativar', areaId: i.areaId, antes, depois, dados: {} });
+    // Abre uma versão nova (o índice parcial permite — aposentar fechou a anterior).
+    await abrirVersaoLocal(tx, i, i.areaId, depois, ev.id);
+    return ev;
   });
 }
 
 export interface FilhoInput {
   name: string;
   tipo?: string | null;
+  uso?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
   area?: string | null;
@@ -194,16 +297,84 @@ export interface FilhoInput {
   setorId?: string | null;
 }
 
-/** Divide um local em N filhos: aposenta o pai, cria os filhos, registra a linhagem. */
-export async function dividir(i: BaseInput & { parentId: string; filhos: FilhoInput[] }) {
+function round2(n: number) { return Math.round(n * 100) / 100; }
+
+/**
+ * Valida a conservação de área. Soma dos destinos deve bater com a origem dentro
+ * de AREA_TOLERANCIA_PCT. Sem dados completos, não valida. Sem ack e fora da
+ * tolerância → lança ToleranciaError. Retorna {esperado,informado,difPct} ou null.
+ */
+function checkTolerancia(esperado: string | null, destinos: (string | null | undefined)[], ack?: boolean) {
+  const exp = esperado != null && esperado !== '' ? Number(esperado) : NaN;
+  const vals = destinos.map((d) => (d != null && d !== '' ? Number(d) : NaN));
+  if (!Number.isFinite(exp) || exp <= 0 || vals.some((v) => !Number.isFinite(v))) return null;
+  const soma = vals.reduce((s, v) => s + v, 0);
+  const difPct = Math.round((Math.abs(soma - exp) / exp) * 1000) / 1000;
+  if (difPct > AREA_TOLERANCIA_PCT && !ack) throw new ToleranciaError(round2(exp), round2(soma), difPct);
+  return { esperado: round2(exp), informado: round2(soma), difPct };
+}
+
+/**
+ * Re-aponta a alocação ATUAL (lançamentos do header vigente) de um local de
+ * origem para um destino, mesclando quando já existe (header, destino, categoria):
+ * soma quantidade, média ponderada de peso, remove a linha de origem. Headers
+ * antigos não são tocados (histórico append-only).
+ */
+async function realocarRebanhoTx(
+  tx: any, fonte: 'mapao' | 'mapa_rebanho', headerId: string, origemId: string, destinoId: string,
+) {
+  const lanc = fonte === 'mapao' ? mapaoLancamentos : mapaRebanhoLancamentos;
+  const origemRows = await tx.select().from(lanc)
+    .where(and(eq(lanc.mapaHeaderId, headerId as any), eq(lanc.localId, origemId as any)));
+  for (const o of origemRows) {
+    const [dest] = await tx.select().from(lanc).where(and(
+      eq(lanc.mapaHeaderId, headerId as any),
+      eq(lanc.localId, destinoId as any),
+      eq(lanc.categoriaId, o.categoriaId as any),
+    ));
+    if (!dest) {
+      await tx.update(lanc).set({ localId: destinoId as any, updatedAt: new Date() }).where(eq(lanc.id, o.id));
+    } else {
+      const qO = Number(o.quantidade), qD = Number(dest.quantidade);
+      const pO = Number(o.pesoKgCabeca), pD = Number(dest.pesoKgCabeca);
+      const qNew = qO + qD;
+      const pNew = qNew > 0 ? (pO * qO + pD * qD) / qNew : 0;
+      await tx.update(lanc)
+        .set({ quantidade: qNew, pesoKgCabeca: pNew.toFixed(2), updatedAt: new Date() })
+        .where(eq(lanc.id, dest.id));
+      await tx.delete(lanc).where(eq(lanc.id, o.id));
+    }
+  }
+}
+
+/**
+ * Divide um local em N filhos: aposenta o pai, cria os filhos, registra a
+ * linhagem e abre as versões. Bloqueia se o pai tem rebanho e nenhum destino foi
+ * informado (REBANHO_PENDENTE); migra a alocação atual para o filho escolhido.
+ */
+export async function dividir(i: BaseInput & {
+  parentId: string; filhos: FilhoInput[]; realocacao?: RealocacaoMap; ackTolerancia?: boolean;
+}) {
   if (!Array.isArray(i.filhos) || i.filhos.length < 2) {
     throw new Error('Dividir exige ao menos 2 áreas-filho.');
   }
   return db.transaction(async (tx) => {
+    if (await isAposentadoTx(tx, i.parentId)) throw new Error('LOCAL_APOSENTADO');
     const [pai] = await tx.select().from(farmLocais).where(eq(farmLocais.id, i.parentId as any));
     if (!pai) throw new Error(`Local não encontrado: ${i.parentId}`);
 
-    // Cria os filhos (herdam do pai o que não for informado, exceto geometria/área).
+    // Bloqueio de rebanho ANTES de mutar (a transação reverte tudo se faltar destino).
+    const reb: RebanhoAtual = await rebanhoAtualPorLocalTx(tx, i.farmId, i.parentId);
+    if (reb.total > 0 && !i.realocacao?.[i.parentId]) {
+      throw new RebanhoPendenteError([
+        { localId: i.parentId, name: pai.name, total: reb.total, porCategoria: reb.porCategoria },
+      ]);
+    }
+
+    // Conservação de área (avisa/bloqueia sem ack).
+    const tol = checkTolerancia(pai.area, i.filhos.map((f) => f.area ?? null), i.ackTolerancia);
+
+    // Cria os filhos (herdam do pai o que não for informado).
     const filhosRows: any[] = [];
     for (const f of i.filhos) {
       const [novo] = await tx.insert(farmLocais).values({
@@ -215,34 +386,56 @@ export async function dividir(i: BaseInput & { parentId: string; filhos: FilhoIn
         geometry: (f.geometry ?? null) as any,
         geometrySource: f.geometrySource ?? null,
         tipo: f.tipo !== undefined ? f.tipo : pai.tipo,
+        uso: f.uso !== undefined ? f.uso : pai.uso,
       }).returning();
       filhosRows.push(novo);
     }
 
-    // Aposenta o pai.
+    // Migra o rebanho atual do pai para o filho escolhido (índice na lista de filhos).
+    if (reb.total > 0) {
+      const idx = Number(i.realocacao![i.parentId]);
+      const destino = Number.isInteger(idx) ? filhosRows[idx] : undefined;
+      if (!destino) throw new Error('REALOCACAO_DESTINO_INVALIDO');
+      const header = await resolveHeaderAtual(tx, i.farmId);
+      if (header) await realocarRebanhoTx(tx, header.fonte, header.headerId, i.parentId, destino.id);
+    }
+
+    // Aposenta o pai + fecha a versão dele.
     await tx.update(farmLocais)
       .set({ status: 'aposentado', aposentadoEm: new Date(), updatedAt: new Date() })
       .where(eq(farmLocais.id, i.parentId as any));
+    await closeOpenVersao(tx, i.parentId, i.data);
 
-    // Evento no pai (com a lista de filhos) + um evento por filho (linhagem).
+    // Evento no pai (lista de filhos) + um evento + versão por filho (linhagem).
     const eventoPai = await inserirEvento(tx, {
       base: i, nivel: 'local', tipo: 'dividir', areaId: i.parentId,
       antes: snapshotLocal(pai), depois: null,
-      dados: { filhos: filhosRows.map((c) => ({ id: c.id, name: c.name, area: c.area ?? null })) },
+      dados: {
+        filhos: filhosRows.map((c) => ({ id: c.id, name: c.name, area: c.area ?? null })),
+        ...(reb.total > 0 ? { realocacao: i.realocacao } : {}),
+        ...(tol && tol.difPct > AREA_TOLERANCIA_PCT ? { toleranciaAck: tol } : {}),
+      },
     });
     for (const c of filhosRows) {
-      await inserirEvento(tx, {
+      const evFilho = await inserirEvento(tx, {
         base: i, nivel: 'local', tipo: 'criado_divisao', areaId: c.id,
         antes: null, depois: snapshotLocal(c),
         dados: { divididoDe: i.parentId, divididoDeName: pai.name },
       });
+      await abrirVersaoLocal(tx, i, c.id, snapshotLocal(c), evFilho.id);
     }
     return { pai: { id: i.parentId }, filhos: filhosRows, evento: eventoPai };
   });
 }
 
-/** Une N locais de origem em um destino (novo): cria o destino e aposenta as origens. */
-export async function unir(i: BaseInput & { origemIds: string[]; destino: FilhoInput }) {
+/**
+ * Une N locais de origem num destino novo: cria o destino, aposenta as origens,
+ * registra a linhagem e abre a versão do destino. Bloqueia se alguma origem tem
+ * rebanho sem destino informado; migra a alocação atual de cada origem ao destino.
+ */
+export async function unir(i: BaseInput & {
+  origemIds: string[]; destino: FilhoInput; realocacao?: RealocacaoMap; ackTolerancia?: boolean;
+}) {
   if (!Array.isArray(i.origemIds) || i.origemIds.length < 2) {
     throw new Error('Unir exige ao menos 2 áreas de origem.');
   }
@@ -252,6 +445,23 @@ export async function unir(i: BaseInput & { origemIds: string[]; destino: FilhoI
     if (origens.length !== i.origemIds.length) {
       throw new Error('Uma ou mais áreas de origem não foram encontradas.');
     }
+    if (origens.some((o: any) => o.status === 'aposentado')) throw new Error('LOCAL_APOSENTADO');
+
+    // Bloqueio de rebanho: cada origem com rebanho precisa de destino informado.
+    const comRebanho: { o: any; reb: RebanhoAtual }[] = [];
+    for (const o of origens) {
+      const reb = await rebanhoAtualPorLocalTx(tx, i.farmId, o.id);
+      if (reb.total > 0) comRebanho.push({ o, reb });
+    }
+    const pendentes = comRebanho.filter(({ o }) => !i.realocacao?.[o.id]);
+    if (pendentes.length > 0) {
+      throw new RebanhoPendenteError(pendentes.map(({ o, reb }) => ({
+        localId: o.id, name: o.name, total: reb.total, porCategoria: reb.porCategoria,
+      })));
+    }
+
+    // Conservação de área: soma das origens ≈ destino.
+    const tol = checkTolerancia(i.destino.area ?? null, origens.map((o: any) => o.area ?? null), i.ackTolerancia);
 
     const [destino] = await tx.insert(farmLocais).values({
       farmId: i.farmId,
@@ -262,19 +472,37 @@ export async function unir(i: BaseInput & { origemIds: string[]; destino: FilhoI
       geometry: (i.destino.geometry ?? null) as any,
       geometrySource: i.destino.geometrySource ?? null,
       tipo: i.destino.tipo !== undefined ? i.destino.tipo : origens[0].tipo,
+      uso: i.destino.uso !== undefined ? i.destino.uso : origens[0].uso,
     }).returning();
 
+    // Migra o rebanho atual de cada origem para o destino único.
+    if (comRebanho.length > 0) {
+      const header = await resolveHeaderAtual(tx, i.farmId);
+      if (header) {
+        for (const { o } of comRebanho) {
+          await realocarRebanhoTx(tx, header.fonte, header.headerId, o.id, destino.id);
+        }
+      }
+    }
+
+    // Aposenta as origens + fecha as versões.
     for (const o of origens) {
       await tx.update(farmLocais)
         .set({ status: 'aposentado', aposentadoEm: new Date(), updatedAt: new Date() })
         .where(eq(farmLocais.id, o.id as any));
+      await closeOpenVersao(tx, o.id, i.data);
     }
 
     const eventoDestino = await inserirEvento(tx, {
       base: i, nivel: 'local', tipo: 'unir', areaId: destino.id,
       antes: null, depois: snapshotLocal(destino),
-      dados: { origens: origens.map((o) => ({ id: o.id, name: o.name })) },
+      dados: {
+        origens: origens.map((o: any) => ({ id: o.id, name: o.name })),
+        ...(comRebanho.length > 0 ? { realocacao: i.realocacao } : {}),
+        ...(tol && tol.difPct > AREA_TOLERANCIA_PCT ? { toleranciaAck: tol } : {}),
+      },
     });
+    await abrirVersaoLocal(tx, i, destino.id, snapshotLocal(destino), eventoDestino.id);
     for (const o of origens) {
       await inserirEvento(tx, {
         base: i, nivel: 'local', tipo: 'unido', areaId: o.id,

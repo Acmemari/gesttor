@@ -429,7 +429,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                 <ControleCard
                   cor="#16a34a" icon={<LoteAnimaisIcon size={18} />} titulo="Composição" pergunta="Quais animais estão nele?"
                   mudaPor="Movimento de Alocação"
-                  acoes={encerrado ? null : <CardBtn onClick={abrirIncluirId} icon={<Plus size={13} />}>Incluir animais</CardBtn>}
+                  acoes={encerrado ? null : <CardBtn onClick={abrirIncluirId} icon={<Plus size={13} />}>Manejar animais</CardBtn>}
                 >
                   <ComposicaoEstado eventos={selectedEventos} catNome={catNome} onAbrirFicha={onAbrirFicha} />
                 </ControleCard>
