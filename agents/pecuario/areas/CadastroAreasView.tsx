@@ -30,6 +30,7 @@ import {
   createArea as apiCreateArea,
   updateAreaGeometry as apiUpdateGeometry,
   updateAreaProps as apiUpdateProps,
+  updateAreaStyle as apiUpdateStyle,
   deleteArea as apiDeleteArea,
   saveFarmPerimeter,
   countLocalDependents,
@@ -37,8 +38,9 @@ import {
   fazRootId,
   type AreaWrite,
 } from './areasClient';
-import { listFarmMaps, createFarmMap, deleteFarmMapApi, type FarmMapData } from '../../../lib/api/farmMapsClient';
-import { redesenhar } from '../../../lib/api/areaMovimentosClient';
+import { listFarmMaps, createFarmMap, deleteFarmMap, type FarmMapData } from '../../../lib/api/farmMapsClient';
+import { storageUpload } from '../../../lib/storage';
+import { redesenhar, aposentar as apiAposentar } from '../../../lib/api/areaMovimentosClient';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import CadastroAreasMestre, {
   type MestreSavePayload,
@@ -46,6 +48,7 @@ import CadastroAreasMestre, {
 } from './CadastroAreasMestre';
 import { listTiposLocal } from '../../../lib/api/tiposLocalClient';
 import { buildCatalogIndex, isPointCoords, pointDivIcon, pointLatLng, type CatalogIndex } from './mapPoints';
+import { buildCanonicalKmz, type CanonicalNivel } from './kmlExport';
 import './cadastroAreas.css';
 
 /** ha (string) a partir do anel [lat,lng][], ou null se inválido. */
@@ -114,13 +117,20 @@ interface PropsDraft {
 /** Estilo Leaflet de um polígono conforme nível/seleção (ou por uso da terra). */
 function styleFor(a: Area, selected: boolean, colorByUso = false): L.PathOptions {
   const n = NIVEIS[a.nivel];
-  const cor = colorByUso && a.uso ? (USO_COR[a.uso] ?? n.cor) : n.cor;
+  const base = colorByUso && a.uso ? (USO_COR[a.uso] ?? n.cor) : n.cor;
+  // Estilo por área (retiro/setor) tem prioridade; null ⇒ cai no padrão do nível.
+  // `??`/`!= null` porque opacidade 0 (totalmente transparente) é válida.
+  const stroke = a.strokeColor ?? base;
+  const fill = a.fillColor ?? base;
+  const fillOp = a.fillOpacity != null ? a.fillOpacity : n.fill;
+  // Espessura escolhida (retiro/setor) tem prioridade; selecionado ganha +1 px de destaque.
+  const baseWeight = a.strokeWeight != null ? a.strokeWeight : a.nivel === 'fazenda' ? 3.5 : 2;
   return {
-    color: cor,
-    weight: a.nivel === 'fazenda' ? 3.5 : selected ? 3.5 : 2,
+    color: stroke,
+    weight: selected ? baseWeight + 1.5 : baseWeight,
     opacity: 1,
-    fillColor: cor,
-    fillOpacity: selected ? n.fill + 0.14 : n.fill,
+    fillColor: fill,
+    fillOpacity: selected ? Math.min(1, fillOp + 0.14) : fillOp,
     dashArray: a.nivel === 'fazenda' ? '7 5' : undefined,
   };
 }
@@ -481,6 +491,33 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         continue;
       }
 
+      // ── Local-linha (cerca/estrada/rede) → polyline ──
+      if (a.geomKind === 'line') {
+        const staleMk = markStore.get(a.id);
+        if (staleMk) { map.removeLayer(staleMk); markStore.delete(a.id); }
+        let lineLayer = store.get(a.id) as unknown as L.Polyline | undefined;
+        if (ring.length < 2) {
+          if (lineLayer) { map.removeLayer(lineLayer); store.delete(a.id); }
+          continue;
+        }
+        const cor = catalogIndex.resolve(a.tipo)?.cor ?? '#6366f1';
+        const lstyle: L.PolylineOptions = { color: cor, weight: a.id === selId ? 5 : 3, opacity: 0.9 };
+        if (!lineLayer) {
+          lineLayer = L.polyline(ring, lstyle);
+          lineLayer.on('click', (e) => { L.DomEvent.stop(e); selectArea(a.id); });
+          lineLayer.bindTooltip(a.nome, { direction: 'top', opacity: 0.95 });
+          store.set(a.id, lineLayer as unknown as L.Polygon);
+        } else {
+          lineLayer.setStyle(lstyle);
+          const editingThis = editingShapeRef.current && (editLayerRef.current as L.Layer | null) === lineLayer;
+          if (!editingThis) lineLayer.setLatLngs(ring);
+        }
+        if (hiddenLevels.has(a.nivel)) { if (map.hasLayer(lineLayer)) map.removeLayer(lineLayer); continue; }
+        if (!map.hasLayer(lineLayer)) lineLayer.addTo(map);
+        if (a.id === selId) lineLayer.bringToFront();
+        continue;
+      }
+
       let layer = store.get(a.id);
       if (ring.length < 3) {
         if (layer) {
@@ -572,6 +609,31 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     }
   }, [overlayMaps, overlayVisible, mapReady]);
 
+  // ── Importou um KMZ → persiste JÁ como ARQUIVO ORIGINAL (referência) ──────
+  // Regra do usuário: ao carregar o KMZ ele deve ser salvo e persistir como o
+  // arquivo original. O novo mapa (produção) é gerado depois, ao Salvar.
+  const handleImportOriginal = useCallback(
+    async ({ file, geojson }: { file: File; geojson: GeoJSON.FeatureCollection }) => {
+      const ext = file.name.toLowerCase().endsWith('.kml') ? 'kml' : 'kmz';
+      try {
+        await createFarmMap({
+          farmId,
+          fileName: `${crypto.randomUUID()}.${ext}`,
+          originalName: file.name,
+          fileType: ext,
+          fileSize: file.size,
+          storagePath: `farm-maps/${farmId}/${crypto.randomUUID()}.${ext}`,
+          geojson,
+        });
+        setOverlayReload((v) => v + 1);
+      } catch (e) {
+        console.error('Falha ao persistir o KMZ original:', e);
+        onToast?.('Arquivo importado, mas não foi possível guardá-lo como original.', 'warning');
+      }
+    },
+    [farmId, onToast],
+  );
+
   // ── Confirma o cadastro de áreas (tela mestra) ───────────────────────────
   // Grava a hierarquia inteira em ORDEM DE DEPENDÊNCIA (perímetro → retiros →
   // setores → locais), acumulando as áreas criadas (ids reais) para resolver o
@@ -611,13 +673,16 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         // 1) Fazenda (perímetro).
         for (const it of items.filter((i) => i.nivel === 'fazenda')) {
           try {
-            await saveFarmPerimeter(farmId, it.coords, it.fonte);
+            await saveFarmPerimeter(farmId, it.coords, it.fonte, {
+              strokeColor: it.strokeColor, fillColor: it.fillColor, fillOpacity: it.fillOpacity, strokeWeight: it.strokeWeight,
+            });
             const rootId = fazRootId(farmId);
             const idx = created.findIndex((a) => a.id === rootId);
+            const estilo = { strokeColor: it.strokeColor ?? null, fillColor: it.fillColor ?? null, fillOpacity: it.fillOpacity ?? null, strokeWeight: it.strokeWeight ?? null };
             const rootArea: Area =
               idx >= 0
-                ? { ...created[idx], coords: it.coords }
-                : { id: rootId, nivel: 'fazenda', nome: farmName, parent: null, tipo: null, coords: it.coords, fonte: it.fonte, visivel: true };
+                ? { ...created[idx], coords: it.coords, ...estilo }
+                : { id: rootId, nivel: 'fazenda', nome: farmName, parent: null, tipo: null, coords: it.coords, fonte: it.fonte, visivel: true, ...estilo };
             if (idx >= 0) created[idx] = rootArea;
             else created.push(rootArea);
             draftToArea.set(it.id, rootArea);
@@ -629,6 +694,8 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           }
         }
 
+
+
         // 2) Retiros (sempre filhos da raiz da fazenda).
         for (const it of items.filter((i) => i.nivel === 'retiro')) {
           try {
@@ -636,6 +703,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const area = await apiCreateArea(farmId, {
               nivel: 'retiro', nome: it.nome, coords: it.coords, fonte: it.fonte,
               retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
+              strokeColor: it.strokeColor, fillColor: it.fillColor, fillOpacity: it.fillOpacity, strokeWeight: it.strokeWeight,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -656,6 +724,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const area = await apiCreateArea(farmId, {
               nivel: 'setor', nome: it.nome, coords: it.coords, fonte: it.fonte,
               retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
+              strokeColor: it.strokeColor, fillColor: it.fillColor, fillOpacity: it.fillOpacity, strokeWeight: it.strokeWeight,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -673,7 +742,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             const fk = resolveFk(created, resolveParent(it, 'local'), 'local');
             const area = await apiCreateArea(farmId, {
               nivel: 'local', nome: it.nome, coords: it.coords, fonte: it.fonte,
-              tipo: it.tipo ?? 'Pasto', retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
+              tipo: it.tipo ?? 'Pasto', detalhe: it.detalhe ?? null, geomKind: it.geomKind, retiroId: fk.retiroId, setorId: fk.setorId, dataInicial: dataGrava,
             });
             created.push(area);
             draftToArea.set(it.id, area);
@@ -703,6 +772,73 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           } catch (e) {
             console.error('Falha ao salvar a camada de referência:', e);
             onToast?.('Áreas cadastradas, mas a camada de referência não pôde ser salva.', 'warning');
+          }
+        }
+
+        // Se houver perímetros na fazenda, gera/atualiza o arquivo KMZ de Produção (com todas as áreas oficiais)
+        const hasPerim = created.some((a) => a.nivel === 'fazenda' && cleanRing(a.coords).length >= 3);
+        if (hasPerim && savedIds.length > 0) {
+          try {
+            // 1. Apaga o KMZ de produção antigo para não duplicar na lista
+            const prodName = `${farmName.replace(/\s+/g, '_')}_Mapa.kmz`;
+            const oldProd = overlayMaps.find((m) => m.original_name === prodName);
+            if (oldProd) {
+              await deleteFarmMap(oldProd.id);
+            }
+
+            // 2-4. Gera o MAPA CANÔNICO (KMZ estruturado por Categoria→Tipo, com
+            // <Style> de cor e <ExtendedData> carregando o local_id de cada feição —
+            // é a fonte canônica do sistema, com o banco como espelho).
+            const { blob: kmzBlob, geojson: geojsonObj } = await buildCanonicalKmz({
+              farmName,
+              areas: created.map((a) => {
+                const ring = cleanRing(a.coords);
+                // tipo de geometria: usa o gravado (geomKind) e cai p/ inferência por nº de coords.
+                const kind: 'point' | 'area' | 'line' =
+                  a.geomKind ?? (ring.length === 1 ? 'point' : 'area');
+                return {
+                  id: a.id,
+                  nome: a.nome,
+                  nivel: a.nivel as CanonicalNivel,
+                  tipo: a.tipo,
+                  detalhe: a.detalhe ?? null,
+                  uso: a.uso ?? null,
+                  kind,
+                  coords: ring,
+                };
+              }),
+              catalog: tiposCatalog
+                ? {
+                    categorias: tiposCatalog.categorias.map((c) => ({ id: c.id, nome: c.nome, cor: c.cor })),
+                    tipos: tiposCatalog.tipos.map((t) => ({ id: t.id, nome: t.nome, categoriaId: t.categoriaId, cor: t.cor })),
+                  }
+                : null,
+            });
+
+            // 5. Envia para o Backblaze B2
+            const storageName = `${crypto.randomUUID()}.kmz`;
+            const storagePath = `farm-maps/${farmId}/${storageName}`;
+            await storageUpload('farm-maps', `${farmId}/${storageName}`, kmzBlob, {
+              contentType: 'application/vnd.google-earth.kmz'
+            });
+
+            // 6. Registra no banco
+            await createFarmMap({
+              farmId,
+              fileName: storageName,
+              originalName: prodName,
+              fileType: 'kmz',
+              fileSize: kmzBlob.size,
+              storagePath,
+              geojson: geojsonObj,
+            });
+
+            // 7. Atualiza lista lateral
+            setOverlayVisible(true);
+            setOverlayReload((v) => v + 1);
+          } catch (e) {
+            console.error('Falha ao gerar e salvar o KMZ de produção:', e);
+            onToast?.('Áreas salvas, mas falha ao gerar o arquivo KMZ de produção correspondente.', 'warning');
           }
         }
 
@@ -757,7 +893,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         return;
       try {
         setBusy(true);
-        await deleteFarmMapApi(m.id);
+        await deleteFarmMap(m.id);
         setOverlayReload((v) => v + 1);
         onToast?.('Mapa importado excluído.', 'success');
       } catch (e) {
@@ -968,7 +1104,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       layer.bringToFront();
       onToast?.('Arraste os vértices. Clique no ponto azul-claro para inserir e botão direito para remover. Depois clique em "Concluir forma".', 'info');
     }
-  }, [selId, editingShape, onToast, readOnly, farmId, onMutated, rebuildEditHandles, teardownEditHandles]);
+  }, [selId, editingShape, onToast, readOnly, farmId, organizationId, onMutated, rebuildEditHandles, teardownEditHandles]);
 
   // Cancela a edição de forma (descarta) se o usuário selecionar outra área.
   useEffect(() => {
@@ -1086,6 +1222,110 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
       setDeleteId(null);
     }
   }, [deleteId, selId, selectArea, onMutated, onToast]);
+
+  // ── Editar/excluir um retiro/setor JÁ salvo clicando na área (tela mestra) ──
+  const handleEditSavedArea = useCallback(
+    async (areaId: string, patch: { nome: string; strokeColor: string; fillColor: string; fillOpacity: number; strokeWeight: number }) => {
+      const area = areasRef.current.find((a) => a.id === areaId);
+      if (!area) return;
+      try {
+        setBusy(true);
+        await apiUpdateStyle(area, patch);
+        setAreas((prev) =>
+          prev.map((a) =>
+            a.id === areaId
+              ? { ...a, nome: patch.nome, strokeColor: patch.strokeColor, fillColor: patch.fillColor, fillOpacity: patch.fillOpacity, strokeWeight: patch.strokeWeight }
+              : a,
+          ),
+        );
+        onMutated?.();
+        onToast?.(`Área atualizada · ${patch.nome}.`, 'success');
+      } catch (err) {
+        console.error(err);
+        onToast?.('Não foi possível salvar as alterações.', 'error');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onMutated, onToast],
+  );
+
+  const handleDeleteSavedArea = useCallback(
+    async (areaId: string) => {
+      const area = areasRef.current.find((a) => a.id === areaId);
+      if (!area) return;
+      try {
+        setBusy(true);
+        await apiDeleteArea(area);
+        setAreas((prev) =>
+          prev.filter((x) => x.id !== areaId).map((x) => (x.parent === areaId ? { ...x, parent: null } : x)),
+        );
+        if (selId === areaId) selectArea(null);
+        onMutated?.();
+        onToast?.(`Área excluída · ${area.nome} removida do cadastro.`, 'warning');
+      } catch (err) {
+        console.error(err);
+        onToast?.('Não foi possível excluir a área.', 'error');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [selId, selectArea, onMutated, onToast],
+  );
+
+  // ── Reset do mapa de PRODUÇÃO: apaga as áreas geradas + perímetro ────────────
+  // Respeita as FKs do rebanho: locais com lançamentos vinculados (RESTRICT) não
+  // podem ser excluídos — são APOSENTADOS (status), preservando a identidade. O
+  // resto é hard-delete em ordem filhos→pais. (core sem busy/toast — ver chamadores.)
+  const clearProducaoCore = useCallback(async (): Promise<{ removidos: number; aposentados: number; mantidos: number }> => {
+    const hoje = new Date().toISOString().slice(0, 10);
+    let removidos = 0, aposentados = 0, mantidos = 0;
+    const alvos = areasRef.current.filter((a) => !a.isDefault && a.nivel !== 'fazenda');
+    const ordem = (n: Nivel) => (n === 'local' ? 0 : n === 'setor' ? 1 : 2);
+    for (const a of [...alvos].sort((x, y) => ordem(x.nivel) - ordem(y.nivel))) {
+      try {
+        await apiDeleteArea(a);
+        removidos += 1;
+      } catch {
+        // FK do rebanho (RESTRICT) → aposenta o local (preserva identidade); retiro/setor presos ficam.
+        if (a.nivel === 'local') {
+          try { await apiAposentar({ organizationId, farmId, data: hoje, areaId: a.id, motivo: 'reset do mapa de produção' }); aposentados += 1; }
+          catch (e2) { console.error('Não foi possível aposentar o local', a.id, e2); mantidos += 1; }
+        } else {
+          mantidos += 1;
+        }
+      }
+    }
+    try { await saveFarmPerimeter(farmId, [], 'desenho'); } catch (e) { console.error('Falha ao limpar o perímetro', e); }
+    return { removidos, aposentados, mantidos };
+  }, [organizationId, farmId]);
+
+  // Excluir um arquivo KMZ (Original ou Produção). UMA ação sequenciada: apaga o
+  // arquivo e, se for produção, limpa as áreas geradas (sem segundo confirm).
+  const handleDeleteArquivoKmz = useCallback(
+    async (m: FarmMapData, isProd: boolean) => {
+      setBusy(true);
+      try {
+        await deleteFarmMap(m.id);
+        setOverlayReload((v) => v + 1);
+        if (isProd) {
+          const r = await clearProducaoCore();
+          setLocalReload((v) => v + 1);
+          onMutated?.();
+          const extra = [r.aposentados ? `${r.aposentados} aposentada(s) (têm rebanho)` : '', r.mantidos ? `${r.mantidos} mantida(s)` : ''].filter(Boolean).join(' · ');
+          onToast?.(`Mapa de produção limpo — ${r.removidos} removida(s)${extra ? ' · ' + extra : ''}.`, r.aposentados || r.mantidos ? 'warning' : 'success');
+        } else {
+          onToast?.('Arquivo original excluído.', 'success');
+        }
+      } catch (e) {
+        console.error('Falha ao excluir o arquivo KMZ:', e);
+        onToast?.('Não foi possível excluir o arquivo.', 'error');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [clearProducaoCore, onMutated, onToast],
+  );
 
   // ── Basemap ───────────────────────────────────────────────────────────────
   const setBasemapLayer = useCallback((which: 'sat' | 'osm') => {
@@ -1339,9 +1579,16 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           onToggleLevel={onToggleLevel}
           onClose={() => setImportOpen(false)}
           onConfirm={handleMestreSave}
+          onImportOriginal={handleImportOriginal}
           onToast={onToast}
-          onShowColumns={mestreColumnsTab && !mestreEmbedded ? () => setImportOpen(false) : undefined}
+          onShowColumns={mestreColumnsTab ? () => setImportOpen(false) : undefined}
           embedded={mestreEmbedded}
+          referenceMaps={overlayMaps}
+          uploadedMaps={overlayMaps}
+          readOnly={readOnly}
+          onEditSavedArea={readOnly ? undefined : handleEditSavedArea}
+          onDeleteSavedArea={readOnly ? undefined : handleDeleteSavedArea}
+          onDeleteArquivo={readOnly ? undefined : handleDeleteArquivoKmz}
         />
       )}
     </div>

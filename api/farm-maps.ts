@@ -74,7 +74,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
       await deleteFarmMap(id);
-      jsonSuccess(res, { deleted: true, storagePath: existing.storage_path });
+      // A linha do Drizzle vem em camelCase (storagePath); o cliente usa esse
+      // caminho para apagar o arquivo (KMZ/KML) no storage (B2).
+      jsonSuccess(res, { deleted: true, storagePath: existing.storagePath });
       return;
     }
 

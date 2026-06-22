@@ -4,8 +4,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import JSZip from 'jszip';
 import { kml } from '@tmcw/togeojson';
-import { listFarmMaps, createFarmMap, deleteFarmMapApi, type FarmMapData } from '../lib/api/farmMapsClient';
-import { storageUpload, storageRemove } from '../lib/storage';
+import { listFarmMaps, createFarmMap, deleteFarmMap, type FarmMapData } from '../lib/api/farmMapsClient';
+import { storageUpload } from '../lib/storage';
 
 interface FarmMapTabProps {
   farmId: string;
@@ -219,13 +219,8 @@ const FarmMapTab: React.FC<FarmMapTabProps> = ({ farmId, readOnly = false }) => 
     if (!window.confirm(`Excluir mapa "${mapData.original_name}"?`)) return;
 
     try {
-      const { storagePath } = await deleteFarmMapApi(mapData.id);
-      // Remove from B2
-      const parts = storagePath.split('/');
-      const prefix = parts[0];
-      const path = parts.slice(1).join('/');
-      await storageRemove(prefix, [path]).catch(() => {/* ignore storage errors */});
-
+      // Remove o registro em farm_maps E o arquivo no storage (B2) numa só chamada.
+      await deleteFarmMap(mapData.id);
       setMaps(prev => prev.filter(m => m.id !== mapData.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao excluir mapa');

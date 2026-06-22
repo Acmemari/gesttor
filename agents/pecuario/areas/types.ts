@@ -27,8 +27,13 @@ export interface Area {
   /** só para nivel === 'local'. Texto livre: enum legado (TipoLocal) OU nome de
    *  tipo do catálogo "Tipos de Locais" (ex.: "Pastagem cultivada"). */
   tipo: string | null;
+  /** só para nivel === 'local'. 3º nível do catálogo (detalhe, ex.: "Capim-Marandu").
+   *  Texto livre casado por nome — espelha o contrato free-text de `tipo`. */
+  detalhe?: string | null;
   /** uso da terra (só nivel === 'local'); muda pela Conversão de Uso. */
   uso?: Uso | null;
+  /** tipo de geometria do local: 'area' | 'point' | 'line'. undefined = inferir por nº de coords. */
+  geomKind?: 'area' | 'point' | 'line';
   /** anel do polígono em [lat, lng] (sem ponto de fechamento duplicado). */
   coords: [number, number][];
   /** 'desenho' (mão) ou 'kml' (importado). */
@@ -39,6 +44,14 @@ export interface Area {
   isDefault?: boolean;
   /** mostra/oculta no mapa. */
   visivel: boolean;
+  /** cor da linha (perímetro) escolhida ao desenhar. null ⇒ usa NIVEIS[nivel].cor. Só retiro/setor. */
+  strokeColor?: string | null;
+  /** cor de preenchimento. null ⇒ usa NIVEIS[nivel].cor. Só retiro/setor. */
+  fillColor?: string | null;
+  /** opacidade do preenchimento 0–1 (transparência = 1 − este valor). null ⇒ usa NIVEIS[nivel].fill. Só retiro/setor. */
+  fillOpacity?: number | null;
+  /** espessura da linha (perímetro) em px. null ⇒ padrão do nível. Só retiro/setor. */
+  strokeWeight?: number | null;
 }
 
 export interface NivelInfo {

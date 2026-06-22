@@ -10,15 +10,15 @@
  *
  * Retiros:
  *   GET    ?farmId=xxx                  — list retiros
- *   POST   { farmId, name, totalArea?, isDefault? }
- *   PATCH  { id, name?, totalArea?, isDefault? }
+ *   POST   { farmId, name, totalArea?, isDefault?, strokeColor?, fillColor?, fillOpacity? }
+ *   PATCH  { id, name?, totalArea?, isDefault?, strokeColor?, fillColor?, fillOpacity? }
  *   DELETE ?retiroId=xxx
  *
  * Setores:
  *   GET    ?setoresByFarm=xxx           — list setores da fazenda
  *   GET    ?setoresByRetiro=xxx         — list setores de um retiro
- *   POST   { type:'setor', farmId, retiroId?, name, area? }
- *   PATCH  { type:'setor', id, name?, area?, retiroId? }
+ *   POST   { type:'setor', farmId, retiroId?, name, area?, strokeColor?, fillColor?, fillOpacity? }
+ *   PATCH  { type:'setor', id, name?, area?, retiroId?, strokeColor?, fillColor?, fillOpacity? }
  *   DELETE ?setorId=xxx
  *
  * Locais:
@@ -161,7 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'setor') {
-        const { farmId, retiroId, name, area, dataInicial, geometry, geometrySource } = req.body;
+        const { farmId, retiroId, name, area, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
@@ -170,13 +170,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           farmId, retiroId: retiroId ?? null, name, area: area ?? null,
           dataInicial: dataInicial ?? null,
           geometry: geometry ?? null, geometrySource: geometrySource ?? null,
+          strokeColor: strokeColor ?? null, fillColor: fillColor ?? null, fillOpacity: fillOpacity ?? null,
+          strokeWeight: strokeWeight ?? null,
         });
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'local') {
-        const { farmId, retiroId, setorId, name, area, dataInicial, geometry, geometrySource, tipo } = req.body;
+        const { farmId, retiroId, setorId, name, area, dataInicial, geometry, geometrySource, geomTipo, tipo, detalhe } = req.body;
         if (!farmId || !name) {
           jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
           return;
@@ -190,14 +192,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           dataInicial: dataInicial ?? null,
           geometry: geometry ?? null,
           geometrySource: geometrySource ?? null,
+          geomTipo: geomTipo ?? null,
           tipo: tipo ?? null,
+          detalhe: detalhe ?? null,
         });
         jsonSuccess(res, row);
         return;
       }
 
       // default: retiro
-      const { farmId, name, totalArea, isDefault, dataInicial, geometry, geometrySource } = req.body ?? {};
+      const { farmId, name, totalArea, isDefault, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight } = req.body ?? {};
       if (!farmId || !name) {
         jsonError(res, 'Campos obrigatórios: farmId, name', { status: 400 });
         return;
@@ -206,6 +210,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         farmId, name, totalArea: totalArea ?? null, isDefault: isDefault ?? false,
         dataInicial: dataInicial ?? null,
         geometry: geometry ?? null, geometrySource: geometrySource ?? null,
+        strokeColor: strokeColor ?? null, fillColor: fillColor ?? null, fillOpacity: fillOpacity ?? null,
+        strokeWeight: strokeWeight ?? null,
       });
       jsonSuccess(res, row);
       return;
@@ -220,22 +226,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type === 'setor') {
-        const { name, area, retiroId, dataInicial, geometry, geometrySource } = req.body;
-        const row = await updateSetor(id, { name, area, retiroId, dataInicial, geometry, geometrySource });
+        const { name, area, retiroId, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight } = req.body;
+        const row = await updateSetor(id, { name, area, retiroId, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight });
         jsonSuccess(res, row);
         return;
       }
 
       if (type === 'local') {
-        const { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, tipo } = req.body;
-        const row = await updateLocal(id, { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, tipo });
+        const { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, geomTipo, tipo, detalhe } = req.body;
+        const row = await updateLocal(id, { name, area, retiroId, setorId, dataInicial, geometry, geometrySource, geomTipo, tipo, detalhe });
         jsonSuccess(res, row);
         return;
       }
 
       // default: retiro
-      const { name, totalArea, isDefault, dataInicial, geometry, geometrySource } = req.body;
-      const row = await updateRetiro(id, { name, totalArea, isDefault, dataInicial, geometry, geometrySource });
+      const { name, totalArea, isDefault, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight } = req.body;
+      const row = await updateRetiro(id, { name, totalArea, isDefault, dataInicial, geometry, geometrySource, strokeColor, fillColor, fillOpacity, strokeWeight });
       jsonSuccess(res, row);
       return;
     }

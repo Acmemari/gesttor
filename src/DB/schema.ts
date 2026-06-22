@@ -199,6 +199,12 @@ export const farms = pgTable('farms', {
   // Perímetro da fazenda (nível "fazenda" do mapa de áreas): anel [lat,lng][] cru.
   perimeterGeometry: jsonb('perimeter_geometry'),
   perimeterSource: text('perimeter_source'),
+  // Estilo do perímetro (mapa de áreas): cor da linha/preenchimento, opacidade 0–1
+  // e espessura (px). Nulo ⇒ padrão do nível Fazenda. Espelha farm_retiros/setores.
+  strokeColor: text('stroke_color'),
+  fillColor: text('fill_color'),
+  fillOpacity: numeric('fill_opacity'),
+  strokeWeight: numeric('stroke_weight'),
   ativo: boolean('ativo').default(true),
   createdBy: text('created_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -601,6 +607,14 @@ export const farmRetiros = pgTable('farm_retiros', {
   // Geometria do retiro (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
+  // Estilo do polígono no mapa (definido ao desenhar). Nulo ⇒ usa a cor/opacidade
+  // padrão do nível (NIVEIS). stroke = linha do perímetro; fill = preenchimento;
+  // fill_opacity em 0–1 (transparência = 1 − fill_opacity).
+  strokeColor: text('stroke_color'),
+  fillColor: text('fill_color'),
+  fillOpacity: numeric('fill_opacity'),
+  // Espessura da linha do perímetro em px. Nulo ⇒ padrão do nível.
+  strokeWeight: numeric('stroke_weight'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -622,6 +636,12 @@ export const farmSetores = pgTable('farm_setores', {
   // Geometria do setor (mapa de áreas): anel [lat,lng][] cru + fonte ('desenho'|'kml').
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
+  // Estilo do polígono no mapa (ver farm_retiros.stroke_color). Nulo ⇒ padrão do nível.
+  strokeColor: text('stroke_color'),
+  fillColor: text('fill_color'),
+  fillOpacity: numeric('fill_opacity'),
+  // Espessura da linha do perímetro em px. Nulo ⇒ padrão do nível.
+  strokeWeight: numeric('stroke_weight'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
@@ -647,7 +667,13 @@ export const farmLocais = pgTable('farm_locais', {
   // (Pasto/Curral/Confinamento/Aguada/Sede/Reserva/Outro).
   geometry: jsonb('geometry'),
   geometrySource: text('geometry_source'),
+  // Tipo de geometria: 'area' (polígono) | 'point' (ponto) | 'line' (traço:
+  // cerca/estrada/rede). null = legado → inferir por nº de coordenadas.
+  geomTipo: text('geom_tipo'),
   tipo: text('tipo'),
+  // 3º nível do catálogo "Tipos de Locais" (detalhe, ex.: "Capim-Marandu").
+  // Texto livre casado por nome — espelha o contrato free-text de `tipo` (sem FK).
+  detalhe: text('detalhe'),
   // Uso da terra (Pastagem/Agricultura/Reserva/Silvicultura/Outro). Eixo distinto
   // de `tipo` (função do local). Cache da versão corrente em `area_versoes.uso`;
   // alterado pela operação `conversao_uso` da Movimentação de Áreas.

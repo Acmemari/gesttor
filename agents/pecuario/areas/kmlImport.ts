@@ -25,6 +25,7 @@ import {
   lineIntersect as turfLineIntersect,
   lineSplit as turfLineSplit,
   truncate as turfTruncate,
+  union as turfUnion,
 } from '@turf/turf';
 import { cleanRing, areaM2, centroid as ringCentroid, pointInPoly } from './util';
 import type { TipoLocal } from './types';
@@ -208,6 +209,85 @@ function reconstructPerimeter(
   return { ring: null, fonte: null };
 }
 
+// ── Perímetro a partir de um GeoJSON já lido (mapa de referência importado) ────
+/* Em vez de adivinhar o contorno por IA/satélite, derivamos o perímetro da própria
+ * geometria que o usuário subiu (KML/KMZ → farm_maps). Numa fazenda subdividida, a
+ * rede de divisas/cercas não tem UMA face = a fazenda inteira (cada piquete é uma
+ * face); por isso UNIMOS todas as faces (turf.union) para obter o contorno EXTERNO
+ * real, que segue concavidades. Fallbacks: maior face → cascata clássica/convex. */
+
+/** Maior anel externo de um Polygon/MultiPolygon (em [lng,lat]). */
+function largestOuterRing(
+  feat: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
+): LngLat[] | null {
+  const g = feat.geometry;
+  if (g.type === 'Polygon') return g.coordinates[0] as LngLat[];
+  if (g.type === 'MultiPolygon') {
+    let best: LngLat[] | null = null;
+    let bestA = -1;
+    for (const poly of g.coordinates as number[][][][]) {
+      const ring = poly[0] as LngLat[];
+      const a = safeArea(ring);
+      if (a > bestA) {
+        bestA = a;
+        best = ring;
+      }
+    }
+    return best;
+  }
+  return null;
+}
+
+/** Contorno externo da rede de linhas/divisas: faces (polygonize) → união. */
+function outerBoundaryFromLines(geojson: GeoJSON.FeatureCollection): [number, number][] | null {
+  const lines = boundaryLines(geojson);
+  if (lines.length < 1 || lines.length > PADDOCK_MAX_LINES) return null;
+  let faces: GeoJSON.Feature<GeoJSON.Polygon>[];
+  try {
+    const edges = planarEdges(nodeNetwork(lines));
+    if (edges.length < 3) return null;
+    const fc = turfFeatureCollection(edges.map((e) => turfLineString(e)));
+    faces = turfPolygonize(fc).features as GeoJSON.Feature<GeoJSON.Polygon>[];
+  } catch {
+    return null;
+  }
+  if (!faces.length) return null;
+  if (faces.length === 1) return toSystemRing(faces[0].geometry.coordinates[0] as LngLat[]);
+  // União de todas as faces → contorno externo (mantém as reentrâncias reais).
+  try {
+    const unioned = turfUnion(turfFeatureCollection(faces));
+    const ring = unioned ? largestOuterRing(unioned) : null;
+    if (ring && ring.length >= 3) return toSystemRing(ring);
+  } catch {
+    /* união falhou (geometria degenerada) — usa a maior face */
+  }
+  let best: LngLat[] | null = null;
+  let bestA = -1;
+  for (const f of faces) {
+    const a = turfArea(f);
+    if (a > bestA) {
+      bestA = a;
+      best = f.geometry.coordinates[0] as LngLat[];
+    }
+  }
+  return best ? toSystemRing(best) : null;
+}
+
+/**
+ * Reconstrói SÓ o perímetro (anel [lat,lng][]) a partir de um GeoJSON já lido —
+ * ex.: o mapa de referência importado (farm_maps) ou o arquivo da sessão. Tenta a
+ * união das faces da rede (contorno externo fiel) e, se não fechar, cai na cascata
+ * clássica (maior polígono → maior face → convex hull).
+ */
+export function perimeterFromGeojson(
+  geojson: GeoJSON.FeatureCollection,
+): { ring: [number, number][] | null; fonte: PerimeterFonte | null } {
+  if (!geojson || !Array.isArray(geojson.features)) return { ring: null, fonte: null };
+  const ring = outerBoundaryFromLines(geojson);
+  if (ring && ring.length >= 3) return { ring, fonte: 'linhas' };
+  return reconstructPerimeter(geojson);
+}
+
 // ── Pontos → Locais ───────────────────────────────────────────────────────────
 /** Deduz o tipo de Local pelo nome do ponto. */
 export function inferTipoLocal(name: string): TipoLocal {
@@ -218,6 +298,168 @@ export function inferTipoLocal(name: string): TipoLocal {
   if (/reserva|app|apa\b|preserv/.test(n)) return 'Reserva';
   if (/curral|mangueir|brete|tronco/.test(n)) return 'Curral';
   return 'Outro';
+}
+
+/** Forma mínima do catálogo "Tipos de Locais" usada pela heurística (evita acoplar ao client). */
+interface CatalogoLeve {
+  categorias: { id: string; nome: string }[];
+  tipos: { id: string; categoriaId: string; nome: string }[];
+  detalhes?: { tipoId: string; nome: string }[];
+}
+
+/** Normaliza para casamento: minúsculas, sem acento, espaços colapsados. */
+export function normNome(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Palpite de classificação (Categoria→Tipo→Detalhe) a partir do nome do placemark.
+ * Casa o nome contra os tipos do catálogo (exato normalizado → substring) e, dentro
+ * do tipo casado, contra os detalhes. Cai no enum legado (inferTipoLocal) como último
+ * recurso, adotando a categoria se esse nome existir no catálogo. Conservador — é só
+ * um padrão que o usuário confirma/troca na caixa.
+ */
+export function inferCatalogClassification(
+  name: string,
+  catalog: CatalogoLeve | null,
+): { categoriaId: string | null; tipo: string | null; detalhe: string | null } {
+  const n = normNome(name);
+  if (!catalog || !catalog.tipos?.length || !n) {
+    return { categoriaId: null, tipo: null, detalhe: null };
+  }
+  // 1) Tipo: exato normalizado tem prioridade; senão substring (nome contém o tipo).
+  let hit = catalog.tipos.find((t) => normNome(t.nome) === n);
+  if (!hit) {
+    hit = catalog.tipos.find((t) => {
+      const tn = normNome(t.nome);
+      return tn.length >= 3 && n.includes(tn);
+    });
+  }
+  if (hit) {
+    const dets = (catalog.detalhes ?? []).filter((d) => d.tipoId === hit!.id);
+    const dHit =
+      dets.find((d) => normNome(d.nome) === n) ??
+      dets.find((d) => {
+        const dn = normNome(d.nome);
+        return dn.length >= 3 && n.includes(dn);
+      });
+    return { categoriaId: hit.categoriaId, tipo: hit.nome, detalhe: dHit?.nome ?? null };
+  }
+  // 2) Fallback: enum legado. Se esse nome existir como tipo no catálogo, adota a categoria.
+  const legacy = inferTipoLocal(name);
+  if (legacy && legacy !== 'Outro') {
+    const m = catalog.tipos.find((t) => normNome(t.nome) === normNome(legacy));
+    if (m) return { categoriaId: m.categoriaId, tipo: m.nome, detalhe: null };
+    return { categoriaId: null, tipo: legacy, detalhe: null };
+  }
+  return { categoriaId: null, tipo: null, detalhe: null };
+}
+
+/**
+ * Função de desenho PADRÃO de um tipo de local, inferida pelo nome.
+ * Define qual ferramenta o painel de Áreas oferece como primária:
+ *   • 'line'  — infra linear: rede hidráulica/elétrica, cercas/divisas, estradas,
+ *               carreadores/aceiros, pontes, adutoras/dutos.
+ *   • 'point' — infra pontual: poços, caixas d'água, bebedouros, cochos, sede,
+ *               casas, silos, antenas/torres, marcos/porteiras, nascentes etc.
+ *   • 'area'  — padrão (pastagens, lavouras, florestas, reservas, açudes, pátios…).
+ * As três ferramentas continuam disponíveis; isto só escolhe a sugerida.
+ */
+export function defaultGeomForTipo(tipoNome: string | null | undefined): 'area' | 'point' | 'line' {
+  const n = normNome(tipoNome ?? '');
+  if (!n) return 'area';
+  if (/rede hidraulic|adutora|encanament|tubula|rede eletric|estrada|carreador|aceiro|\bcerca|divisa|\bponte|gasoduto|oleoduto|aqueduto/.test(n))
+    return 'line';
+  if (/\bpoco|artesian|cacimba|caixa d|bebedouro|\bcocho|comedouro|\bsede|\bcasa|escritorio|alojament|refeitori|sala de reuni|guarita|portaria|\bsilo|oficina|lavador|combustivel|antena|\btorre|internet|comunicacao|camera|\bcctv|fabrica|almoxarif|deposito|armazem|painel solar|energia solar|\bmarco|porteira|mata.?burro|nascente/.test(n))
+    return 'point';
+  return 'area';
+}
+
+/** Palavras vazias ignoradas no casamento por tokens. */
+const STOP_TOKENS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'os', 'as', 'com', 'sem', 'para', 'no', 'na']);
+
+/**
+ * Sinônimos → tokens-âncora. Se o valor casa a regex, esses tokens são somados
+ * aos tokens do valor antes de pontuar contra os nomes dos tipos do catálogo.
+ * Ponte entre o vocabulário do arquivo do cliente e a taxonomia do sistema.
+ */
+const SINONIMOS_TOKENS: { re: RegExp; tokens: string[] }[] = [
+  { re: /po[çc]o|cacimba|aguada|capta/, tokens: ['poco', 'artesiano', 'agua'] },
+  { re: /bebedouro|dessedent/, tokens: ['bebedouro'] },
+  { re: /caixa.?d|caixa.?agua|reservatori|cisterna/, tokens: ['caixa', 'reservatorio', 'agua'] },
+  { re: /a[çc]ude|represa|barrag|barreir|lago|tanque|lagoa/, tokens: ['acude', 'represa', 'lago'] },
+  { re: /brejo|banhad|varzea|alagad/, tokens: ['brejo', 'banhado', 'varzea'] },
+  { re: /rede.?hidr|adutora|encanam/, tokens: ['rede', 'hidraulica'] },
+  { re: /cocho|comedouro|suplement|sal\b|saleir/, tokens: ['cocho', 'suplementacao'] },
+  { re: /curral|mangueir|brete|tronco|embarcad/, tokens: ['curral', 'manejo'] },
+  { re: /piquet/, tokens: ['piquete'] },
+  { re: /confinam|baia\b/, tokens: ['confinamento'] },
+  { re: /pasto|pastag|invernad|retiro|mangueirao/, tokens: ['pastagem', 'pasto'] },
+  { re: /talh[ãa]o/, tokens: ['talhao'] },
+  { re: /lavoura|planti|safra|soja|milho|cultiv/, tokens: ['lavoura'] },
+  { re: /capineir|cana\b/, tokens: ['capineira'] },
+  { re: /silo\b|silagem/, tokens: ['silo'] },
+  { re: /eucalip|reflorest|silvicult|pinus|teca/, tokens: ['eucalipto', 'reflorestamento'] },
+  { re: /reserva.?legal|\brl\b/, tokens: ['reserva', 'legal'] },
+  { re: /\bapp\b|preserv.?permanen/, tokens: ['app', 'preservacao'] },
+  { re: /nascente|olho.?d.?agua|mina\b/, tokens: ['nascente'] },
+  { re: /mata|floresta|capao|cerrad|vegeta/, tokens: ['mata', 'nativa', 'floresta'] },
+  { re: /sede|matriz|escrit/, tokens: ['sede'] },
+  { re: /\bcasa|moradi|resid/, tokens: ['casa'] },
+  { re: /galp|barrac|deposit|armazem/, tokens: ['galpao'] },
+  { re: /estrada|carreador|caminho|aceiro/, tokens: ['estrada'] },
+  { re: /energi|rede.?eletr|trafo|transformad|painel.?solar/, tokens: ['energia'] },
+  { re: /cerca|divis|arame|mourao/, tokens: ['cerca'] },
+  { re: /porteir|colchet|teira/, tokens: ['porteira'] },
+  { re: /marco|mata.?burro|estaca|ponto.?ref|referenc/, tokens: ['marco', 'referencia'] },
+];
+
+/** Tokens significativos de um texto (sem stopwords, ≥3 chars). */
+function tokensDe(s: string): string[] {
+  return normNome(s).split(' ').filter((w) => w.length >= 3 && !STOP_TOKENS.has(w));
+}
+
+/** Dois tokens "casam" se iguais ou um é prefixo do outro (cobre plural: poco↔pocos). */
+function tokenMatch(a: string, b: string): boolean {
+  return a === b || (a.length >= 4 && b.startsWith(a)) || (b.length >= 4 && a.startsWith(b));
+}
+
+/**
+ * Sugestão de destino para o de-para (mais robusta que inferCatalogClassification):
+ * 1) tenta o casamento direto (exato/substring) — confiável;
+ * 2) senão, pontua por tokens (com expansão de sinônimos) contra os tipos do catálogo.
+ * Retorna {categoriaId, tipo, detalhe} só quando há categoria do catálogo, ou null.
+ */
+export function suggestDestino(
+  value: string,
+  catalog: CatalogoLeve | null,
+): { categoriaId: string; tipo: string; detalhe: string | null } | null {
+  if (!catalog?.tipos?.length || !value?.trim()) return null;
+  // 1) direto (exato/substring) — só aceita com categoria do catálogo.
+  const direct = inferCatalogClassification(value, catalog);
+  if (direct.categoriaId && direct.tipo) {
+    return { categoriaId: direct.categoriaId, tipo: direct.tipo, detalhe: direct.detalhe };
+  }
+  // 2) tokens + sinônimos.
+  const n = normNome(value);
+  const valTokens = new Set(tokensDe(value));
+  for (const s of SINONIMOS_TOKENS) if (s.re.test(n)) s.tokens.forEach((t) => valTokens.add(t));
+  if (valTokens.size === 0) return null;
+
+  let best: { id: string; categoriaId: string; nome: string } | null = null;
+  let bestScore = 0;
+  for (const t of catalog.tipos) {
+    const tt = tokensDe(t.nome);
+    let score = 0;
+    for (const vt of valTokens) if (tt.some((x) => tokenMatch(vt, x))) score += 1;
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  return best && bestScore >= 1 ? { categoriaId: best.categoriaId, tipo: best.nome, detalhe: null } : null;
 }
 
 /** Anel pequeno (~10 m) representando um ponto como Local (o sistema só guarda polígonos). */
@@ -362,7 +604,7 @@ function boundaryLines(geojson: GeoJSON.FeatureCollection): LngLat[][] {
   return lines;
 }
 
-function derivePaddocks(geojson: GeoJSON.FeatureCollection, perimeterM2: number): KmlPaddock[] {
+export function derivePaddocks(geojson: GeoJSON.FeatureCollection, perimeterM2: number): KmlPaddock[] {
   const lines = boundaryLines(geojson);
   if (lines.length < 2 || lines.length > PADDOCK_MAX_LINES) return [];
 

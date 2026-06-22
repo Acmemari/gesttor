@@ -39,6 +39,11 @@ export type CreateFarmInput = {
   // Perímetro da fazenda (mapa de áreas): anel [lat,lng][] cru + fonte.
   perimeterGeometry?: [number, number][] | null;
   perimeterSource?: string | null;
+  // Estilo do perímetro (cor da linha/preenchimento, opacidade 0–1, espessura px).
+  strokeColor?: string | null;
+  fillColor?: string | null;
+  fillOpacity?: string | number | null;
+  strokeWeight?: string | number | null;
 };
 
 export type UpdateFarmInput = Partial<Omit<CreateFarmInput, 'id'>>;
@@ -120,13 +125,16 @@ export async function updateFarm(id: string, data: UpdateFarmInput) {
   // Perímetro (jsonb/text) — passthrough, não são numéricos.
   if (data.perimeterGeometry !== undefined) updates.perimeterGeometry = data.perimeterGeometry;
   if (data.perimeterSource !== undefined) updates.perimeterSource = data.perimeterSource;
+  // Estilo do perímetro: cores (text) por passthrough; opacidade/espessura são numéricas (abaixo).
+  if (data.strokeColor !== undefined) updates.strokeColor = data.strokeColor;
+  if (data.fillColor !== undefined) updates.fillColor = data.fillColor;
   // Numeric fields — coerce to string for Drizzle numeric columns
   const numericFields = [
     'totalArea', 'pastureArea', 'agricultureArea', 'forageProductionArea',
     'agricultureAreaOwned', 'agricultureAreaLeased', 'otherCrops', 'infrastructure',
     'reserveAndAPP', 'otherArea', 'propertyValue', 'operationPecuary',
     'operationAgricultural', 'otherOperations', 'agricultureVariation',
-    'averageHerd', 'herdValue',
+    'averageHerd', 'herdValue', 'fillOpacity', 'strokeWeight',
   ] as const;
   for (const field of numericFields) {
     if (data[field] !== undefined) {

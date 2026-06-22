@@ -2,6 +2,7 @@
  * Client HTTP for farm maps API (/api/farm-maps).
  */
 import { getAuthHeaders, clearToken } from '../session';
+import { storageRemoveKeys } from '../storage';
 
 const API_BASE = '/api';
 
@@ -42,12 +43,36 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiRespo
   return { ok: true, data: json.data };
 }
 
+/**
+ * Normaliza a linha que volta da API para o shape snake_case de `FarmMapData`.
+ * O Drizzle/`jsonSuccess` devolve as colunas em **camelCase** (`storagePath`,
+ * `originalName`…) — sem isto, `m.original_name`/`m.storage_path` saíam
+ * `undefined` em runtime (só `id`/`geojson` coincidiam). Lê as duas grafias por
+ * segurança caso a API mude.
+ */
+function normalizeFarmMap(raw: Record<string, unknown>): FarmMapData {
+  const pick = (a: string, b: string) => (raw[a] ?? raw[b]) as never;
+  return {
+    id: raw.id as string,
+    farm_id: pick('farm_id', 'farmId') ?? '',
+    uploaded_by: pick('uploaded_by', 'uploadedBy') ?? '',
+    file_name: pick('file_name', 'fileName') ?? '',
+    original_name: pick('original_name', 'originalName') ?? '',
+    file_type: pick('file_type', 'fileType') ?? '',
+    file_size: pick('file_size', 'fileSize') ?? 0,
+    storage_path: pick('storage_path', 'storagePath') ?? '',
+    geojson: raw.geojson ?? null,
+    created_at: pick('created_at', 'createdAt') ?? null,
+    updated_at: pick('updated_at', 'updatedAt') ?? null,
+  };
+}
+
 export async function listFarmMaps(farmId: string): Promise<FarmMapData[]> {
-  const res = await fetchApi<FarmMapData[]>(
+  const res = await fetchApi<Record<string, unknown>[]>(
     `${API_BASE}/farm-maps?farmId=${encodeURIComponent(farmId)}`,
   );
   if (!res.ok) throw new Error(res.error);
-  return res.data || [];
+  return (res.data || []).map(normalizeFarmMap);
 }
 
 export async function createFarmMap(data: {
@@ -59,12 +84,12 @@ export async function createFarmMap(data: {
   storagePath: string;
   geojson?: unknown;
 }): Promise<FarmMapData> {
-  const res = await fetchApi<FarmMapData>(`${API_BASE}/farm-maps`, {
+  const res = await fetchApi<Record<string, unknown>>(`${API_BASE}/farm-maps`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(res.error);
-  return res.data!;
+  return normalizeFarmMap(res.data!);
 }
 
 export async function deleteFarmMapApi(id: string): Promise<{ storagePath: string }> {
@@ -74,6 +99,27 @@ export async function deleteFarmMapApi(id: string): Promise<{ storagePath: strin
   );
   if (!res.ok) throw new Error(res.error);
   return { storagePath: res.data!.storagePath };
+}
+
+/**
+ * Exclui por completo o mapa (KMZ/KML) vinculado a uma fazenda:
+ *   1) remove a linha em `farm_maps` (DELETE /api/farm-maps), que devolve o
+ *      `storage_path` do arquivo;
+ *   2) apaga o arquivo correspondente no storage (B2) usando esse caminho.
+ *
+ * Sem o passo 2 o blob ficava órfão no bucket (o `deleteFarmMapApi` sozinho só
+ * tira o registro). A falha em apagar o blob NÃO derruba a operação — o mapa já
+ * saiu do banco/UI; o órfão só é registrado em console.warn.
+ */
+export async function deleteFarmMap(id: string): Promise<void> {
+  const { storagePath } = await deleteFarmMapApi(id);
+  if (storagePath) {
+    try {
+      await storageRemoveKeys([storagePath]);
+    } catch (e) {
+      console.warn('[farmMapsClient] arquivo de storage não removido:', storagePath, e);
+    }
+  }
 }
 
 export type { FarmMapData };

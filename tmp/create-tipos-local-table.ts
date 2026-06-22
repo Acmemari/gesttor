@@ -1,0 +1,107 @@
+import { Pool } from 'pg';
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+
+dotenv.config();
+if (fs.existsSync('.env.local')) {
+  const envConfig = dotenv.parse(fs.readFileSync('.env.local'));
+  for (const k in envConfig) process.env[k] = envConfig[k];
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function main() {
+  // ── Categorias de tipo de local ──────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tipo_local_categorias (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      organization_id uuid NOT NULL,
+      nome text NOT NULL,
+      cor text,
+      icone text,
+      ordem integer DEFAULT 0 NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL
+    );
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tipo_local_categorias_organization_id_organizations_id_fk'
+      ) THEN
+        ALTER TABLE tipo_local_categorias
+          ADD CONSTRAINT tipo_local_categorias_organization_id_organizations_id_fk
+          FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+          ON DELETE cascade ON UPDATE no action;
+      END IF;
+    END $$;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_tipo_local_categorias_org_id ON tipo_local_categorias USING btree (organization_id);
+  `);
+
+  // ── Tipos de local ────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tipos_local (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      organization_id uuid NOT NULL,
+      categoria_id uuid NOT NULL,
+      nome text NOT NULL,
+      cor text,
+      icone text,
+      descricao text,
+      ordem integer DEFAULT 0 NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL
+    );
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tipos_local_organization_id_organizations_id_fk'
+      ) THEN
+        ALTER TABLE tipos_local
+          ADD CONSTRAINT tipos_local_organization_id_organizations_id_fk
+          FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+          ON DELETE cascade ON UPDATE no action;
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tipos_local_categoria_id_tipo_local_categorias_id_fk'
+      ) THEN
+        ALTER TABLE tipos_local
+          ADD CONSTRAINT tipos_local_categoria_id_tipo_local_categorias_id_fk
+          FOREIGN KEY (categoria_id) REFERENCES public.tipo_local_categorias(id)
+          ON DELETE cascade ON UPDATE no action;
+      END IF;
+    END $$;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_tipos_local_org_id ON tipos_local USING btree (organization_id);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_tipos_local_categoria_id ON tipos_local USING btree (categoria_id);
+  `);
+
+  for (const table of ['tipo_local_categorias', 'tipos_local']) {
+    const { rows } = await pool.query(
+      `SELECT column_name, data_type, is_nullable, column_default
+         FROM information_schema.columns
+        WHERE table_name = $1
+        ORDER BY ordinal_position;`,
+      [table],
+    );
+    console.log(`OK — tabela ${table}:`, JSON.stringify(rows, null, 2));
+  }
+  await pool.end();
+}
+
+main().catch((err) => {
+  console.error('ERRO:', err);
+  process.exit(1);
+});

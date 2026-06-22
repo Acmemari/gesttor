@@ -156,20 +156,31 @@ export async function storageResolveUrl(storedUrl: string, expiresIn = 3600): Pr
 }
 
 /**
- * Delete one or more objects from B2 via the server API.
+ * Delete one or more objects from B2 by their FULL storage keys
+ * (e.g. "farm-maps/<farmId>/<uuid>.kmz"). Use this when the key is already
+ * absolute — typically because it was persisted in the DB (storage_path) —
+ * instead of being composed from a prefix + relative path.
  */
-export async function storageRemove(prefix: string, paths: string[]): Promise<void> {
-  const keys = paths.map((p) => fullKey(prefix, p));
+export async function storageRemoveKeys(keys: string[]): Promise<void> {
+  const clean = keys.filter(Boolean);
+  if (!clean.length) return;
 
   const authHeader = await getAuthHeader();
   const res = await fetch('/api/storage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader },
-    body: JSON.stringify({ action: 'delete', keys }),
+    body: JSON.stringify({ action: 'delete', keys: clean }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Delete request failed (${res.status})`);
   }
+}
+
+/**
+ * Delete one or more objects from B2 via the server API.
+ */
+export async function storageRemove(prefix: string, paths: string[]): Promise<void> {
+  await storageRemoveKeys(paths.map((p) => fullKey(prefix, p)));
 }

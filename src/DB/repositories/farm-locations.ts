@@ -24,6 +24,10 @@ export async function createRetiro(data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  strokeColor?: string | null;
+  fillColor?: string | null;
+  fillOpacity?: string | number | null;
+  strokeWeight?: string | number | null;
 }) {
   const [row] = await db.insert(farmRetiros).values({
     farmId: data.farmId,
@@ -33,6 +37,10 @@ export async function createRetiro(data: {
     dataInicial: data.dataInicial ?? null,
     geometry: data.geometry ?? null,
     geometrySource: data.geometrySource ?? null,
+    strokeColor: data.strokeColor ?? null,
+    fillColor: data.fillColor ?? null,
+    fillOpacity: data.fillOpacity != null ? String(data.fillOpacity) : null,
+    strokeWeight: data.strokeWeight != null ? String(data.strokeWeight) : null,
   }).returning();
   return row;
 }
@@ -44,6 +52,10 @@ export async function updateRetiro(id: string, data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  strokeColor?: string | null;
+  fillColor?: string | null;
+  fillOpacity?: string | number | null;
+  strokeWeight?: string | number | null;
 }) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) set.name = data.name;
@@ -52,6 +64,10 @@ export async function updateRetiro(id: string, data: {
   if (data.dataInicial !== undefined) set.dataInicial = data.dataInicial;
   if (data.geometry !== undefined) set.geometry = data.geometry;
   if (data.geometrySource !== undefined) set.geometrySource = data.geometrySource;
+  if (data.strokeColor !== undefined) set.strokeColor = data.strokeColor;
+  if (data.fillColor !== undefined) set.fillColor = data.fillColor;
+  if (data.fillOpacity !== undefined) set.fillOpacity = data.fillOpacity != null ? String(data.fillOpacity) : null;
+  if (data.strokeWeight !== undefined) set.strokeWeight = data.strokeWeight != null ? String(data.strokeWeight) : null;
   const [row] = await db.update(farmRetiros)
     .set(set)
     .where(eq(farmRetiros.id, id as any))
@@ -87,6 +103,10 @@ export async function createSetor(data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  strokeColor?: string | null;
+  fillColor?: string | null;
+  fillOpacity?: string | number | null;
+  strokeWeight?: string | number | null;
 }) {
   const [row] = await db.insert(farmSetores).values({
     farmId: data.farmId,
@@ -97,6 +117,10 @@ export async function createSetor(data: {
     dataInicial: data.dataInicial ?? null,
     geometry: data.geometry ?? null,
     geometrySource: data.geometrySource ?? null,
+    strokeColor: data.strokeColor ?? null,
+    fillColor: data.fillColor ?? null,
+    fillOpacity: data.fillOpacity != null ? String(data.fillOpacity) : null,
+    strokeWeight: data.strokeWeight != null ? String(data.strokeWeight) : null,
   }).returning();
   return row;
 }
@@ -108,6 +132,10 @@ export async function updateSetor(id: string, data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  strokeColor?: string | null;
+  fillColor?: string | null;
+  fillOpacity?: string | number | null;
+  strokeWeight?: string | number | null;
 }) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) set.name = data.name;
@@ -116,6 +144,10 @@ export async function updateSetor(id: string, data: {
   if (data.dataInicial !== undefined) set.dataInicial = data.dataInicial;
   if (data.geometry !== undefined) set.geometry = data.geometry;
   if (data.geometrySource !== undefined) set.geometrySource = data.geometrySource;
+  if (data.strokeColor !== undefined) set.strokeColor = data.strokeColor;
+  if (data.fillColor !== undefined) set.fillColor = data.fillColor;
+  if (data.fillOpacity !== undefined) set.fillOpacity = data.fillOpacity != null ? String(data.fillOpacity) : null;
+  if (data.strokeWeight !== undefined) set.strokeWeight = data.strokeWeight != null ? String(data.strokeWeight) : null;
   const [row] = await db.update(farmSetores)
     .set(set)
     .where(eq(farmSetores.id, id as any))
@@ -164,7 +196,9 @@ export async function getLocaisByFarm(farmId: string, incluirAposentados = false
     dataInicial: farmLocais.dataInicial,
     geometry: farmLocais.geometry,
     geometrySource: farmLocais.geometrySource,
+    geomTipo: farmLocais.geomTipo,
     tipo: farmLocais.tipo,
+    detalhe: farmLocais.detalhe,
     uso: farmLocais.uso,
     status: farmLocais.status,
     aposentadoEm: farmLocais.aposentadoEm,
@@ -189,7 +223,9 @@ export async function createLocal(data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  geomTipo?: string | null;
   tipo?: string | null;
+  detalhe?: string | null;
 }) {
   const [row] = await db.insert(farmLocais).values({
     farmId: data.farmId,
@@ -201,7 +237,9 @@ export async function createLocal(data: {
     dataInicial: data.dataInicial ?? null,
     geometry: data.geometry ?? null,
     geometrySource: data.geometrySource ?? null,
+    geomTipo: data.geomTipo ?? null,
     tipo: data.tipo ?? null,
+    detalhe: data.detalhe ?? null,
   }).returning();
   return row;
 }
@@ -214,7 +252,9 @@ export async function updateLocal(id: string, data: {
   dataInicial?: string | null;
   geometry?: Coords | null;
   geometrySource?: string | null;
+  geomTipo?: string | null;
   tipo?: string | null;
+  detalhe?: string | null;
 }) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) set.name = data.name;
@@ -224,7 +264,9 @@ export async function updateLocal(id: string, data: {
   if (data.dataInicial !== undefined) set.dataInicial = data.dataInicial;
   if (data.geometry !== undefined) set.geometry = data.geometry;
   if (data.geometrySource !== undefined) set.geometrySource = data.geometrySource;
+  if (data.geomTipo !== undefined) set.geomTipo = data.geomTipo;
   if (data.tipo !== undefined) set.tipo = data.tipo;
+  if (data.detalhe !== undefined) set.detalhe = data.detalhe;
   const [row] = await db.update(farmLocais)
     .set(set)
     .where(eq(farmLocais.id, id as any))
@@ -495,8 +537,15 @@ export async function getFarmLocationBundle(farmId: string, incluirAposentados =
     getFarm(farmId),
   ]);
   const perimeter = farm
-    ? { geometry: (farm as any).perimeterGeometry ?? null, source: (farm as any).perimeterSource ?? null }
-    : { geometry: null, source: null };
+    ? {
+        geometry: (farm as any).perimeterGeometry ?? null,
+        source: (farm as any).perimeterSource ?? null,
+        strokeColor: (farm as any).strokeColor ?? null,
+        fillColor: (farm as any).fillColor ?? null,
+        fillOpacity: (farm as any).fillOpacity ?? null,
+        strokeWeight: (farm as any).strokeWeight ?? null,
+      }
+    : { geometry: null, source: null, strokeColor: null, fillColor: null, fillOpacity: null, strokeWeight: null };
   // Fazendas que já têm áreas do usuário foram, na prática, configuradas — mesmo
   // sem o flag explícito (config derivada). Assim não voltam a cair no gate.
   const hasUserAreas =
