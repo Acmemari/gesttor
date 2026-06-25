@@ -25,6 +25,8 @@ import {
   buildMorteIndex,
   applySituacao,
 } from '../fichaAnimal/animalRegistry';
+import { useRetiros } from '../fichas/useRetiros';
+import RetiroField from '../fichas/RetiroField';
 import { formatDateBR, safraDaData, todayISO } from '../morte/util';
 import type { ConsolidatedRow, DesmameEdit, DesmameRow, LookupItem } from './types';
 
@@ -32,19 +34,6 @@ const PANEL_MAX_W = '100%';
 
 interface DesmameViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-}
-
-interface FarmLocal {
-  id: string;
-  name: string;
-  retiroName?: string;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: 'include' });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
-  return json.data ?? json;
 }
 
 const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
@@ -58,7 +47,6 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
   const [mortes, setMortes] = useState<MorteMovimentoRow[]>([]);
   const [motivos, setMotivos] = useState<MotivoMorte[]>([]);
   const [desmameMovs, setDesmameMovs] = useState<DesmameMovimentoRow[]>([]);
-  const [farmLocais, setFarmLocais] = useState<FarmLocal[]>([]);
 
   // ── Cabeçalho ───────────────────────────────────────────────────────────
   const today = todayISO();
@@ -115,28 +103,24 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
     if (!fazenda && farms.length > 0) setFazenda(farms[0].id);
   }, [farms, fazenda]);
 
+  const fazendaNome = farms.find((f) => f.id === fazenda)?.name;
+  const { farmLocais, retiros, retiroAtivo, defaultRetiroName } = useRetiros(fazenda, fazendaNome);
+
+  // Nível Retiro desativado ⇒ fixa o retiro padrão do sistema (campo desabilitado);
+  // ativo com um único retiro ⇒ já vem selecionado.
   useEffect(() => {
-    if (!fazenda) { setFarmLocais([]); return; }
-    let cancelled = false;
-    fetchJson<FarmLocal[]>(`/api/farm-locations?farmIdLocais=${encodeURIComponent(fazenda)}`)
-      .then((rows) => { if (!cancelled) setFarmLocais(rows || []); })
-      .catch(() => { if (!cancelled) setFarmLocais([]); });
-    return () => { cancelled = true; };
-  }, [fazenda]);
+    if (!retiroAtivo) {
+      setRetiro((prev) => (prev === defaultRetiroName ? prev : defaultRetiroName));
+    } else if (retiros.length === 1) {
+      setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
+    }
+  }, [retiroAtivo, defaultRetiroName, retiros]);
 
-  const retiros = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
-    return [...set];
-  }, [farmLocais]);
-
-  useEffect(() => {
-    if (retiros.length === 1) setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
-  }, [retiros]);
-
+  // Com o nível Retiro desativado o filtro por retiro não se aplica — mostra todos
+  // os locais da fazenda.
   const locaisDisponiveis = useMemo(
-    () => (retiro ? farmLocais.filter((l) => l.retiroName === retiro) : farmLocais),
-    [farmLocais, retiro],
+    () => (retiroAtivo && retiro ? farmLocais.filter((l) => l.retiroName === retiro) : farmLocais),
+    [farmLocais, retiro, retiroAtivo],
   );
 
   // ── Helpers de categoria ──────────────────────────────────────────────────
@@ -375,17 +359,15 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
                   </div>
                   <div className="flex min-w-0 items-start gap-3.5" style={{ flex: '1 1 240px' }}>
                     <div className="min-w-0 flex-1">
-                      <label className={labelCls}>Retiro</label>
-                      <select
-                        className={`${inputCls} mt-1.5`}
+                      <RetiroField
                         value={retiro}
-                        onChange={(e) => { setRetiro(e.target.value); setLocal(''); }}
-                      >
-                        <option value="">—</option>
-                        {retiros.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => { setRetiro(v); setLocal(''); }}
+                        retiros={retiros}
+                        retiroAtivo={retiroAtivo}
+                        defaultRetiroName={defaultRetiroName}
+                        inputCls={inputCls}
+                        labelCls={labelCls}
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <label className={labelCls}>Local</label>

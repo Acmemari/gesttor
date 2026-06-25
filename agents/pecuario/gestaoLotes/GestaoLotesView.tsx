@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, Layers, MapPin, Leaf, Baby, Tag, AlertTriangle, ArrowLeftRight,
-  Loader2, List, LayoutGrid,
+  Loader2, List, LayoutGrid, MoreVertical, Pencil, Ban,
 } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
@@ -14,9 +14,10 @@ import { listFichasAnimal } from '../../../lib/api/fichasAnimalClient';
 import { listMovimentos as listNascimentos } from '../../../lib/api/nascimentosClient';
 import { listMovimentos as listMortes } from '../../../lib/api/mortesClient';
 import type { CategoriaLookup, AnimalLite, LoteEventoRow } from './types';
+import { TIPOS_LOCAL } from './types';
 import {
   groupByLote, saldo, composicao, pendencias, animaisVinculados,
-  localAtual, planoNutri, protocolo, faseRepro, ultimoRepro, timeline, formatDateBR,
+  localAtual, localLabel, planoNutri, protocolo, faseRepro, ultimoRepro, timeline, formatDateBR,
   ledgerLoteByAnimal, resolveLoteIdFromText,
 } from './util';
 import type { ReproDados } from './types';
@@ -52,7 +53,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   // Filtros do header: Fazenda (obrigatória) e Retiro (quando a fazenda tiver).
   const [fazenda, setFazenda] = useState('');
   const [retiro, setRetiro] = useState('');
-  const [farmLocais, setFarmLocais] = useState<{ id: string; name: string; retiroName?: string }[]>([]);
+  const [farmLocais, setFarmLocais] = useState<{ id: string; name: string; retiroName?: string; tipo?: string | null }[]>([]);
 
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [eventos, setEventos] = useState<LoteEventoRow[]>([]);
@@ -64,6 +65,8 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
+  // Menu de ações (•••) de um card de lote — posição fixa ancorada no botão.
+  const [cardMenu, setCardMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   // Abas do painel do lote: Lançamentos (cards operacionais) / Registros (animais).
   const [aba, setAba] = useState<'lancamentos' | 'registros'>('lancamentos');
 
@@ -265,18 +268,36 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
 
   // ── Lote (cadastro) ──────────────────────────────────────────────────────────
   const salvarNovoLote = useCallback(async (data: any) => {
+    // `localInicial` não é coluna do lote — vira o 1º evento de localização (abaixo).
+    const { localInicial, ...loteData } = data;
     // Herda a fazenda/retiro selecionados no header — o modal não pede esses campos.
     const novo = await createLote({
       organizationId,
       finalizado: false,
       farmId: fazenda || null,
       retiro: retiro || null,
-      ...data,
+      ...loteData,
     });
+    // Local inicial = evento `transferencia` de abertura (de: '' → para: local).
+    // Assim o "local atual" (derivado do ledger) já nasce preenchido e a origem
+    // da primeira movimentação aparece. tipoLocal herda o tipo do local cadastrado.
+    if (localInicial) {
+      const tipoCad = farmLocais.find((l) => l.name === localInicial)?.tipo?.trim().toLowerCase();
+      const tipoLocal = TIPOS_LOCAL.find((t) => t.toLowerCase() === tipoCad) || 'Pasto';
+      await createLoteEvento({
+        organizationId,
+        loteId: novo.id,
+        tipo: 'transferencia',
+        data: novo.dataInicio,
+        resp: null,
+        dados: { de: '', para: localInicial, tipoLocal },
+      });
+    }
     await carregar();
+    if (localInicial) await recarregarEventos();
     setSelectedId(novo.id);
     onToast?.('Lote criado. Lance os primeiros eventos.', 'success');
-  }, [organizationId, fazenda, retiro, carregar, onToast]);
+  }, [organizationId, fazenda, retiro, farmLocais, carregar, recarregarEventos, onToast]);
 
   const salvarEdicaoLote = useCallback(async (data: any) => {
     if (!selected) return;
@@ -392,24 +413,39 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
               const local = localAtual(evs);
               const sel = l.id === selectedId;
               return (
-                <button
+                <div
                   key={l.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(l.id)}
-                  className={`rounded-xl border bg-white px-3 py-2 text-left transition-all ${sel ? 'border-[#16a34a] ring-2 ring-[#16a34a]/15' : 'border-gray-200 hover:border-gray-300'} ${l.finalizado ? 'opacity-60' : ''}`}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(l.id); } }}
+                  className={`cursor-pointer rounded-xl border bg-white px-3 py-2 text-left transition-all ${sel ? 'border-[#16a34a] ring-2 ring-[#16a34a]/15' : 'border-gray-200 hover:border-gray-300'} ${l.finalizado ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-center gap-1.5">
                     {l.codigo && <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gray-700">{l.codigo}</span>}
                     <span className="truncate text-[13.5px] font-bold text-gray-900">{l.nome}</span>
                     {l.finalidade && <span className="ml-auto shrink-0 rounded-full bg-[#e7f6ec] px-2 py-0.5 text-[10.5px] font-semibold text-[#16a34a]">{l.finalidade}</span>}
                     {l.finalizado && <span className={`shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-semibold text-gray-500 ${l.finalidade ? '' : 'ml-auto'}`}>Encerrado</span>}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setCardMenu((prev) => (prev?.id === l.id ? null : { id: l.id, x: r.right, y: r.bottom }));
+                      }}
+                      title="Ações do lote"
+                      aria-label="Ações do lote"
+                      className={`shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${cardMenu?.id === l.id ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'} ${!l.finalidade && !l.finalizado ? 'ml-auto' : ''}`}
+                    >
+                      <MoreVertical size={15} />
+                    </button>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-gray-500">
                     <span className="inline-flex items-center gap-1"><Layers size={12} /> {s} cab.</span>
-                    <span className="inline-flex items-center gap-1"><MapPin size={12} /> {local}</span>
+                    <span className="inline-flex items-center gap-1"><MapPin size={12} /> {localLabel(local)}</span>
                     {pend > 0 && <span className="inline-flex items-center gap-1 text-[#b45309]"><AlertTriangle size={12} /> {pend}</span>}
                   </div>
-                </button>
+                </div>
               );
             })
           )}
@@ -439,7 +475,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                   mudaPor="Transferência de Lote"
                   acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'transferir' })} icon={<Plus size={13} />}>Movimentar lote</CardBtn>}
                 >
-                  <p className="text-[15px] font-bold text-gray-900">{localAtual(selectedEventos)}</p>
+                  <p className="text-[15px] font-bold text-gray-900">{localLabel(localAtual(selectedEventos))}</p>
                   <p className="mt-0.5 text-[12px] text-gray-500">Local atual derivado da última transferência.</p>
                 </ControleCard>
 
@@ -505,7 +541,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
         />
       )}
       {modal?.kind === 'transferir' && selected && (
-        <TransferirModal lote={selected} localOrigem={localAtual(selectedEventos)} onClose={() => setModal(null)} onSubmit={lancarEventos} />
+        <TransferirModal lote={selected} localOrigem={localAtual(selectedEventos)} locais={farmLocais} onClose={() => setModal(null)} onSubmit={lancarEventos} />
       )}
       {modal?.kind === 'regime' && selected && (
         <MudarRegimeModal lote={selected} onClose={() => setModal(null)} onSubmit={lancarEventos} />
@@ -517,6 +553,7 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
         <LoteFormModal
           modo="novo"
           contexto={[farms.find((f) => f.id === fazenda)?.name, retiro].filter(Boolean).join(' › ') || undefined}
+          locais={farmLocais.filter((l) => { const t = (l.tipo ?? '').toLowerCase(); return t.includes('pasto') || t.includes('pastag'); })}
           onClose={() => setModal(null)}
           onSubmit={salvarNovoLote}
         />
@@ -527,6 +564,41 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
       {modal?.kind === 'encerrar' && selected && (
         <EncerrarModal lote={selected} onClose={() => setModal(null)} onConfirm={encerrarLote} />
       )}
+
+      {/* ── Menu de ações (•••) do card de lote ─────────────────────────────────
+          Posição fixa para não ser cortado pelo overflow da coluna de lotes. */}
+      {cardMenu && (() => {
+        const lote = lotesVisiveis.find((l) => l.id === cardMenu.id);
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setCardMenu(null)} />
+            <div
+              className="fixed z-50 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+              style={{ top: cardMenu.y + 6, right: Math.max(8, window.innerWidth - cardMenu.x) }}
+            >
+              <button
+                type="button"
+                onClick={() => { setSelectedId(cardMenu.id); setCardMenu(null); setModal({ kind: 'editar' }); }}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Pencil size={15} className="text-[#16a34a]" /> Editar lote
+              </button>
+              {lote && !lote.finalizado && (
+                <>
+                  <div className="my-1 border-t border-gray-100" />
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedId(cardMenu.id); setCardMenu(null); setModal({ kind: 'encerrar' }); }}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] font-medium text-red-600 transition-colors hover:bg-red-50"
+                  >
+                    <Ban size={15} className="text-red-500" /> Encerrar lote
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };

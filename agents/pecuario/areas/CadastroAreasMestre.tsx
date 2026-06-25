@@ -37,12 +37,14 @@ import {
   Search,
   Minus,
   Sparkles,
+  Wand2,
   ArrowRight,
   Spline,
 } from 'lucide-react';
 import { areaM2, cleanRing, fmtArea } from './util';
 import { NIVEIS, ORDEM, type Area, type Fonte, type Nivel } from './types';
-import { importarKmlGoogleEarth, KmlImportError, inferCatalogClassification, defaultGeomForTipo, type KmlImportResult } from './kmlImport';
+import { importarKmlGoogleEarth, KmlImportError, inferCatalogClassification, defaultGeomForTipo, suggestDestino, type KmlImportResult } from './kmlImport';
+import { suggestDestinos } from '../../../lib/api/areasSuggestDestinoClient';
 import { createVertexEditor, type VertexEditor } from './mapEditing';
 import {
   listTiposLocal,
@@ -1241,6 +1243,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [groupQuery, setGroupQuery] = useState('');
   /** picker de destino aberto: chave do grupo + retângulo do gatilho (posição fixa). */
   const [openPicker, setOpenPicker] = useState<{ key: string; rect: DOMRect } | null>(null);
+  /** "Sugerir destino" em andamento (heurística local + IA). */
+  const [suggesting, setSuggesting] = useState(false);
   /** geometrias OCULTAS no de-para (filtro de tipo no cabeçalho da coluna Origem). */
   const [hiddenGeoms, setHiddenGeoms] = useState<Set<string>>(new Set());
   const [geomMenuOpen, setGeomMenuOpen] = useState(false);
@@ -2430,6 +2434,88 @@ const CadastroAreasMestre: React.FC<Props> = ({
     },
     [patchItem],
   );
+  /**
+   * "Sugerir destino": recomenda um tipo do catálogo para cada feição AINDA pendente,
+   * a partir da origem (nome + geometria). Em camadas, da mais confiável à mais genérica:
+   *   1) NOME / tipo cru do arquivo  → casamento local (synônimos/tokens — kmlImport);
+   *   2) IA (Claude) para o que sobrar → usa nome + geometria + o catálogo real;
+   *   3) padrão por GEOMETRIA          → polígono ⇒ pastagem, ponto ⇒ água, linha ⇒ linha de água.
+   * Tudo entra como `sugerido:true` (selo "✨ sugerido"), NUNCA como salvo — a barra de
+   * seleção continua liberada para o usuário confirmar ou trocar o destino.
+   */
+  const GEOM_KEYWORD: Record<'area' | 'point' | 'line', string> = useMemo(
+    () => ({ area: 'pastagem', point: 'aguada agua bebedouro poco', line: 'rede hidraulica agua' }),
+    [],
+  );
+  const runSuggestDestinos = useCallback(async () => {
+    if (suggesting) return;
+    const pend = importedItems.filter((it) => !it.saved && !it.keep && !it.naoImportar);
+    if (!pend.length) { onToast?.('Nenhuma feição pendente para sugerir.', 'info'); return; }
+    if (!catalog?.tipos?.length) { onToast?.('Cadastre os Tipos de Locais antes de sugerir destinos.', 'warning'); return; }
+
+    setSuggesting(true);
+    try {
+      const patches = new Map<string, Partial<DraftArea>>();
+      const setTipo = (id: string, categoriaId: string, tipo: string, detalhe: string | null = null) =>
+        patches.set(id, { keep: true, nivel: 'local', categoriaId, tipo, detalhe, naoImportar: false, sugerido: true });
+
+      // 1) Nome / tipo cru do arquivo (heurística local — sinônimos + tokens).
+      const unresolved: DraftArea[] = [];
+      for (const it of pend) {
+        const byName = suggestDestino(it.nome || '', catalog) || (it.srcTipo ? suggestDestino(it.srcTipo, catalog) : null);
+        if (byName) setTipo(it.id, byName.categoriaId, byName.tipo, byName.detalhe);
+        else unresolved.push(it);
+      }
+
+      // 2) IA (Claude) para as feições que o nome não resolveu — "se necessário".
+      let aiCount = 0;
+      if (unresolved.length) {
+        try {
+          const results = await suggestDestinos({
+            categorias: catalog.categorias.map((c) => ({ id: c.id, nome: c.nome })),
+            tipos: catalog.tipos.map((t) => ({ id: t.id, categoriaId: t.categoriaId, nome: t.nome })),
+            features: unresolved.map((it) => ({
+              id: it.id,
+              nome: it.nome || '',
+              geom: it.geomKind === 'area' ? 'poligono' : it.geomKind === 'point' ? 'ponto' : 'linha',
+              tipoArquivo: it.srcTipo ?? null,
+            })),
+          });
+          const byId = new Map(results.map((r) => [r.id, r] as const));
+          for (const it of unresolved) {
+            const r = byId.get(it.id);
+            if (!r?.tipo) continue;
+            // Confia só se o tipo existir no catálogo (resolve a categoria pelo nome).
+            const cid = tipoByNome.get(r.tipo)?.categoriaId ?? (r.categoriaId || null);
+            if (cid) { setTipo(it.id, cid, r.tipo); aiCount += 1; }
+          }
+        } catch {
+          /* IA indisponível (sem chave / offline) — segue para o padrão por geometria. */
+        }
+      }
+
+      // 3) Padrão por geometria (regra explícita: polígono→pastagem, ponto→água, linha→linha de água).
+      for (const it of unresolved) {
+        if (patches.has(it.id)) continue;
+        const g = suggestDestino(GEOM_KEYWORD[it.geomKind], catalog);
+        if (g) setTipo(it.id, g.categoriaId, g.tipo, g.detalhe);
+      }
+
+      if (!patches.size) {
+        onToast?.('Não encontrei destinos compatíveis no catálogo. Classifique manualmente.', 'warning');
+        return;
+      }
+      setItems((prev) => prev.map((i) => (patches.has(i.id) ? { ...i, ...patches.get(i.id) } : i)));
+      const restante = pend.length - patches.size;
+      onToast?.(
+        `${patches.size} destino(s) sugerido(s)${aiCount ? ` · ${aiCount} via IA` : ''}` +
+          `${restante > 0 ? ` · ${restante} sem palpite` : ''}. Revise e ajuste se necessário.`,
+        'success',
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  }, [suggesting, importedItems, catalog, tipoByNome, GEOM_KEYWORD, onToast]);
   /** Progresso do de-para por FEIÇÃO efetiva (salvas · vinculadas a salvar · ignoradas · pendentes). */
   const deparaProgress = useMemo(() => {
     let salvas = 0, vinculadas = 0, ignoradas = 0, pendentes = 0;
@@ -2957,6 +3043,17 @@ const CadastroAreasMestre: React.FC<Props> = ({
                           </div>
                         )}
                       </div>
+                      {/* Sugerir destino: recomenda o tipo de cada feição pendente (nome + geometria + IA). */}
+                      <button
+                        type="button"
+                        onClick={runSuggestDestinos}
+                        disabled={suggesting || deparaProgress.pendentes === 0}
+                        title="Recomenda um destino para cada feição pendente a partir da origem: nome do arquivo e tipo de geometria (polígono → pastagem, ponto → água, linha → linha de água). Você pode ajustar depois."
+                        className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[12px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                        {suggesting ? 'Sugerindo…' : 'Sugerir destino'}
+                      </button>
                       {/* Mostrar no mapa: novo mapa (Produção) e/ou o KMZ Original (referência) */}
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] font-semibold text-gray-500">Mostrar:</span>

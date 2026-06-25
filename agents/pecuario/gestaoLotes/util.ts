@@ -68,6 +68,11 @@ export function localAtual(eventos: LoteEventoRow[]): string {
   return e ? ((e.dados as TransferenciaDados).para || '—') : '—';
 }
 
+/** Rótulo amigável de um local: '—'/vazio viram "Sem local definido". */
+export function localLabel(local: string): string {
+  return !local || local === '—' ? 'Sem local definido' : local;
+}
+
 /** Plano nutricional vigente = `plano` do último manejo nutricional; senão null. */
 export function planoNutri(eventos: LoteEventoRow[]): string | null {
   const e = ultimo(eventos, (x) => x.tipo === 'manejo' && (x.dados as ManejoDados).dim === 'nutricional');

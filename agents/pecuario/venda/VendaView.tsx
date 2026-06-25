@@ -22,6 +22,8 @@ import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
 import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
+import { useRetiros } from '../fichas/useRetiros';
+import RetiroField from '../fichas/RetiroField';
 import { buildEntryValues } from '../fichas/fieldConfig';
 import { proximoApelido } from '../fichas/util';
 import { vendaFields } from './fields';
@@ -33,19 +35,6 @@ const PANEL_MAX_W = '100%';
 
 interface VendaViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-}
-
-interface FarmLocal {
-  id: string;
-  name: string;
-  retiroName?: string;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: 'include' });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
-  return json.data ?? json;
 }
 
 // Sequência local para a chave das linhas de categoria (mapeadas + adicionadas).
@@ -114,7 +103,6 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
 
   // ── Dados carregados ────────────────────────────────────────────────────
   const [categories, setCategories] = useState<LookupItem[]>([]);
-  const [farmLocais, setFarmLocais] = useState<FarmLocal[]>([]);
   const [pessoaMap, setPessoaMap] = useState<Map<string, string>>(new Map());
 
   // ── Cabeçalho ───────────────────────────────────────────────────────────
@@ -231,33 +219,18 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
     if (!fazenda && farms.length > 0) setFazenda(farms[0].id);
   }, [farms, fazenda]);
 
+  const farmName = farms.find((f) => f.id === fazenda)?.name;
+  const { retiros, retiroAtivo, defaultRetiroName } = useRetiros(fazenda, farmName);
+
+  // Nível Retiro desativado ⇒ fixa o retiro padrão do sistema (campo desabilitado);
+  // ativo com um único retiro ⇒ já vem selecionado.
   useEffect(() => {
-    if (!fazenda) {
-      setFarmLocais([]);
-      return;
+    if (!retiroAtivo) {
+      setRetiro((prev) => (prev === defaultRetiroName ? prev : defaultRetiroName));
+    } else if (retiros.length === 1) {
+      setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
     }
-    let cancelled = false;
-    fetchJson<FarmLocal[]>(`/api/farm-locations?farmIdLocais=${encodeURIComponent(fazenda)}`)
-      .then((rows) => {
-        if (!cancelled) setFarmLocais(rows || []);
-      })
-      .catch(() => {
-        if (!cancelled) setFarmLocais([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fazenda]);
-
-  const retiros = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
-    return [...set];
-  }, [farmLocais]);
-
-  useEffect(() => {
-    if (retiros.length === 1) setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
-  }, [retiros]);
+  }, [retiroAtivo, defaultRetiroName, retiros]);
 
   // ── Helpers de nome ───────────────────────────────────────────────────────
   const catName = useCallback((id: string) => categories.find((c) => c.id === id)?.nome || '—', [categories]);
@@ -778,19 +751,15 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
                   </select>
                 </div>
                 <div className="min-w-0" style={{ flex: '1 1 110px' }}>
-                  <label className={labelCls}>Retiro</label>
-                  <select
-                    className={`${inputCls} mt-1.5`}
+                  <RetiroField
                     value={retiro}
-                    onChange={(e) => setRetiro(e.target.value)}
-                  >
-                    <option value="">—</option>
-                    {retiros.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setRetiro}
+                    retiros={retiros}
+                    retiroAtivo={retiroAtivo}
+                    defaultRetiroName={defaultRetiroName}
+                    inputCls={inputCls}
+                    labelCls={labelCls}
+                  />
                 </div>
               </div>
 

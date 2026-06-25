@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, Info, Loader2, MapPin } from 'lucide-react';
 import type { Lote } from '../../../lib/api/lotesClient';
 import {
@@ -7,7 +7,7 @@ import {
   FINALIDADES,
   type LoteEventoTipo,
 } from './types';
-import { todayISO } from './util';
+import { todayISO, localLabel } from './util';
 
 /** Rascunho de evento a ser empilhado (o container adiciona org/lote e persiste). */
 export interface EventoDraft {
@@ -104,14 +104,33 @@ const DataResp: React.FC<{
 export const TransferirModal: React.FC<{
   lote: Lote;
   localOrigem: string;
+  /** Locais cadastrados da fazenda do lote (alimenta o seletor de Destino). */
+  locais?: { id: string; name: string; tipo?: string | null }[];
   onClose: () => void;
   onSubmit: (eventos: EventoDraft[]) => Promise<void>;
-}> = ({ lote, localOrigem, onClose, onSubmit }) => {
+}> = ({ lote, localOrigem, locais = [], onClose, onSubmit }) => {
   const [tipoLocal, setTipoLocal] = useState(TIPOS_LOCAL[1]); // Pasto
   const [para, setPara] = useState('');
   const [data, setData] = useState(todayISO());
   const [resp, setResp] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Locais cadastrados, ordenados por nome. Quando há lista, o Destino vira um
+  // seletor; sem lista carregada (ex.: filtro "Todas" no header) cai p/ texto livre.
+  const locaisOrdenados = useMemo(
+    () => [...locais].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [locais],
+  );
+  const temLocais = locaisOrdenados.length > 0;
+
+  // Ao escolher um local, herda o "Tipo de local" quando o tipo cadastrado casa
+  // com a lista fixa (Retiro/Pasto/Setor/Confinamento/Curral); senão mantém o atual.
+  const selecionarDestino = (nome: string) => {
+    setPara(nome);
+    const tipoCad = locaisOrdenados.find((l) => l.name === nome)?.tipo?.trim().toLowerCase();
+    const match = tipoCad && TIPOS_LOCAL.find((t) => t.toLowerCase() === tipoCad);
+    if (match) setTipoLocal(match);
+  };
 
   const handleSave = async () => {
     if (!para.trim()) { window.alert('Informe o local de destino.'); return; }
@@ -125,14 +144,14 @@ export const TransferirModal: React.FC<{
   return (
     <ModalShell
       title="Movimentar lote"
-      subtitle={`Lote ${lote.codigo || lote.nome} — Transferência de Lote`}
+      subtitle={`Lote ${lote.nome}${lote.codigo ? ` (${lote.codigo})` : ''} — Transferência de Lote`}
       info="O lote inteiro muda de local. Cada animal herda o novo local; o anterior fica preservado na linha do tempo."
       onClose={onClose}
       footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} /></>}
     >
       <div>
         <label className={labelCls}>Origem (atual)</label>
-        <input type="text" value={localOrigem} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
+        <input type="text" value={localLabel(localOrigem)} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
       </div>
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="sm:w-48">
@@ -143,7 +162,16 @@ export const TransferirModal: React.FC<{
         </div>
         <div className="flex-1">
           <label className={labelCls}>Destino {reqMark}</label>
-          <input type="text" value={para} onChange={(e) => setPara(e.target.value)} placeholder="Ex.: Pasto Cabeceira" className={inputCls} />
+          {temLocais ? (
+            <select value={para} onChange={(e) => selecionarDestino(e.target.value)} className={inputCls}>
+              <option value="">Selecione um local…</option>
+              {locaisOrdenados.map((l) => (
+                <option key={l.id} value={l.name}>{l.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" value={para} onChange={(e) => setPara(e.target.value)} placeholder="Ex.: Pasto Cabeceira" className={inputCls} />
+          )}
         </div>
       </div>
       <DataResp data={data} setData={setData} resp={resp} setResp={setResp} />
@@ -176,7 +204,7 @@ export const MudarRegimeModal: React.FC<{
   return (
     <ModalShell
       title="Mudar regime"
-      subtitle={`Lote ${lote.codigo || lote.nome} — Evento de Manejo`}
+      subtitle={`Lote ${lote.nome}${lote.codigo ? ` (${lote.codigo})` : ''} — Evento de Manejo`}
       info="O plano anterior não é apagado — vira passado no histórico. Você lança um novo evento de manejo."
       onClose={onClose}
       footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} /></>}
@@ -222,7 +250,7 @@ export const RegistrarReproModal: React.FC<{
   return (
     <ModalShell
       title="Registrar evento reprodutivo"
-      subtitle={`Lote ${lote.codigo || lote.nome} — Evento Reprodutivo`}
+      subtitle={`Lote ${lote.nome}${lote.codigo ? ` (${lote.codigo})` : ''} — Evento Reprodutivo`}
       info="O estado reprodutivo é a última fase lançada. Cada registro empilha na linha do tempo."
       onClose={onClose}
       footer={<><CancelBtn onClick={onClose} /><SaveBtn onClick={handleSave} saving={saving} /></>}
@@ -250,15 +278,23 @@ export const LoteFormModal: React.FC<{
   inicial?: Partial<Lote>;
   /** Fazenda › Retiro em que o lote será criado (modo "novo"), herdado do header. */
   contexto?: string;
+  /** Locais cadastrados da fazenda (alimenta o "Local inicial" no modo "novo"). */
+  locais?: { id: string; name: string; tipo?: string | null }[];
   onClose: () => void;
-  onSubmit: (data: { codigo: string | null; nome: string; finalidade: string | null; dataInicio: string; descricao: string | null }) => Promise<void>;
-}> = ({ modo, inicial, contexto, onClose, onSubmit }) => {
+  onSubmit: (data: { codigo: string | null; nome: string; finalidade: string | null; dataInicio: string; descricao: string | null; localInicial: string | null }) => Promise<void>;
+}> = ({ modo, inicial, contexto, locais = [], onClose, onSubmit }) => {
   const [codigo, setCodigo] = useState(inicial?.codigo ?? '');
   const [nome, setNome] = useState(inicial?.nome ?? '');
   const [finalidade, setFinalidade] = useState(inicial?.finalidade ?? '');
   const [dataInicio, setDataInicio] = useState(inicial?.dataInicio ?? todayISO());
   const [descricao, setDescricao] = useState(inicial?.descricao ?? '');
+  const [localInicial, setLocalInicial] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const locaisOrdenados = useMemo(
+    () => [...locais].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [locais],
+  );
 
   const handleSave = async () => {
     if (!nome.trim()) { window.alert('Informe o nome do lote.'); return; }
@@ -272,6 +308,7 @@ export const LoteFormModal: React.FC<{
         finalidade: finalidade || null,
         dataInicio,
         descricao: descricao.trim() || null,
+        localInicial: localInicial.trim() || null,
       });
       onClose();
     } finally { setSaving(false); }
@@ -312,6 +349,22 @@ export const LoteFormModal: React.FC<{
           <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className={inputCls} disabled={modo === 'editar'} />
         </div>
       </div>
+      {modo === 'novo' && (
+        <div>
+          <label className={labelCls}>Local inicial</label>
+          {locaisOrdenados.length > 0 ? (
+            <select value={localInicial} onChange={(e) => setLocalInicial(e.target.value)} className={inputCls}>
+              <option value="">Sem local definido</option>
+              {locaisOrdenados.map((l) => (
+                <option key={l.id} value={l.name}>{l.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" value={localInicial} onChange={(e) => setLocalInicial(e.target.value)} placeholder="Ex.: Pasto Cabeceira (opcional)" className={inputCls} />
+          )}
+          <p className="mt-1 text-[11.5px] text-gray-500">Onde o lote começa. Vira a origem da primeira movimentação.</p>
+        </div>
+      )}
       <div>
         <label className={labelCls}>Observações</label>
         <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} placeholder="opcional" className={`${inputCls.replace('h-10', '')} py-2 resize-none`} />
@@ -332,7 +385,7 @@ export const EncerrarModal: React.FC<{
   return (
     <ModalShell
       title="Encerrar lote"
-      subtitle={`Lote ${lote.codigo || lote.nome}`}
+      subtitle={`Lote ${lote.nome}${lote.codigo ? ` (${lote.codigo})` : ''}`}
       info="Encerrar NÃO deleta. O lote sai das ações operacionais, mas segue consultável e na lista (esmaecido)."
       onClose={onClose}
       footer={

@@ -6,7 +6,6 @@ import {
   Trash2,
   GripVertical,
   Loader2,
-  Save,
   Eye,
   MoreHorizontal,
   Pencil,
@@ -43,6 +42,7 @@ import {
   reorderLotes,
   type Lote,
 } from '../lib/api/lotesClient';
+import { createLoteEvento, listLoteEventosByLote } from '../lib/api/loteEventosClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,6 +99,48 @@ function useRetiros(farmId: string): Retiro[] {
     };
   }, [farmId]);
   return retiros;
+}
+
+/** Local de pastagem (folha do Cadastro de Áreas, tipo Pastagem/Pasto). */
+interface LocalPastagem {
+  id: string;
+  name: string;
+}
+
+/** Verdadeiro p/ tipos de pastagem do catálogo ("Pastagem cultivada/nativa…", "Pasto"). */
+const ehPastagem = (tipo: unknown): boolean => {
+  const t = String(tipo ?? '').toLowerCase();
+  return t.includes('pasto') || t.includes('pastag');
+};
+
+/** Lista só os locais de PASTAGEM da fazenda — onde um lote pode nascer/morar. */
+function useLocaisPastagem(farmId: string): LocalPastagem[] {
+  const [locais, setLocais] = useState<LocalPastagem[]>([]);
+  useEffect(() => {
+    if (!farmId) {
+      setLocais([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/farm-locations?farmIdLocais=${encodeURIComponent(farmId)}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        const rows = (json?.data ?? json) as any[];
+        const pasto = (Array.isArray(rows) ? rows : [])
+          .filter((x) => ehPastagem(x.tipo))
+          .map((x) => ({ id: x.id, name: x.name }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        setLocais(pasto);
+      })
+      .catch(() => {
+        if (!cancelled) setLocais([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+  return locais;
 }
 
 const inputCls =
@@ -265,9 +307,14 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [dataInicio, setDataInicio] = useState('');
   const [finalizado, setFinalizado] = useState(false);
   const [descricao, setDescricao] = useState('');
+  const [localInicial, setLocalInicial] = useState('');
+  // Edição: true quando o lote já tem transferência no ledger (origem definida).
+  // Nesse caso o "Local inicial" vira somente-leitura (evento de abertura é imutável).
+  const [localTemHistorico, setLocalTemHistorico] = useState(false);
   const nomeRef = useRef<HTMLInputElement>(null);
 
   const retiros = useRetiros(farmId);
+  const pastagens = useLocaisPastagem(farmId);
 
   // Fazenda padrão: a selecionada na hierarquia (ou a única existente).
   useEffect(() => {
@@ -279,27 +326,17 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     if (retiros.length === 1) setRetiro((prev) => (prev === retiros[0].name ? prev : retiros[0].name));
   }, [retiros]);
 
-  // Detalhamento editável (aba Registros)
+  // Detalhamento (aba Registros): lote em foco — somente visualização.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = lotes.find((l) => l.id === selectedId) || null;
-  const [editFarmId, setEditFarmId] = useState('');
-  const [editRetiro, setEditRetiro] = useState('');
-  const [editNome, setEditNome] = useState('');
-  const [editCodigo, setEditCodigo] = useState('');
-  const [editFinalidade, setEditFinalidade] = useState('');
-  const [editDataInicio, setEditDataInicio] = useState('');
-  const [editFinalizado, setEditFinalizado] = useState(false);
-  const [editDescricao, setEditDescricao] = useState('');
 
-  const editRetiros = useRetiros(editFarmId);
+  // Edição reaproveita o formulário da aba Lançamentos: `editingId != null` faz o
+  // form editar esse lote em vez de criar um novo (ver `iniciarEdicao`/`salvar`).
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Fazenda do registro com um único retiro: já vem selecionado na edição.
-  useEffect(() => {
-    if (editRetiros.length === 1) setEditRetiro((prev) => (prev === editRetiros[0].name ? prev : editRetiros[0].name));
-  }, [editRetiros]);
-
-  // Modo de visualização/edição no detalhamento
-  const [modo, setModo] = useState<'visualizar' | 'editar'>('visualizar');
+  // Troca de fazenda invalida o local inicial (pastagens são de outra fazenda).
+  // Na edição o valor vem do ledger — não limpa ao só reabrir o lote.
+  useEffect(() => { if (!editingId) setLocalInicial(''); }, [farmId, editingId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -307,7 +344,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
 
   const handleSelectLote = useCallback((l: Lote) => {
     setSelectedId(l.id);
-    setModo('visualizar');
   }, []);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -337,19 +373,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     });
   }, [lotes]);
 
-  useEffect(() => {
-    if (selected) {
-      setEditFarmId(selected.farmId ?? '');
-      setEditRetiro(selected.retiro ?? '');
-      setEditNome(selected.nome);
-      setEditCodigo(selected.codigo ?? '');
-      setEditFinalidade(selected.finalidade ?? '');
-      setEditDataInicio(selected.dataInicio);
-      setEditFinalizado(selected.finalizado);
-      setEditDescricao(selected.descricao ?? '');
-    }
-  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Lançamento ──────────────────────────────────────────────────────────────
 
   const cancelLancamento = useCallback(() => {
@@ -360,6 +383,45 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setDataInicio('');
     setFinalizado(false);
     setDescricao('');
+    setLocalInicial('');
+    setLocalTemHistorico(false);
+    // Saindo de uma edição: solta o lote e volta para a lista de Registros.
+    setEditingId((prev) => {
+      if (prev) setAba('registros');
+      return null;
+    });
+  }, []);
+
+  // "Editar" abre o lote no formulário da aba Lançamentos (em vez do painel inline).
+  const iniciarEdicao = useCallback(async (l: Lote) => {
+    setFarmId(l.farmId ?? '');
+    setRetiro(l.retiro ?? '');
+    setNome(l.nome);
+    setCodigo(l.codigo ?? '');
+    setFinalidade(l.finalidade ?? '');
+    setDataInicio(l.dataInicio);
+    setFinalizado(l.finalizado);
+    setDescricao(l.descricao ?? '');
+    setLocalInicial('');
+    setLocalTemHistorico(false);
+    setEditingId(l.id);
+    setAba('lancar');
+    // Deriva o "Local inicial" do ledger: a transferência de abertura (de: '') é a
+    // origem. Se já existe, o campo fica somente-leitura (evento imutável); se o lote
+    // nasceu "Sem local definido", o campo permite preencher agora (cria a abertura).
+    try {
+      const evs = await listLoteEventosByLote(l.id);
+      const transfs = evs
+        .filter((e) => e.tipo === 'transferencia')
+        .sort((a, b) => (a.data !== b.data ? (a.data < b.data ? -1 : 1) : (a.createdAt ?? '') < (b.createdAt ?? '') ? -1 : 1));
+      const abertura = transfs.find((e) => ((e.dados as any)?.de ?? '') === '') ?? transfs[0];
+      if (abertura) {
+        setLocalInicial(((abertura.dados as any)?.para as string) || '');
+        setLocalTemHistorico(true);
+      }
+    } catch {
+      // Falha ao carregar eventos: mantém o campo editável e vazio (não bloqueia a edição).
+    }
   }, []);
 
   const salvar = useCallback(async () => {
@@ -381,13 +443,44 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       return;
     }
     const lower = clean.toLowerCase();
-    if (lotes.some((l) => l.nome.trim().toLowerCase() === lower)) {
+    // No modo edição o próprio lote não conta como duplicado.
+    if (lotes.some((l) => l.id !== editingId && l.nome.trim().toLowerCase() === lower)) {
       onToast?.('Este lote já está cadastrado', 'warning');
       return;
     }
     setSaving(true);
     try {
-      await createLote({
+      if (editingId) {
+        // Edição: só atributos do lote (localização/histórico não muda aqui).
+        await updateLote(editingId, {
+          nome: clean,
+          farmId: farmId || null,
+          retiro: retiro || null,
+          codigo: codigo.trim() || null,
+          finalidade: finalidade || null,
+          dataInicio,
+          finalizado,
+          descricao: descricao.trim() || null,
+        });
+        // Backfill do local inicial: só quando o lote ainda não tinha localização no
+        // ledger (caso contrário a abertura já existe e é imutável → campo bloqueado).
+        const pastoEdit = !localTemHistorico ? localInicial.trim() : '';
+        if (pastoEdit) {
+          await createLoteEvento({
+            organizationId,
+            loteId: editingId,
+            tipo: 'transferencia',
+            data: dataInicio,
+            resp: null,
+            dados: { de: '', para: pastoEdit, tipoLocal: 'Pasto' },
+          });
+        }
+        onToast?.('Lote atualizado', 'success');
+        cancelLancamento(); // limpa o form, solta editingId e volta p/ Registros
+        await loadLotes();
+        return;
+      }
+      const novo = await createLote({
         nome: clean,
         farmId: farmId || null,
         retiro: retiro || null,
@@ -398,6 +491,20 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
         descricao: descricao.trim() || null,
         organizationId,
       });
+      // Local inicial = 1º evento de localização (de: '' → para: pastagem). O
+      // "local atual" do lote é derivado do ledger, então já nasce preenchido e
+      // vira a origem da primeira movimentação. tipoLocal fixo em 'Pasto' (pastagem).
+      const pasto = localInicial.trim();
+      if (pasto) {
+        await createLoteEvento({
+          organizationId,
+          loteId: novo.id,
+          tipo: 'transferencia',
+          data: dataInicio,
+          resp: null,
+          dados: { de: '', para: pasto, tipoLocal: 'Pasto' },
+        });
+      }
       onToast?.('Lote salvo com sucesso', 'success');
       cancelLancamento();
       await loadLotes();
@@ -407,63 +514,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [nome, farmId, retiro, retiros, codigo, finalidade, dataInicio, finalizado, descricao, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
-
-  // ── Edição (detalhamento da aba Registros) ──────────────────────────────────
-
-  const cancelarEdicao = useCallback(() => {
-    if (selected) {
-      setEditFarmId(selected.farmId ?? '');
-      setEditRetiro(selected.retiro ?? '');
-      setEditNome(selected.nome);
-      setEditCodigo(selected.codigo ?? '');
-      setEditFinalidade(selected.finalidade ?? '');
-      setEditDataInicio(selected.dataInicio);
-      setEditFinalizado(selected.finalizado);
-      setEditDescricao(selected.descricao ?? '');
-    }
-    setModo('visualizar');
-  }, [selected]);
-
-  const salvarDetalhe = useCallback(async () => {
-    if (!selectedId) return;
-    const clean = toSentenceCase(editNome);
-    if (!clean) {
-      onToast?.('Informe o nome do lote', 'error');
-      return;
-    }
-    if (!editDataInicio) {
-      onToast?.('Informe a data de início', 'error');
-      return;
-    }
-    if (!editFarmId) {
-      onToast?.('Selecione a fazenda do lote', 'error');
-      return;
-    }
-    if (editRetiros.length > 0 && !editRetiro) {
-      onToast?.('Selecione o retiro do lote', 'error');
-      return;
-    }
-    setSaving(true);
-    try {
-      await updateLote(selectedId, {
-        nome: clean,
-        farmId: editFarmId || null,
-        retiro: editRetiro || null,
-        codigo: editCodigo.trim() || null,
-        finalidade: editFinalidade || null,
-        dataInicio: editDataInicio,
-        finalizado: editFinalizado,
-        descricao: editDescricao.trim() || null,
-      });
-      onToast?.('Lote atualizado com sucesso', 'success');
-      await loadLotes();
-    } catch (err: any) {
-      onToast?.(err.message || 'Erro ao salvar lote', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [selectedId, editFarmId, editRetiro, editRetiros, editNome, editCodigo, editFinalidade, editDataInicio, editFinalizado, editDescricao, onToast, loadLotes]);
+  }, [nome, farmId, retiro, retiros, codigo, finalidade, dataInicio, finalizado, descricao, localInicial, localTemHistorico, editingId, organizationId, lotes, onToast, loadLotes, cancelLancamento]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
@@ -584,8 +635,14 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
       </div>
 
       {aba === 'lancar' ? (
-        /* ── Aba Lançamentos: cadastro direto de um lote ─────────────────────── */
+        /* ── Aba Lançamentos: cadastro (ou edição) direto de um lote ─────────── */
         <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <h2 className="text-base font-bold text-gray-900">{editingId ? 'Editar Lote' : 'Novo Lote'}</h2>
+            {editingId && (
+              <span className="rounded-full bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-bold text-[#2563EB]">Editando</span>
+            )}
+          </div>
           {/* Localização: o lote pertence a uma Fazenda; e a um Retiro quando houver. */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -683,6 +740,42 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
             </div>
           </div>
 
+          {/* Local inicial: na criação define a origem; na edição é editável só
+              enquanto o lote não tiver localização no ledger (a abertura é imutável). */}
+          <div>
+            <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Local inicial</label>
+            {editingId && localTemHistorico ? (
+              <input
+                type="text"
+                value={localInicial || 'Sem local definido'}
+                readOnly
+                disabled
+                className={`${inputCls} disabled:bg-gray-50 disabled:text-gray-500`}
+              />
+            ) : pastagens.length > 0 ? (
+              <select value={localInicial} onChange={(e) => setLocalInicial(e.target.value)} className={inputCls}>
+                <option value="">Sem local definido</option>
+                {pastagens.map((l) => (
+                  <option key={l.id} value={l.name}>{l.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={localInicial}
+                onChange={(e) => setLocalInicial(e.target.value)}
+                placeholder={farmId ? 'Nenhuma pastagem cadastrada — digite o local (opcional)' : 'Selecione a fazenda primeiro'}
+                disabled={!farmId}
+                className={inputCls}
+              />
+            )}
+            <p className="mt-1 text-[11.5px] text-gray-500">
+              {editingId && localTemHistorico
+                ? 'Origem definida no histórico do lote. Para mudar de local, use Movimentar.'
+                : 'Pastagem onde o lote começa. Vira a origem da primeira movimentação.'}
+            </p>
+          </div>
+
           <div>
             <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Descrição</label>
             <textarea
@@ -697,6 +790,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
           <FormActions
             onCancel={cancelLancamento}
             onSave={salvar}
+            saveLabel={editingId ? 'Salvar alterações' : 'Salvar'}
             saveDisabled={!nome.trim() || !dataInicio || saving}
             saveIcon={saving ? <Loader2 size={16} className="animate-spin" /> : undefined}
           />
@@ -788,9 +882,8 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
           {/* Detail: detalhes do lote selecionado */}
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#fafbfc]">
             {selected ? (
-              modo === 'visualizar' ? (
-                /* ── View Mode ─────────────────────────────────────────────────── */
-                <div className="flex flex-1 flex-col gap-4 p-5 animate-in fade-in duration-200">
+              /* ── Detalhe (somente leitura; "Editar" abre na aba Lançamentos) ── */
+              <div className="flex flex-1 flex-col gap-4 p-5 animate-in fade-in duration-200">
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="flex items-center gap-2">
@@ -830,7 +923,7 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setModo('editar')}
+                      onClick={() => iniciarEdicao(selected)}
                       className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 hover:text-[#16a34a] hover:border-[#16a34a] transition-all"
                     >
                       <Pencil size={13} className="text-[#16a34a]" />
@@ -847,138 +940,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
                     </div>
                   )}
                 </div>
-              ) : (
-                /* ── Edit Mode ─────────────────────────────────────────────────── */
-                <div className="flex flex-1 flex-col gap-4 p-5 animate-in fade-in duration-200">
-                  <div className="flex justify-between items-start border-b border-gray-100 pb-3">
-                    <h3 className="text-base font-bold text-gray-900 leading-tight">Editar Lote</h3>
-                  </div>
-
-                  {/* Localização: o lote pertence a uma Fazenda; e a um Retiro quando houver. */}
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
-                        Fazenda <span className="text-[#DC2626]">*</span>
-                      </label>
-                      <select
-                        value={editFarmId}
-                        onChange={(e) => {
-                          setEditFarmId(e.target.value);
-                          setEditRetiro('');
-                        }}
-                        className={inputCls}
-                      >
-                        <option value="">Selecione…</option>
-                        {farms.map((f) => (
-                          <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
-                        Retiro {editRetiros.length > 0 && <span className="text-[#DC2626]">*</span>}
-                      </label>
-                      <select
-                        value={editRetiro}
-                        onChange={(e) => setEditRetiro(e.target.value)}
-                        disabled={!editFarmId || editRetiros.length === 0}
-                        className={`${inputCls} disabled:bg-gray-50 disabled:text-gray-400`}
-                      >
-                        <option value="">
-                          {!editFarmId ? 'Selecione a fazenda' : editRetiros.length === 0 ? 'Fazenda sem retiros' : '—'}
-                        </option>
-                        {editRetiros.map((r) => (
-                          <option key={r.id} value={r.name}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
-                        Nome <span className="text-[#DC2626]">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={editNome}
-                        onChange={(e) => setEditNome(e.target.value)}
-                        placeholder="Nome"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="w-full sm:w-48">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
-                        Data Início <span className="text-[#DC2626]">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={editDataInicio}
-                        onChange={(e) => setEditDataInicio(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="pb-2.5">
-                      <Toggle checked={editFinalizado} onChange={setEditFinalizado} label="Lote Finalizado" />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                    <div className="w-full sm:w-40">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Código</label>
-                      <input
-                        type="text"
-                        value={editCodigo}
-                        onChange={(e) => setEditCodigo(e.target.value)}
-                        placeholder="Ex.: RC-01"
-                        className={`${inputCls} font-mono`}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Finalidade</label>
-                      <select value={editFinalidade} onChange={(e) => setEditFinalidade(e.target.value)} className={inputCls}>
-                        <option value="">Selecione…</option>
-                        {FINALIDADES.map((f) => (
-                          <option key={f} value={f}>{f}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-[12.5px] font-semibold text-gray-700">Descrição</label>
-                    <textarea
-                      value={editDescricao}
-                      onChange={(e) => setEditDescricao(e.target.value)}
-                      placeholder="Descreva detalhes do lote (opcional)"
-                      rows={3}
-                      className={`${textareaCls} min-h-[60px]`}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 mt-2">
-                    <button
-                      type="button"
-                      onClick={cancelarEdicao}
-                      className="px-4 h-10 text-sm font-semibold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 rounded-lg transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await salvarDetalhe();
-                        setModo('visualizar');
-                      }}
-                      disabled={saving}
-                      className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-[#16a34a] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#15803d] disabled:cursor-not-allowed disabled:bg-[#86cfa4]"
-                    >
-                      {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                      Salvar alterações
-                    </button>
-                  </div>
-                </div>
-              )
             ) : (
               <div className="flex h-full items-center justify-center p-8 text-center text-sm text-gray-400">
                 Selecione um registro acima para ver os detalhes.
@@ -1002,7 +963,6 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
               label="Ver"
               onClick={() => {
                 setSelectedId(menu.id);
-                setModo('visualizar');
                 closeMenu();
               }}
             />
@@ -1010,8 +970,8 @@ const LotesManagement: React.FC<Props> = ({ onToast, onBack }) => {
               icon={<Pencil size={15} />}
               label="Editar"
               onClick={() => {
-                setSelectedId(menu.id);
-                setModo('editar');
+                const l = lotes.find((x) => x.id === menu.id);
+                if (l) iniciarEdicao(l);
                 closeMenu();
               }}
             />

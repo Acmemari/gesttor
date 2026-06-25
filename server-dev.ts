@@ -252,6 +252,7 @@ app.all('/api/farm-locations', (req, res) => handleApiRoute('./api/farm-location
 app.all('/api/area-movimentos', (req, res) => handleApiRoute('./api/area-movimentos.ts', req, res));
 app.all('/api/area-versoes', (req, res) => handleApiRoute('./api/area-versoes.ts', req, res));
 app.all('/api/areas-classify', (req, res) => handleApiRoute('./api/areas-classify.ts', req, res));
+app.all('/api/areas-suggest-destino', (req, res) => handleApiRoute('./api/areas-suggest-destino.ts', req, res));
 
 // IA / Agentes
 app.all('/api/ask-assistant', (req, res) => handleApiRoute('./api/ask-assistant.ts', req, res));

@@ -24,6 +24,8 @@ import CamposConfigModal from '../fichas/CamposConfigModal';
 import FullscreenLancamento from '../fichas/FullscreenLancamento';
 import { useFieldConfig } from '../fichas/useFieldConfig';
 import { useCamposPersonalizados, extractExtras } from '../fichas/useCamposPersonalizados';
+import { useRetiros } from '../fichas/useRetiros';
+import RetiroField from '../fichas/RetiroField';
 import { LR_REGISTRY, LOTES_ESTATICOS, defaultValue } from './fieldRegistry';
 import { getFieldConfig, saveFieldConfig } from '../../../lib/api/nascimentoFieldConfigClient';
 import {
@@ -48,19 +50,6 @@ const PANEL_MAX_W = '100%';
 
 interface NascimentoViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-}
-
-interface FarmLocal {
-  id: string;
-  name: string;
-  retiroName?: string;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: 'include' });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error || 'Erro na requisição');
-  return json.data ?? json;
 }
 
 /** Valores iniciais do formulário de entrada (modo LIGADO). */
@@ -110,7 +99,6 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
   // ── Dados carregados ────────────────────────────────────────────────────
   const [categories, setCategories] = useState<LookupItem[]>([]);
   const [racas, setRacas] = useState<string[]>([]);
-  const [farmLocais, setFarmLocais] = useState<FarmLocal[]>([]);
   const lotes: LookupItem[] = LOTES_ESTATICOS;
 
   // Override de opções dinâmicas para campos 'select' do Lançamento Rápido.
@@ -247,40 +235,24 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
     if (!fazenda && farms.length > 0) setFazenda(farms[0].id);
   }, [farms, fazenda]);
 
-  useEffect(() => {
-    if (!fazenda) {
-      setFarmLocais([]);
-      return;
-    }
-    let cancelled = false;
-    fetchJson<FarmLocal[]>(`/api/farm-locations?farmIdLocais=${encodeURIComponent(fazenda)}`)
-      .then((rows) => {
-        if (!cancelled) setFarmLocais(rows || []);
-      })
-      .catch(() => {
-        if (!cancelled) setFarmLocais([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fazenda]);
+  const farmName = farms.find((f) => f.id === fazenda)?.name;
+  const { farmLocais, retiros, retiroAtivo, defaultRetiroName } = useRetiros(fazenda, farmName);
 
-  const retiros = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of farmLocais) if (l.retiroName) set.add(l.retiroName);
-    return [...set];
-  }, [farmLocais]);
-
-  // Fazenda com um único retiro: já vem selecionado por padrão (não pergunta toda vez).
+  // Nível Retiro desativado ⇒ fixa o retiro padrão do sistema (campo desabilitado);
+  // ativo com um único retiro ⇒ já vem selecionado (não pergunta toda vez).
   useEffect(() => {
-    if (retiros.length === 1) {
+    if (!retiroAtivo) {
+      setRetiro((prev) => (prev === defaultRetiroName ? prev : defaultRetiroName));
+    } else if (retiros.length === 1) {
       setRetiro((prev) => (prev === retiros[0] ? prev : retiros[0]));
     }
-  }, [retiros]);
+  }, [retiroAtivo, defaultRetiroName, retiros]);
 
+  // Com o nível Retiro desativado o filtro por retiro não se aplica — mostra todos
+  // os locais da fazenda.
   const locaisDisponiveis = useMemo(
-    () => (retiro ? farmLocais.filter((l) => l.retiroName === retiro) : farmLocais),
-    [farmLocais, retiro],
+    () => (retiroAtivo && retiro ? farmLocais.filter((l) => l.retiroName === retiro) : farmLocais),
+    [farmLocais, retiro, retiroAtivo],
   );
 
   // Tela cheia: trava o scroll do fundo e permite reduzir com Esc.
@@ -809,22 +781,18 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
               {/* Retiro e Local sempre na mesma linha (grupo que quebra junto) */}
               <div className="flex min-w-0 items-start gap-3.5" style={{ flex: '1 1 240px' }}>
                 <div className="min-w-0 flex-1">
-                  <label className={labelCls}>Retiro</label>
-                  <select
-                    className={`${inputCls} mt-1.5`}
+                  <RetiroField
                     value={retiro}
-                    onChange={(e) => {
-                      setRetiro(e.target.value);
+                    onChange={(v) => {
+                      setRetiro(v);
                       setLocal('');
                     }}
-                  >
-                    <option value="">—</option>
-                    {retiros.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    retiros={retiros}
+                    retiroAtivo={retiroAtivo}
+                    defaultRetiroName={defaultRetiroName}
+                    inputCls={inputCls}
+                    labelCls={labelCls}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <label className={labelCls}>Local</label>
@@ -1054,22 +1022,19 @@ const NascimentoView: React.FC<NascimentoViewProps> = ({ onToast }) => {
                 </select>
               </div>
               <div className="min-w-0" style={{ flex: '1 1 160px' }}>
-                <label className={labelCls}>Retiro</label>
-                <select
-                  className={`${inputCls} mt-1`}
+                <RetiroField
                   value={retiro}
-                  onChange={(e) => {
-                    setRetiro(e.target.value);
+                  onChange={(v) => {
+                    setRetiro(v);
                     setLocal('');
                   }}
-                >
-                  <option value="">—</option>
-                  {retiros.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
+                  retiros={retiros}
+                  retiroAtivo={retiroAtivo}
+                  defaultRetiroName={defaultRetiroName}
+                  inputCls={inputCls}
+                  labelCls={labelCls}
+                  inputMargin="mt-1"
+                />
               </div>
             </>
           }
