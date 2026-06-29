@@ -24,11 +24,19 @@ export function sanitizeId(value: string | null | undefined): string | null {
 }
 
 /**
- * Para persistência de hierarchySelection: aceita apenas UUID como farmId.
- * Evita gravar IDs no formato "farm-*" (TEXT) no localStorage.
+ * Para persistência de hierarchySelection. `farms.id` é TEXT: o id pode ser UUID
+ * (fazendas novas) OU legado — `farm-*` ou slug (ex.: "reunidas-floresta-floresta").
+ * Aceita qualquer id de fazenda plausível (UUID, `farm-*` ou slug), pois antes só
+ * UUID passava e a seleção de fazendas de id legado se perdia no reload (a fazenda
+ * "sumia" e a tela caía numa fazenda padrão → mapa/KMZ parecendo compartilhado).
+ * Seguro: na hidratação o `selectedFarm` é resolvido por `farms.find(id===…)`, então
+ * um id que não exista mais simplesmente vira null.
  */
-export function sanitizeFarmIdAsUUID(value: string | null | undefined): string | null {
+export function sanitizeFarmId(value: string | null | undefined): string | null {
   if (value == null || typeof value !== 'string') return null;
   const trimmed = value.trim();
-  return isValidUUID(trimmed) ? trimmed : null;
+  // Não-vazio, sem espaços e de comprimento sensato — cobre UUID, `farm-*` e slugs,
+  // rejeitando lixo/valores corrompidos do localStorage.
+  if (!trimmed || /\s/.test(trimmed) || trimmed.length > 128) return null;
+  return trimmed;
 }

@@ -7,7 +7,7 @@ import {
   fetchFarms,
   validateHierarchy as validateHierarchyApi,
 } from '../lib/api/hierarchyClient';
-import { sanitizeUUID, sanitizeId, sanitizeFarmIdAsUUID } from '../lib/uuid';
+import { sanitizeUUID, sanitizeId, sanitizeFarmId } from '../lib/uuid';
 
 const PAGE_SIZE = 50;
 const HIERARCHY_STORAGE_KEY_V1 = 'hierarchySelection.v1';
@@ -153,7 +153,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; or
       return {
         analystId: sanitizeId(typeof modern?.analystId === 'string' ? modern.analystId : null),
         organizationId: sanitizeUUID(typeof modern?.organizationId === 'string' ? modern.organizationId : null),
-        farmId: sanitizeFarmIdAsUUID(typeof modern?.farmId === 'string' ? modern.farmId : null),
+        farmId: sanitizeFarmId(typeof modern?.farmId === 'string' ? modern.farmId : null),
       };
     }
   } catch {
@@ -167,7 +167,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; or
       const migrated = {
         analystId: sanitizeId(typeof legacy?.analystId === 'string' ? legacy.analystId : null),
         organizationId: sanitizeUUID(typeof legacy?.clientId === 'string' ? legacy.clientId : null),
-        farmId: sanitizeFarmIdAsUUID(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
+        farmId: sanitizeFarmId(typeof legacy?.farmId === 'string' ? legacy.farmId : null),
       };
       localStorage.setItem(scopedKey, JSON.stringify(migrated));
       localStorage.removeItem(HIERARCHY_STORAGE_KEY_V1);
@@ -179,7 +179,7 @@ function loadInitialPersistedIds(userId: string): { analystId: string | null; or
 
   const analystId = sanitizeId(parseLegacyId(localStorage.getItem('selectedAnalystId')));
   const organizationId = sanitizeUUID(parseLegacyId(localStorage.getItem('selectedClientId')));
-  const farmId = sanitizeFarmIdAsUUID(
+  const farmId = sanitizeFarmId(
     localStorage.getItem('selectedFarmId') || parseLegacyId(localStorage.getItem('selectedFarm')),
   );
   const normalized = { analystId, organizationId, farmId };
@@ -379,8 +379,9 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (user.qualification === 'visitante') return; // IDs são determinísticos, não persistir
     const scopedKey = getHierarchyStorageKey(user.id);
     if (user.qualification === 'cliente') {
-      // Para clientes, persiste apenas a fazenda (o organizationId vem sempre do perfil); só UUID
-      const farmIdToSave = sanitizeFarmIdAsUUID(state.farmId);
+      // Para clientes, persiste apenas a fazenda (o organizationId vem sempre do
+      // perfil). Aceita id legado não-UUID (farm-*/slug) — senão a fazenda some no reload.
+      const farmIdToSave = sanitizeFarmId(state.farmId);
       try {
         const stored = localStorage.getItem(scopedKey);
         const parsed = stored ? JSON.parse(stored) : {};
@@ -394,7 +395,7 @@ export const HierarchyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const payload = {
       analystId: state.analystId,
       organizationId: state.organizationId,
-      farmId: sanitizeFarmIdAsUUID(state.farmId),
+      farmId: sanitizeFarmId(state.farmId),
     };
     localStorage.setItem(scopedKey, JSON.stringify(payload));
   }, [state.analystId, state.organizationId, state.farmId, user, isProfileReady, sessionReady]);

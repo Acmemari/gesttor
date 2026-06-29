@@ -621,6 +621,12 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   // arquivo original. O novo mapa (produção) é gerado depois, ao Salvar.
   const handleImportOriginal = useCallback(
     async ({ file, geojson }: { file: File; geojson: GeoJSON.FeatureCollection }) => {
+      // Guarda: nunca gravar um mapa sem fazenda — evita persistir com farm_id
+      // errado/vazio por corrida de estado (a fazenda ainda não resolvida).
+      if (!farmId) {
+        onToast?.('Selecione uma fazenda antes de importar o mapa.', 'error');
+        return;
+      }
       const ext = file.name.toLowerCase().endsWith('.kml') ? 'kml' : 'kmz';
       try {
         await createFarmMap({
@@ -648,6 +654,12 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   const handleMestreSave = useCallback(
     async (payload: MestreSavePayload): Promise<MestreSaveResult> => {
       const { items, saveOverlay, file, geojson, dataReferencia } = payload;
+      // Guarda: sem fazenda não grava nada (áreas nem o KMZ de referência) — evita
+      // persistir com farm_id errado/vazio por corrida de estado.
+      if (!farmId) {
+        onToast?.('Selecione uma fazenda antes de salvar.', 'error');
+        return { savedIds: [] };
+      }
       // Data escolhida no diálogo "Salvar" carimba os registros (fallback: prop/null).
       const dataGrava = dataReferencia ?? dataInicial ?? null;
       setBusy(true);
