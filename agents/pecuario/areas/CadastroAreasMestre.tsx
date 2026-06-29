@@ -40,6 +40,7 @@ import {
   Wand2,
   ArrowRight,
   Spline,
+  ListChecks,
 } from 'lucide-react';
 import { areaM2, cleanRing, fmtArea } from './util';
 import { NIVEIS, ORDEM, type Area, type Fonte, type Nivel } from './types';
@@ -111,6 +112,9 @@ interface DraftArea {
    *  "salvo", fica fora do próximo lote (não re-grava) e some da camada de rascunho
    *  do mapa (passa a aparecer pela camada de áreas já cadastradas). */
   saved?: boolean;
+  /** feição JÁ salva cujo destino foi alterado no de-para (re-classificação): entra
+   *  no próximo lote como UPDATE (por `localId`), não como insert. Limpo após gravar. */
+  dirty?: boolean;
   /** id da Área já salva (existingAreas) à qual esta feição foi re-vinculada na
    *  re-hidratação ao reabrir a tela. Marca a feição como `saved` e evita que a mesma
    *  Área case com duas linhas (consumo 1-para-1) — base do round-trip por id. */
@@ -134,6 +138,9 @@ export interface MestreItemOut {
   fillColor: string | null;
   fillOpacity: number | null;
   strokeWeight: number | null;
+  /** Quando presente, é uma área JÁ salva sendo re-classificada (UPDATE por id),
+   *  não um novo cadastro (INSERT). O container troca só tipo/detalhe. */
+  localId?: string | null;
 }
 
 export interface MestreSavePayload {
@@ -212,6 +219,15 @@ interface Props {
   /** Exclui um arquivo KMZ (Original ou Produção) e limpa o que foi feito nele — o
    *  container apaga o arquivo e, se for produção, as áreas geradas (sequenciado). */
   onDeleteArquivo?: (m: FarmMapData, isProd: boolean) => void | Promise<void>;
+  /**
+   * Aba ativa CONTROLADA pelo container (embutida): 'mapa' (cadastro no mapa) ou
+   * 'uso' (relatório "Uso da terra"). Quando definido, o container desenha a barra
+   * de abas e esta tela só obedece — a barra interna do overlay fica oculta.
+   * Ausência ⇒ estado interno (abas internas do overlay/topo/rodapé).
+   */
+  mestreView?: 'mapa' | 'uso';
+  /** Notifica o container quando a aba interna muda (ex.: voltar do "Uso da terra"). */
+  onMestreViewChange?: (view: 'mapa' | 'uso') => void;
 }
 
 const SAT_TILES =
@@ -1147,6 +1163,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
   onEditSavedArea,
   onDeleteSavedArea,
   onDeleteArquivo,
+  mestreView,
+  onMestreViewChange,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -1163,6 +1181,17 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [mapReady, setMapReady] = useState(false);
   /** tela cheia (ocupa toda a janela). */
   const [fullscreen, setFullscreen] = useState(false);
+  /** aba ativa do rodapé/topo: 'mapa' (cadastro no mapa) ou 'uso' (relatório Uso da terra).
+   *  Controlada pelo container quando `mestreView` é passado (embutida); senão interna. */
+  const [internalView, setInternalView] = useState<'mapa' | 'uso'>('mapa');
+  const view = mestreView ?? internalView;
+  const setView = useCallback(
+    (v: 'mapa' | 'uso') => {
+      if (mestreView === undefined) setInternalView(v);
+      onMestreViewChange?.(v);
+    },
+    [mestreView, onMestreViewChange],
+  );
   /** diálogo "Data de referência" ao salvar (pergunta a data e grava com ela). */
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [dataRef, setDataRef] = useState<string>(todayIso());
@@ -1243,6 +1272,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [groupQuery, setGroupQuery] = useState('');
   /** picker de destino aberto: chave do grupo + retângulo do gatilho (posição fixa). */
   const [openPicker, setOpenPicker] = useState<{ key: string; rect: DOMRect } | null>(null);
+  /** picker de destino EM LOTE ("Identificar vários"): aloca todos os itens marcados
+   *  ao mesmo destino. Só o retângulo do gatilho (os alvos vêm de checkedGroups). */
+  const [bulkPicker, setBulkPicker] = useState<DOMRect | null>(null);
   /** "Sugerir destino" em andamento (heurística local + IA). */
   const [suggesting, setSuggesting] = useState(false);
   /** geometrias OCULTAS no de-para (filtro de tipo no cabeçalho da coluna Origem). */
@@ -1294,6 +1326,58 @@ const CadastroAreasMestre: React.FC<Props> = ({
     });
     return m;
   }, [catalog]);
+
+  // ── Relatório "Uso da terra" — Locais já cadastrados (polígonos com área),
+  //    agrupados por Categoria › Tipo, com hectares e % da área total. ────────
+  const usoTerra = useMemo(() => {
+    type Item = { id: string; nome: string; detalhe: string | null; ha: number };
+    type TipoGrp = { tipo: string; cor: string; icone: string | null; totalHa: number; items: Item[] };
+    type CatGrp = { categoria: string; cor: string; totalHa: number; tipos: TipoGrp[] };
+
+    // Só Locais que são polígonos de área (pontos/linhas não têm hectares).
+    const locais = existingAreas.filter(
+      (a) => a.nivel === 'local' && areaGeomKind(a) === 'area' && cleanRing(a.coords).length >= 3,
+    );
+
+    const catMap = new Map<string, CatGrp & { tipoMap: Map<string, TipoGrp> }>();
+    let totalHa = 0;
+    for (const a of locais) {
+      const ha = areaM2(a.coords) / 10000;
+      if (!(ha > 0)) continue;
+      totalHa += ha;
+      const res = catalogIndex.resolve(a.tipo);
+      const tipoNome = (a.tipo && a.tipo.trim()) || 'Não classificado';
+      const catNome = res?.categoriaNome || (a.tipo ? 'Outros' : 'Não classificado');
+      const cor = res?.cor ?? NIVEIS.local.cor;
+
+      let cat = catMap.get(catNome);
+      if (!cat) {
+        cat = { categoria: catNome, cor, totalHa: 0, tipos: [], tipoMap: new Map() };
+        catMap.set(catNome, cat);
+      }
+      cat.totalHa += ha;
+
+      let tg = cat.tipoMap.get(tipoNome);
+      if (!tg) {
+        tg = { tipo: tipoNome, cor, icone: res?.icone ?? null, totalHa: 0, items: [] };
+        cat.tipoMap.set(tipoNome, tg);
+        cat.tipos.push(tg);
+      }
+      tg.totalHa += ha;
+      tg.items.push({ id: a.id, nome: a.nome || 'Local sem nome', detalhe: a.detalhe ?? null, ha });
+    }
+
+    const groups = Array.from(catMap.values())
+      .map((c) => {
+        c.tipos.sort((x, y) => y.totalHa - x.totalHa);
+        c.tipos.forEach((t) => t.items.sort((x, y) => y.ha - x.ha));
+        return c as CatGrp;
+      })
+      .sort((x, y) => y.totalHa - x.totalHa);
+
+    const count = locais.length;
+    return { groups, totalHa, count };
+  }, [existingAreas, catalogIndex]);
 
   const toggleCatVisibility = useCallback((key: string) => {
     setHiddenCats((prev) => {
@@ -2263,6 +2347,12 @@ const CadastroAreasMestre: React.FC<Props> = ({
   // Lote do próximo Salvar: vinculadas e ainda NÃO gravadas (as `saved` já estão no
   // banco e permanecem na lista só para visualização — re-gravá-las duplicaria).
   const keptItems = useMemo(() => items.filter((i) => i.keep && !i.saved && validGeom(i.coords, i.geomKind)), [items]);
+  // Feições JÁ salvas re-classificadas no de-para: entram no lote como UPDATE (por
+  // `localId`), trocando só o tipo/3º nível do Local — sem virar insert/duplicata.
+  const dirtySavedItems = useMemo(
+    () => items.filter((i) => i.saved && i.dirty && i.localId && i.nivel === 'local' && !!i.tipo && validGeom(i.coords, i.geomKind)),
+    [items],
+  );
   const keptByLevel = useMemo(() => {
     const c: Record<Nivel, number> = { fazenda: 0, retiro: 0, setor: 0, local: 0 };
     keptItems.forEach((i) => (c[i.nivel] += 1));
@@ -2415,22 +2505,49 @@ const CadastroAreasMestre: React.FC<Props> = ({
   /** Aplica um destino ao GRUPO (preserva exceções). Tudo é alocado manualmente. */
   const applyDestino = useCallback(
     (g: FeatGroup, d: Destino, opts?: { suggested?: boolean; detalhe?: string | null }) => {
+      // Feição JÁ salva: o de-para permite RE-CLASSIFICAR (trocar o tipo/3º nível de
+      // um Local já gravado) — vira UPDATE por `localId` ao salvar. Mudar de nível
+      // (perímetro) ou "Não importar" mexe na estrutura/exclusão e é feito no mapa.
+      const isSaved = g.items.some((it) => it.saved);
+      if (isSaved && d.kind !== 'tipo') {
+        onToast?.('Para mudar o nível ou remover uma área já salva, use o mapa.', 'info');
+        setOpenPicker(null);
+        return;
+      }
       const patch = patchOfDestino(d, opts);
       // Se TODAS são exceção, o destino do grupo volta a valer para todas (limpa a exceção).
       const allExc = g.items.length > 0 && g.items.every((it) => it.excecao);
       g.items.forEach((it) => {
-        if (allExc) patchItem(it.id, { ...patch, excecao: false });
-        else if (!it.excecao) patchItem(it.id, patch);
+        // Re-classificar uma feição salva marca-a como `dirty` (re-entra no lote como UPDATE).
+        const dirtyPatch = it.saved ? { dirty: true } : {};
+        if (allExc) patchItem(it.id, { ...patch, ...dirtyPatch, excecao: false });
+        else if (!it.excecao) patchItem(it.id, { ...patch, ...dirtyPatch });
       });
       setOpenPicker(null);
     },
-    [patchItem, patchOfDestino],
+    [patchItem, patchOfDestino, onToast],
+  );
+  /** "Identificar vários": aplica UM destino a TODAS as feições marcadas (checkbox da
+   *  coluna Origem) de uma vez. Pula as já salvas (linhas travadas) e limpa a seleção. */
+  const applyDestinoBulk = useCallback(
+    (d: Destino) => {
+      const alvos = groups.filter((g) => checkedGroups.has(g.key) && !g.items.some((it) => it.saved));
+      alvos.forEach((g) => applyDestino(g, d));
+      setBulkPicker(null);
+      setCheckedGroups(new Set());
+      if (alvos.length > 0) {
+        onToast?.(`${alvos.length} ${alvos.length === 1 ? 'item identificado' : 'itens identificados'} com o mesmo destino.`, 'success');
+      }
+    },
+    [groups, checkedGroups, applyDestino, onToast],
   );
   /** Define o subtipo (detalhe) de um grupo — vira vínculo confirmado (não-exceção). */
   const applySubtipo = useCallback(
     (g: FeatGroup, detalhe: string | null) => {
       const allExc = g.items.length > 0 && g.items.every((it) => it.excecao);
-      g.items.forEach((it) => { if (allExc || !it.excecao) patchItem(it.id, { detalhe, sugerido: false }); });
+      g.items.forEach((it) => {
+        if (allExc || !it.excecao) patchItem(it.id, { detalhe, sugerido: false, ...(it.saved ? { dirty: true } : {}) });
+      });
     },
     [patchItem],
   );
@@ -2520,7 +2637,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const deparaProgress = useMemo(() => {
     let salvas = 0, vinculadas = 0, ignoradas = 0, pendentes = 0;
     for (const it of importedItems) {
-      if (it.saved) salvas += 1;
+      // Salva mas re-classificada (dirty): conta como "a salvar" — há trabalho pendente.
+      if (it.saved && it.dirty) vinculadas += 1;
+      else if (it.saved) salvas += 1;
       else if (it.naoImportar) ignoradas += 1;
       else if (it.keep && (!!it.tipo || it.nivel !== 'local')) vinculadas += 1;
       else pendentes += 1;
@@ -2623,11 +2742,12 @@ const CadastroAreasMestre: React.FC<Props> = ({
   // No Geocadastro o de-para é resolvido POR ETAPAS: pode salvar as feições já
   // vinculadas mesmo havendo pendentes — estas têm keep=false, não são gravadas e
   // permanecem na lista para o usuário classificar depois.
-  const canConfirm = !parsing && !busy && !editing && !drawing && (keptItems.length > 0 || (saveOverlay && !!geojson));
+  const canConfirm = !parsing && !busy && !editing && !drawing && (keptItems.length > 0 || dirtySavedItems.length > 0 || (saveOverlay && !!geojson));
 
   const submit = useCallback(async (dataReferencia: string) => {
     if (!canConfirm) return;
-    const out: MestreItemOut[] = keptItems.map((i) => {
+    // keptItems → INSERT; dirtySavedItems → UPDATE (carregam `localId`).
+    const out: MestreItemOut[] = [...keptItems, ...dirtySavedItems].map((i) => {
       const temEstilo = i.nivel === 'retiro' || i.nivel === 'setor';
       return {
         id: i.id,
@@ -2643,6 +2763,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
         fillColor: temEstilo ? i.fillColor : null,
         fillOpacity: temEstilo ? i.fillOpacity : null,
         strokeWeight: temEstilo ? i.strokeWeight : null,
+        localId: i.saved ? i.localId ?? null : null,
       };
     });
     try {
@@ -2653,7 +2774,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
         // `saved:true` (exibidas como "salvo", fora do próximo lote e da camada de
         // rascunho do mapa) e as demais (pendentes/ignoradas) seguem para
         // classificar. Nada é removido da lista — o usuário vê o todo o tempo todo.
-        const next = itemsRef.current.map((i) => (saved.has(i.id) ? { ...i, saved: true } : i));
+        const next = itemsRef.current.map((i) => (saved.has(i.id) ? { ...i, saved: true, dirty: false } : i));
         setItems(next);
         // Modal avulso (não-embutido): fecha quando não há mais nada a fazer —
         // nada a gravar (keep ainda não salvo) nem feição importada pendente.
@@ -2672,7 +2793,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
       console.error('Falha ao salvar o cadastro de áreas:', err);
       onToast?.('Não foi possível concluir o cadastro.', 'error');
     }
-  }, [canConfirm, keptItems, saveOverlay, file, geojson, onConfirm, onClose, onToast, embedded]);
+  }, [canConfirm, keptItems, dirtySavedItems, saveOverlay, file, geojson, onConfirm, onClose, onToast, embedded]);
 
   // ── Clicar num arquivo importado: aproxima o mapa na geometria dele ──────────
   const zoomToMap = useCallback((m: FarmMapData) => {
@@ -2705,7 +2826,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
       onClick={embedded ? undefined : onClose}
     >
       <div
-        className={`flex flex-col overflow-hidden bg-white ${
+        className={`relative flex flex-col overflow-hidden bg-white ${
           embedded
             ? 'h-full w-full max-h-none max-w-none rounded-none'
             : fullscreen
@@ -2734,6 +2855,14 @@ const CadastroAreasMestre: React.FC<Props> = ({
                 title="Ver as colunas das áreas cadastradas (sai da tela cheia)"
               >
                 Colunas
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('uso')}
+                className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold text-gray-500 hover:text-gray-800"
+                title="Uso da terra: áreas alocadas por tipo de local, com hectares"
+              >
+                Uso da terra
               </button>
             </div>
             <span className="text-[11.5px] text-gray-400">
@@ -3043,6 +3172,23 @@ const CadastroAreasMestre: React.FC<Props> = ({
                           </div>
                         )}
                       </div>
+                      {/* Identificar vários: aloca todas as feições MARCADAS (caixa à esquerda) ao mesmo destino de uma vez. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          if (checkedGroups.size === 0) {
+                            onToast?.('Marque ao menos um item na lista (caixa à esquerda) para identificar vários.', 'info');
+                            return;
+                          }
+                          setBulkPicker((e.currentTarget as HTMLElement).getBoundingClientRect());
+                        }}
+                        disabled={checkedGroups.size === 0}
+                        title="Marque vários itens pelas caixas à esquerda e escolha um único destino para todos de uma vez."
+                        className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[12px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ListChecks size={14} />
+                        {checkedGroups.size > 0 ? `Identificar vários (${checkedGroups.size})` : 'Identificar vários'}
+                      </button>
                       {/* Sugerir destino: recomenda o tipo de cada feição pendente (nome + geometria + IA). */}
                       <button
                         type="button"
@@ -3052,7 +3198,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
                         className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[12px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                        {suggesting ? 'Sugerindo…' : 'Sugerir destino'}
+                        {suggesting ? 'Sugerindo…' : 'Sugerir Ítem do mapa'}
                       </button>
                       {/* Mostrar no mapa: novo mapa (Produção) e/ou o KMZ Original (referência) */}
                       <div className="flex items-center gap-1.5">
@@ -3139,8 +3285,10 @@ const CadastroAreasMestre: React.FC<Props> = ({
                           const detalhes = tipoEntry ? (detalhesByTipo.get(tipoEntry.id) ?? []) : [];
                           const curDetalhe = dest?.kind === 'tipo' ? (g.items[0]?.detalhe ?? '') : '';
                           const gKind = g.items[0]?.geomKind ?? null;
-                          // Feição já gravada (Salvar por etapas): linha travada e marcada "salvo".
+                          // Feição já gravada (Salvar por etapas): marcada "salvo". O destino
+                          // continua editável — re-classificar grava como UPDATE (vira "alterado").
                           const saved = !!g.items[0]?.saved;
+                          const dirty = !!g.items[0]?.dirty;
                           return (
                             <div key={g.key} className={`border-b border-gray-50 ${checkedGroups.has(g.key) ? 'bg-blue-50/40' : ''}`}>
                               <div className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50/50">
@@ -3173,9 +3321,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                 <div className="w-[44%] shrink-0">
                                   <button
                                     type="button"
-                                    disabled={saved}
+                                    title={saved ? 'Clique para re-classificar esta área já salva' : undefined}
                                     onClick={(e) => setOpenPicker({ key: g.key, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}
-                                    className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:cursor-not-allowed ${saved ? 'border-emerald-200 bg-emerald-50/30' : dest && dest.kind !== 'none' ? 'border-emerald-300 bg-emerald-50/40' : mixed ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                    className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-gray-50 ${dirty ? 'border-amber-300 bg-amber-50/40' : saved ? 'border-emerald-200 bg-emerald-50/30' : dest && dest.kind !== 'none' ? 'border-emerald-300 bg-emerald-50/40' : mixed ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200 bg-white'}`}
                                   >
                                     {(() => {
                                       if (mixed) return <span className="min-w-0 flex-1 truncate text-gray-500">Vários destinos…</span>;
@@ -3205,16 +3353,13 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                         </>
                                       );
                                     })()}
-                                    {saved
-                                      ? <Check size={14} className="ml-auto shrink-0 text-emerald-600" />
-                                      : <ChevronDown size={14} className="ml-auto shrink-0 text-gray-400" />}
+                                    <ChevronDown size={14} className="ml-auto shrink-0 text-gray-400" />
                                   </button>
                                   {dest?.kind === 'tipo' && detalhes.length > 0 && (
                                     <select
                                       value={curDetalhe}
-                                      disabled={saved}
                                       onChange={(e) => applySubtipo(g, e.target.value || null)}
-                                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11.5px] text-gray-700 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+                                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11.5px] text-gray-700 outline-none focus:border-emerald-400"
                                     >
                                       <option value="">— subtipo (opcional) —</option>
                                       {curDetalhe && !detalhes.some((d) => d.nome === curDetalhe) && <option value={curDetalhe}>{curDetalhe} (atual)</option>}
@@ -3225,6 +3370,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                 {/* SITUAÇÃO */}
                                 <div className="w-[82px] shrink-0 text-right">
                                   {(() => {
+                                    if (dirty) return <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"><Sparkles size={10} /> alterado</span>;
                                     if (saved) return <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700"><Check size={10} /> salvo</span>;
                                     if (mixed) return <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">misto</span>;
                                     if (!dest) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">pendente</span>;
@@ -3286,6 +3432,25 @@ const CadastroAreasMestre: React.FC<Props> = ({
                           current={destOfGroup(g).dest}
                           onClose={() => setOpenPicker(null)}
                           onPick={(d) => applyDestino(g, d)}
+                        />
+                      );
+                    })()}
+                    {/* Picker EM LOTE ("Identificar vários"): destino único p/ todos os marcados. */}
+                    {bulkPicker && (() => {
+                      const sel = groups.filter((g) => checkedGroups.has(g.key) && !g.items.some((it) => it.saved));
+                      if (!sel.length) return null;
+                      // Só oferece "Perímetro" quando TODAS as feições marcadas são polígonos.
+                      const allArea = sel.every((g) => g.items.every((it) => it.geomKind === 'area'));
+                      return (
+                        <DestinoPicker
+                          anchor={bulkPicker}
+                          catalog={catalog}
+                          tiposByCat={tiposByCat}
+                          allowPerimetro={allArea}
+                          perimetroNiveis={perimetroNiveis}
+                          current={null}
+                          onClose={() => setBulkPicker(null)}
+                          onPick={(d) => applyDestinoBulk(d)}
                         />
                       );
                     })()}
@@ -3723,6 +3888,14 @@ const CadastroAreasMestre: React.FC<Props> = ({
                 >
                   Colunas
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setView('uso')}
+                  className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold text-gray-500 hover:text-gray-800"
+                  title="Uso da terra: áreas alocadas por tipo de local, com hectares"
+                >
+                  Uso da terra
+                </button>
               </div>
             )}
             <div className="hidden min-w-0 truncate text-[12px] text-gray-500 sm:block">
@@ -3759,6 +3932,156 @@ const CadastroAreasMestre: React.FC<Props> = ({
             </button>
           </div>
         </div>
+
+        {/* ===== Aba "Uso da terra" — relatório das áreas alocadas ===== *
+         * Overlay sobre o card inteiro (que é `relative`); traz sua própria
+         * barra de abas para voltar ao mapa / colunas. Lê os Locais já salvos
+         * (existingAreas) agrupados por Categoria › Tipo, com hectares. */}
+        {view === 'uso' && (
+          <div className="absolute inset-0 z-[30] flex flex-col bg-white">
+            {/* Abas — só quando NÃO controlada pelo container (a barra externa do
+                FarmLocaisTab cuida da navegação no modo embutido). */}
+            {mestreView === undefined && (
+              <div className="flex flex-wrap items-center gap-2.5 border-b border-gray-100 px-6 pb-2 pt-3">
+                <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setView('mapa')}
+                    className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold text-gray-500 hover:text-gray-800"
+                    title="Voltar ao cadastro de áreas no mapa"
+                  >
+                    Cadastro de áreas
+                  </button>
+                  {onShowColumns && (
+                    <button
+                      type="button"
+                      onClick={() => { setView('mapa'); onShowColumns(); }}
+                      className="rounded-md px-3 py-1.5 text-[12.5px] font-semibold text-gray-500 hover:text-gray-800"
+                      title="Ver as colunas das áreas cadastradas"
+                    >
+                      Colunas
+                    </button>
+                  )}
+                  <span
+                    className="rounded-md bg-white px-3 py-1.5 text-[12.5px] font-semibold text-gray-900 shadow-sm"
+                    title="Uso da terra (tela atual)"
+                  >
+                    Uso da terra
+                  </span>
+                </div>
+                <span className="text-[11.5px] text-gray-400">
+                  Áreas já alocadas no mapa, por tipo de local, com seus hectares.
+                </span>
+              </div>
+            )}
+
+            {/* Cabeçalho + total */}
+            <div className="flex items-start gap-3 border-b border-gray-100 px-6 pb-3 pt-4">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                <Layers size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="m-0 text-[17px] font-bold text-gray-900">Uso da terra</h3>
+                <div className="mt-0.5 text-[13px] text-gray-500">
+                  Descrição dos <b>tipos de locais</b> cadastrados no mapa com suas respectivas <b>áreas</b> e <b>hectares</b>.
+                </div>
+              </div>
+              <div className="ml-auto shrink-0 text-right">
+                <div className="text-[20px] font-bold tabular-nums text-gray-900">
+                  {usoTerra.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
+                </div>
+                <div className="text-[11.5px] text-gray-500">
+                  {usoTerra.count} {usoTerra.count === 1 ? 'área' : 'áreas'}
+                </div>
+              </div>
+            </div>
+
+            {/* Corpo — tabela agrupada por Categoria › Tipo */}
+            <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+              {usoTerra.groups.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+                  <Layers size={28} className="text-gray-300" />
+                  <p className="text-[13px]">
+                    Nenhuma área alocada ainda. Cadastre Locais (polígonos) no mapa para vê-los aqui.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {usoTerra.groups.map((g) => {
+                    const gPct = usoTerra.totalHa > 0 ? (g.totalHa / usoTerra.totalHa) * 100 : 0;
+                    return (
+                      <section key={g.categoria} className="overflow-hidden rounded-xl border border-gray-200">
+                        <div className="flex items-center justify-between gap-3 bg-gray-50 px-4 py-2.5">
+                          <span className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-gray-800">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: g.cor }} />
+                            <span className="truncate">{g.categoria}</span>
+                          </span>
+                          <span className="shrink-0 text-[12px] font-semibold tabular-nums text-gray-600">
+                            {g.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
+                            <span className="ml-1.5 font-normal text-gray-400">{gPct.toFixed(1)}%</span>
+                          </span>
+                        </div>
+                        <table className="w-full border-collapse text-[12.5px]">
+                          <thead>
+                            <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+                              <th className="px-4 py-1.5 text-left font-semibold">Tipo / Local</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">Detalhe</th>
+                              <th className="px-4 py-1.5 text-right font-semibold">Área (ha)</th>
+                              <th className="px-4 py-1.5 text-right font-semibold">%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.tipos.map((t) => {
+                              const tPct = usoTerra.totalHa > 0 ? (t.totalHa / usoTerra.totalHa) * 100 : 0;
+                              return (
+                                <React.Fragment key={t.tipo}>
+                                  <tr className="border-t border-gray-100 bg-white">
+                                    <td colSpan={2} className="px-4 py-1.5">
+                                      <span className="flex items-center gap-2 font-semibold text-gray-700">
+                                        <span className="flex h-4 w-4 shrink-0 items-center justify-center" style={{ color: t.cor }}>
+                                          <TipoIcon name={t.icone} size={14} fallback={<span className="h-2 w-2 rounded-full" style={{ background: t.cor }} />} />
+                                        </span>
+                                        <span className="truncate">{t.tipo}</span>
+                                        <span className="text-[11px] font-normal text-gray-400">
+                                          ({t.items.length})
+                                        </span>
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-1.5 text-right font-semibold tabular-nums text-gray-800">
+                                      {t.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="px-4 py-1.5 text-right tabular-nums text-gray-500">{tPct.toFixed(1)}%</td>
+                                  </tr>
+                                  {t.items.map((it) => {
+                                    const iPct = usoTerra.totalHa > 0 ? (it.ha / usoTerra.totalHa) * 100 : 0;
+                                    return (
+                                      <tr key={it.id} className="border-t border-gray-50 text-gray-600">
+                                        <td className="py-1 pl-10 pr-4">
+                                          <span className="block truncate">{it.nome}</span>
+                                        </td>
+                                        <td className="px-3 py-1 text-gray-400">
+                                          <span className="block truncate">{it.detalhe || '—'}</span>
+                                        </td>
+                                        <td className="px-4 py-1 text-right tabular-nums">
+                                          {it.ha.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="px-4 py-1 text-right tabular-nums text-gray-400">{iPct.toFixed(1)}%</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
 

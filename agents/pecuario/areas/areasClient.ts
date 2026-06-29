@@ -207,6 +207,19 @@ export async function updateAreaProps(
   // fazenda: o nome é editado em "Dados Gerais", não aqui.
 }
 
+// ── Re-classifica um LOCAL já salvo: troca só tipo/detalhe (3º nível) ─────────
+// Usado pelo de-para do Geocadastro quando o usuário altera o destino de uma
+// feição JÁ gravada. Envia SÓ tipo (e detalhe, quando informado): nome, vínculo
+// (retiro/setor) e geometria ficam undefined → o guard do repositório os
+// preserva (não re-parenteia nem renomeia). `detalhe` undefined preserva o atual;
+// null explícito limpa o 3º nível.
+export async function updateAreaClassification(
+  localId: string,
+  w: { tipo: string | null; detalhe?: string | null },
+): Promise<void> {
+  await patch(API, { type: 'local', id: localId, tipo: w.tipo ?? null, detalhe: w.detalhe });
+}
+
 // ── Atualiza nome + estilo (cor da linha/preenchimento/opacidade) de uma área ─
 // Edição rápida ao clicar na área no mapa: mexe SÓ em estilo (e nome em retiro/
 // setor), sem tocar em vínculo (parent), data inicial ou tipo (que ficariam

@@ -36,11 +36,24 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<ApiRespo
     if (typeof window !== 'undefined') { clearToken(); window.location.replace('/sign-in'); }
     return { ok: false, error: 'Não autorizado' };
   }
-  const json = await res.json();
-  if (!res.ok) {
-    return { ok: false, error: json?.error || `HTTP ${res.status}` };
+  // Resposta de erro pode NÃO ser JSON (ex.: 413 Payload Too Large devolve a
+  // página HTML padrão do servidor) — ler como texto e tentar parsear, em vez de
+  // estourar "Unexpected token '<'" no res.json().
+  const raw = await res.text();
+  let json: { data?: T; error?: string } | null = null;
+  try {
+    json = raw ? JSON.parse(raw) : null;
+  } catch {
+    /* corpo não-JSON (HTML de erro) — json fica null */
   }
-  return { ok: true, data: json.data };
+  if (!res.ok) {
+    const error =
+      res.status === 413
+        ? 'Arquivo grande demais para o servidor (limite de tamanho excedido).'
+        : json?.error || `HTTP ${res.status}`;
+    return { ok: false, error };
+  }
+  return { ok: true, data: json?.data };
 }
 
 /**

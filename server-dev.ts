@@ -159,7 +159,10 @@ app.post('/api/transcrever-reuniao', audioUpload.single('audio'), async (req, re
 });
 
 // ── Body parser para o restante das rotas ─────────────────────────────────────
-app.use(express.json());
+// Limite generoso: o POST /api/farm-maps envia o GeoJSON inteiro do KMZ no corpo
+// (idem bundles de áreas), que passa fácil do padrão de 100 kb do Express e
+// resultava em 413 + HTML de erro (o cliente quebrava no res.json()).
+app.use(express.json({ limit: '25mb' }));
 
 // ── Adaptador Vercel → Express ─────────────────────────────────────────────────
 function createVercelAdapter(req: Request, res: Response) {

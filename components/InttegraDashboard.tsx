@@ -237,6 +237,11 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         <Suspense fallback={<LoadingFallback />}>
           <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
             <FarmManagement
+              // Remonta ao trocar a fazenda do cabeçalho: reseta o latch de
+              // deep-link (deepLinkedRef) do FarmManagement, que de outro modo
+              // travava editingFarm na 1ª fazenda — fazendo o mapa/KMZ parecer
+              // único e compartilhado entre as fazendas.
+              key={selectedFarm?.id ?? 'no-farm'}
               onToast={onToast}
               isInttegra={true}
               onBack={() => setSubView('desktop')}

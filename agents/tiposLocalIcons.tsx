@@ -13,6 +13,8 @@ import {
   SquareParking, Truck,
   type LucideIcon,
 } from 'lucide-react';
+import { PastagemCultivadaIcon } from '../components/icons/PastagemCultivadaIcon';
+import { BrachiariaHumidicolaIcon } from '../components/icons/BrachiariaHumidicolaIcon';
 
 /**
  * Registro de ícones do cadastro "Tipos de Locais".
@@ -33,7 +35,10 @@ export interface TipoIconPreset {
 
 export const TIPO_ICON_PRESETS: TipoIconPreset[] = [
   // Pecuária / agricultura / vegetação
+  { name: 'BrachiariaHumidicola', label: 'Pastagem Humidicola', Icon: BrachiariaHumidicolaIcon as any },
+  { name: 'PastagemCultivada', label: 'Pastagem Cultivada', Icon: PastagemCultivadaIcon as any },
   { name: 'Sprout', label: 'Broto / pastagem', Icon: Sprout },
+
   { name: 'Wheat', label: 'Trigo / lavoura', Icon: Wheat },
   { name: 'Carrot', label: 'Cultivo', Icon: Carrot },
   { name: 'Leaf', label: 'Folha / forrageira', Icon: Leaf },

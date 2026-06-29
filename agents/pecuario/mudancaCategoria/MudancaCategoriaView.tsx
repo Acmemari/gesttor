@@ -16,7 +16,6 @@ import {
 import CategoriaGrid from '../nascimento/CategoriaGrid';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
-import IconCardButton from '../../../components/IconCardButton';
 import {
   FICHA_SRC_KEY,
   FICHA_ID_KEY,
@@ -69,9 +68,7 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
   const [obsColetiva, setObsColetiva] = useState('');
 
   // ── Modo / edição por linha ─────────────────────────────────────────────
-  // Layout da tela (Padrão = ícones · Padrão 2 = seletor com rótulos) e
-  // modo de controle por indivíduo (fromDetail = detalhamento por animal).
-  const [layoutMudanca, setLayoutMudanca] = useState<'padrao' | 'guiado'>('padrao');
+  // Modo de controle por indivíduo (fromDetail = detalhamento por animal).
   const [fromDetail, setFromDetail] = useState(false);
   const [rowState, setRowState] = useState<Record<string, MudancaEdit>>({});
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
@@ -327,28 +324,6 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
             <ArrowLeftRight size={22} className="text-[#16a34a]" />
             <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Mudança de Categoria</h1>
           </div>
-
-          {/* Tab de layout da tela: Padrão (ícones) × Padrão 2 (seletor com rótulos) */}
-          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
-            <button
-              type="button"
-              onClick={() => setLayoutMudanca('padrao')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutMudanca === 'padrao' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMudanca('guiado')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutMudanca === 'guiado' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão 2
-            </button>
-          </div>
         </div>
 
         <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
@@ -478,23 +453,7 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
 
                   {/* Modo de controle por animal: Lote (coletivo) × Detalhamento individual */}
                   <div className="mt-4 flex flex-wrap items-center gap-3">
-                    {layoutMudanca === 'padrao' ? (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <IconCardButton
-                          active={fromDetail}
-                          onClick={() => setFromDetail(true)}
-                          title="Detalhamento individual (por animal)"
-                          icon={<BrincoBovinoIcon size={22} />}
-                        />
-                        <IconCardButton
-                          active={!fromDetail}
-                          onClick={() => setFromDetail(false)}
-                          title="Lote de animais (visão coletiva)"
-                          icon={<LoteAnimaisIcon size={28} />}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2.5">
                         <button
                           type="button"
                           onClick={() => setFromDetail(true)}
@@ -521,8 +480,7 @@ const MudancaCategoriaView: React.FC<MudancaCategoriaViewProps> = ({ onToast }) 
                         >
                           <LoteAnimaisIcon size={26} /> Lote de animais
                         </button>
-                      </div>
-                    )}
+                    </div>
                     <span className="text-[12.5px] text-gray-500">
                       {fromDetail
                         ? (saida

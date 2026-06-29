@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { List, Tags, Info, Plus, Layers } from 'lucide-react';
+import { List, Tags, Info, Plus } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
 import { listAnimalCategories, type AnimalCategory } from '../../../lib/api/animalCategoriesClient';
@@ -12,7 +12,6 @@ import {
   weanAnimal,
   type DesmameMovimentoRow,
 } from '../../../lib/api/desmamesClient';
-import IconCardButton from '../../../components/IconCardButton';
 import CategoriaGrid from '../nascimento/CategoriaGrid';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
@@ -61,10 +60,6 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
   const [fromDetail, setFromDetail] = useState(true);
   const [rowState, setRowState] = useState<Record<string, DesmameEdit>>({});
   const [aba, setAba] = useState<'lancar' | 'historico'>('lancar');
-  // Layout da tela: 'padrao' = toggle de ícones (brinco/lote) como na tela de
-  // Nascimento; 'padrao2' = layout atual (botões rotulados). Comportamento de
-  // desmamar por animal é o mesmo nos dois.
-  const [layoutDesmame, setLayoutDesmame] = useState<'padrao' | 'padrao2'>('padrao');
 
   // ── Carregamentos ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -267,28 +262,6 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Desmame</h1>
           </div>
-
-          {/* Tab de layout da tela: Padrão (toggle de ícones, modelo Nascimento) × Padrão 2 (atual) */}
-          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
-            <button
-              type="button"
-              onClick={() => setLayoutDesmame('padrao')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutDesmame === 'padrao' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutDesmame('padrao2')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutDesmame === 'padrao2' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão 2
-            </button>
-          </div>
         </div>
 
         <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-white p-1">
@@ -381,45 +354,36 @@ const DesmameView: React.FC<DesmameViewProps> = ({ onToast }) => {
                   </div>
                 </div>
 
-                {/* Seletor de modo: ícones (Padrão, modelo Nascimento) × botões rotulados (Padrão 2) */}
+                {/* Seletor de modo: Detalhamento individual × Lote de animais (padrão 2) */}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  {layoutDesmame === 'padrao' ? (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <IconCardButton
-                        active={fromDetail}
-                        onClick={() => setFromDetail(true)}
-                        title="Detalhamento individual (por animal)"
-                        icon={<BrincoBovinoIcon size={22} />}
-                      />
-                      <IconCardButton
-                        active={!fromDetail}
-                        onClick={() => setFromDetail(false)}
-                        title="Lote de animais (visão coletiva)"
-                        icon={<LoteAnimaisIcon size={28} />}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setFromDetail((v) => !v)}
-                        aria-pressed={fromDetail}
-                        className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-semibold transition-colors ${
-                          fromDetail
-                            ? 'border-[#b7e0c4] bg-[#e7f6ec] text-[#16a34a]'
-                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <BrincoBovinoIcon size={18} /> Detalhamento individual
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
-                      >
-                        <Layers size={18} /> Lote de animais
-                      </button>
-                    </>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setFromDetail(true)}
+                      aria-pressed={fromDetail}
+                      title="Detalhamento individual (por animal)"
+                      className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                        fromDetail
+                          ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <BrincoBovinoIcon size={22} /> Detalhamento individual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFromDetail(false)}
+                      aria-pressed={!fromDetail}
+                      title="Lote de animais (visão coletiva)"
+                      className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                        !fromDetail
+                          ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <LoteAnimaisIcon size={26} /> Lote de animais
+                    </button>
+                  </div>
                   <span className="text-[12.5px] text-gray-500">
                     {fromDetail
                       ? `${mamandoRows.length} bezerro(s) mamando disponível(is) para desmame`

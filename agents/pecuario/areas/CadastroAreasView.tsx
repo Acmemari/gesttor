@@ -30,6 +30,7 @@ import {
   createArea as apiCreateArea,
   updateAreaGeometry as apiUpdateGeometry,
   updateAreaProps as apiUpdateProps,
+  updateAreaClassification as apiUpdateClassification,
   updateAreaStyle as apiUpdateStyle,
   deleteArea as apiDeleteArea,
   saveFarmPerimeter,
@@ -100,6 +101,10 @@ interface CadastroAreasViewProps {
   onMestreOpenChange?: (open: boolean) => void;
   /** Mostra no rodapé da tela mestra a aba "Colunas" (volta às colunas das áreas). */
   mestreColumnsTab?: boolean;
+  /** Aba ativa da tela mestra controlada pelo container: 'mapa' ou 'uso' (Uso da terra). */
+  mestreView?: 'mapa' | 'uso';
+  /** Notifica o container quando a aba interna da tela mestra muda. */
+  onMestreViewChange?: (view: 'mapa' | 'uso') => void;
   /** Renderiza a tela mestra embutida (preenche este container, sem flutuar). */
   mestreEmbedded?: boolean;
 }
@@ -191,6 +196,8 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
   onMestreOpenChange,
   mestreColumnsTab = false,
   mestreEmbedded = false,
+  mestreView,
+  onMestreViewChange,
 }) => {
   // ── Estado de domínio ───────────────────────────────────────────────────
   const { selectedOrganization } = useHierarchy();
@@ -739,6 +746,17 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         // 4) Locais (pai = setor ou retiro que o contém).
         for (const it of items.filter((i) => i.nivel === 'local')) {
           try {
+            // Re-classificação de um Local JÁ salvo (de-para): UPDATE só de tipo/detalhe
+            // (preserva nome, vínculo e geometria). Reflete no pool `created` para o
+            // KMZ canônico sair com a nova classificação.
+            if (it.localId) {
+              await apiUpdateClassification(it.localId, { tipo: it.tipo ?? 'Pasto', detalhe: it.detalhe ?? null });
+              const idx = created.findIndex((a) => a.id === it.localId);
+              if (idx >= 0) created[idx] = { ...created[idx], tipo: it.tipo ?? 'Pasto', detalhe: it.detalhe ?? null };
+              savedIds.push(it.id);
+              nLoc++;
+              continue;
+            }
             const fk = resolveFk(created, resolveParent(it, 'local'), 'local');
             const area = await apiCreateArea(farmId, {
               nivel: 'local', nome: it.nome, coords: it.coords, fonte: it.fonte,
@@ -779,11 +797,20 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         const hasPerim = created.some((a) => a.nivel === 'fazenda' && cleanRing(a.coords).length >= 3);
         if (hasPerim && savedIds.length > 0) {
           try {
-            // 1. Apaga o KMZ de produção antigo para não duplicar na lista
+            // 1. Apaga TODO KMZ de produção antigo (mesmo nome) para não duplicar na
+            //    lista. Busca a lista ATUAL no banco: o `overlayMaps` capturado no
+            //    closure deste callback fica DEFASADO entre salvamentos (não está nas
+            //    deps), então um `find` sobre ele nunca achava o arquivo recém-criado e
+            //    cada "Salvar" gerava mais uma cópia. Remove TODOS os homônimos
+            //    (filter, não find) p/ convergir mesmo se já houver duplicatas.
             const prodName = `${farmName.replace(/\s+/g, '_')}_Mapa.kmz`;
-            const oldProd = overlayMaps.find((m) => m.original_name === prodName);
-            if (oldProd) {
-              await deleteFarmMap(oldProd.id);
+            try {
+              const atuais = await listFarmMaps(farmId);
+              for (const old of atuais.filter((m) => m.original_name === prodName)) {
+                await deleteFarmMap(old.id);
+              }
+            } catch (e) {
+              console.warn('Não foi possível limpar KMZ(s) de produção antigos:', e);
             }
 
             // 2-4. Gera o MAPA CANÔNICO (KMZ estruturado por Categoria→Tipo, com
@@ -836,9 +863,13 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
             // 7. Atualiza lista lateral
             setOverlayVisible(true);
             setOverlayReload((v) => v + 1);
+
+            // 8. Avisa o usuário que o novo mapa (KMZ de produção) foi gerado e salvo.
+            onToast?.(`Mapa KMZ "${prodName}" gerado e salvo.`, 'success');
           } catch (e) {
             console.error('Falha ao gerar e salvar o KMZ de produção:', e);
-            onToast?.('Áreas salvas, mas falha ao gerar o arquivo KMZ de produção correspondente.', 'warning');
+            const motivo = (e as Error)?.message ?? String(e);
+            onToast?.(`Áreas salvas, mas falha ao gerar o KMZ de produção: ${motivo}`, 'warning');
           }
         }
 
@@ -1571,6 +1602,10 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
 
       {importOpen && (
         <CadastroAreasMestre
+          // Remonta ao trocar de fazenda: zera o estado do geocadastro (arquivo
+          // importado/geojson/de-para) que, sem isto, vazava de uma fazenda para
+          // a outra por a tela mestra ficar montada entre as trocas de fazenda.
+          key={farmId}
           existingAreas={areas}
           organizationId={organizationId}
           hasPerimeter={areas.some((a) => a.nivel === 'fazenda' && cleanRing(a.coords).length >= 3)}
@@ -1582,6 +1617,8 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           onImportOriginal={handleImportOriginal}
           onToast={onToast}
           onShowColumns={mestreColumnsTab ? () => setImportOpen(false) : undefined}
+          mestreView={mestreView}
+          onMestreViewChange={onMestreViewChange}
           embedded={mestreEmbedded}
           referenceMaps={overlayMaps}
           uploadedMaps={overlayMaps}

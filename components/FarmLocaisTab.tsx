@@ -251,7 +251,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
   // Modo mapa: a tela INICIAL é a de "Cadastro de Áreas" (tela mestra sobre o
   // mapa); a aba "Colunas" no rodapé volta às colunas das áreas cadastradas.
   // Em readOnly começa nas colunas (não força a tela de edição).
-  const [mapaView, setMapaView] = useState<'cadastro' | 'colunas'>(readOnly ? 'colunas' : 'cadastro');
+  const [mapaView, setMapaView] = useState<'cadastro' | 'colunas' | 'uso'>(readOnly ? 'colunas' : 'cadastro');
 
   // Data inicial única da tela: carimbada em todo registro criado/editado aqui.
   // Data dos registros criados nas colunas; a do mapa é perguntada ao Salvar.
@@ -1051,6 +1051,7 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
               {([
                 { key: 'cadastro', label: 'Cadastro de áreas' },
                 { key: 'colunas', label: 'Colunas' },
+                { key: 'uso', label: 'Uso da terra' },
               ] as const).map((t) => {
                 const on = mapaView === t.key;
                 return (
@@ -1070,7 +1071,9 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
             <span className="text-[11.5px] text-gray-400">
               {mapaView === 'cadastro'
                 ? 'Cadastre as áreas no mapa: escolha uma categoria e desenhe áreas ou insira pontos.'
-                : 'Veja e organize as colunas das áreas já cadastradas.'}
+                : mapaView === 'uso'
+                  ? 'Tipos de locais já alocados no mapa, com suas áreas e hectares.'
+                  : 'Veja e organize as colunas das áreas já cadastradas.'}
             </span>
           </div>
 
@@ -1080,6 +1083,10 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
                 montada e só escondida na aba Colunas, para não recarregar o mapa. */}
             <div className={`min-h-0 flex-1 ${mapaView === 'colunas' ? 'hidden' : ''}`}>
               <CadastroAreasView
+                // Remonta ao trocar a fazenda (1ª coluna): recria o mapa Leaflet
+                // e limpa os refs imperativos para a nova fazenda. Mesmo padrão
+                // de MovimentacaoAreasView (key={fazenda}).
+                key={selFarmId}
                 farmId={selFarmId}
                 farmName={selFarmName}
                 readOnly={readOnly}
@@ -1093,10 +1100,12 @@ const FarmLocaisTab: React.FC<FarmLocaisTabProps> = ({ farmId, farmName, readOnl
                 onMutated={onMapMutated}
                 reloadToken={mapReloadToken}
                 resizeSignal={mapaView === 'cadastro' ? 1 : 0}
-                mestreOpen={mapaView === 'cadastro'}
+                mestreOpen={mapaView === 'cadastro' || mapaView === 'uso'}
                 onMestreOpenChange={(open) => setMapaView(open ? 'cadastro' : 'colunas')}
                 mestreColumnsTab
                 mestreEmbedded
+                mestreView={mapaView === 'uso' ? 'uso' : 'mapa'}
+                onMestreViewChange={(v) => setMapaView(v === 'uso' ? 'uso' : 'cadastro')}
               />
             </div>
 

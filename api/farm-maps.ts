@@ -7,6 +7,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
 import { jsonError, jsonSuccess, setCorsHeaders } from './_lib/apiResponse.js';
+import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
 import {
   getFarmMaps,
   createFarmMap,
@@ -28,12 +29,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Papel do usuário (admin passa direto; demais precisam ter acesso à org da
+    // fazenda). Carregado uma vez e reusado nas checagens por método.
+    const role = await getUserRole(userId);
+
     if (req.method === 'GET') {
       const farmId = typeof req.query?.farmId === 'string' ? req.query.farmId : '';
       if (!farmId) {
         jsonError(res, 'farmId obrigatório', { status: 400 });
         return;
       }
+      await assertFarmAccess(farmId, userId, role);
       const rows = await getFarmMaps(farmId);
       jsonSuccess(res, rows);
       return;
@@ -48,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return;
       }
+      await assertFarmAccess(farmId, userId, role);
       const row = await createFarmMap({
         farmId,
         uploadedBy: userId,
@@ -73,6 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'Mapa não encontrado', { status: 404 });
         return;
       }
+      // Autoriza pela fazenda DO REGISTRO (não confia em farmId vindo do cliente).
+      await assertFarmAccess(existing.farmId, userId, role);
       await deleteFarmMap(id);
       // A linha do Drizzle vem em camelCase (storagePath); o cliente usa esse
       // caminho para apagar o arquivo (KMZ/KML) no storage (B2).
@@ -82,8 +91,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     jsonError(res, 'Método não permitido', { status: 405 });
   } catch (err) {
+    // Honra o status/código lançado pelos helpers de autorização (401/403/404);
+    // só loga como erro de servidor o que for 5xx.
+    const status = (err as { status?: number })?.status ?? 500;
+    const code = (err as { code?: string })?.code;
     const message = err instanceof Error ? err.message : 'Erro interno';
-    console.error('[api/farm-maps]', message);
-    jsonError(res, message, { status: 500 });
+    if (status >= 500) console.error('[api/farm-maps]', message);
+    jsonError(res, message, { status, ...(code ? { code } : {}) });
   }
 }

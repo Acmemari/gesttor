@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Save, Info, List, Tags, Receipt, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
-import IconCardButton from '../../../components/IconCardButton';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
@@ -770,19 +769,33 @@ const VendaView: React.FC<VendaViewProps> = ({ onToast }) => {
                 </h3>
                 <div className="flex flex-wrap items-end gap-3">
                   {/* Modo de lançamento: individual (por ID) · coletivo (lote) */}
-                  <div className="flex shrink-0 items-center gap-2">
-                    <IconCardButton
-                      active={modoIndividual}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
                       onClick={() => setModoIndividual(true)}
+                      aria-pressed={modoIndividual}
                       title="Detalhamento individual (por ID)"
-                      icon={<BrincoBovinoIcon size={22} />}
-                    />
-                    <IconCardButton
-                      active={!modoIndividual}
+                      className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                        modoIndividual
+                          ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <BrincoBovinoIcon size={22} /> Detalhamento individual
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setModoIndividual(false)}
+                      aria-pressed={!modoIndividual}
                       title="Lote de animais (visão coletiva)"
-                      icon={<LoteAnimaisIcon size={28} />}
-                    />
+                      className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                        !modoIndividual
+                          ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <LoteAnimaisIcon size={26} /> Lote de animais
+                    </button>
                   </div>
 
                   {/* Linha do lote: permanece na tela nos dois modos. No individual os

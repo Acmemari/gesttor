@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Save, Check, Info, List, Tags, Beef } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
-import IconCardButton from '../../../components/IconCardButton';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
 import {
   listMovimentos,
@@ -844,19 +843,33 @@ const ConsumoView: React.FC<ConsumoViewProps> = ({ onToast }) => {
 
             {/* toggle individual/coletivo + Quantidade + categoria + tipo + mais */}
             <div className="mt-4 flex flex-wrap items-end gap-3">
-              <div className="flex shrink-0 items-center gap-2">
-                <IconCardButton
-                  active={fromId}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
                   onClick={toggleFromId}
+                  aria-pressed={fromId}
                   title="Detalhamento individual (por ID)"
-                  icon={<BrincoBovinoIcon size={22} />}
-                />
-                <IconCardButton
-                  active={!fromId}
+                  className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                    fromId
+                      ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <BrincoBovinoIcon size={22} /> Detalhamento individual
+                </button>
+                <button
+                  type="button"
                   onClick={verColetivo}
+                  aria-pressed={!fromId}
                   title="Baixa coletiva (visão de lote)"
-                  icon={<LoteAnimaisIcon size={28} />}
-                />
+                  className={`inline-flex h-11 items-center gap-2.5 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                    !fromId
+                      ? 'border-[#16a34a] bg-[#e7f6ec] text-[#16a34a]'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <LoteAnimaisIcon size={26} /> Lote de animais
+                </button>
               </div>
               <div
                 style={{ flex: '0 0 110px', maxWidth: 110 }}

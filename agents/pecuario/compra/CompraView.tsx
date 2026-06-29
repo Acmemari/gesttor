@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Save, Info, List, Tags, Receipt, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import PessoaSelector from '../../../components/PessoaSelector';
-import IconCardButton from '../../../components/IconCardButton';
 import BrincoBovinoIcon from '../nascimento/BrincoBovinoIcon';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
 import { listAnimalCategories } from '../../../lib/api/animalCategoriesClient';
@@ -114,10 +113,6 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
   const [descontoStr, setDescontoStr] = useState('');
 
   const [modoIndividual, setModoIndividual] = useState(false);
-  // Layout da tela: 'padrao' = atual (seletor de modo como ícones compactos na
-  // linha "Animais por categoria"); 'guiado' = botões rotulados (modelo) entre a
-  // linha de dados iniciais e o grupo de categorias.
-  const [layoutCompras, setLayoutCompras] = useState<'padrao' | 'guiado'>('padrao');
 
   const [catSel, setCatSel] = useState('');
   const [qtdStr, setQtdStr] = useState('');
@@ -672,28 +667,6 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
             <Receipt size={22} className="text-[#16a34a]" />
             <h1 className="text-lg font-black tracking-tight text-[#0F172A] md:text-xl">Compras</h1>
           </div>
-
-          {/* Tab de layout da tela: Padrão (atual) × Guiado (seletor em destaque) */}
-          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
-            <button
-              type="button"
-              onClick={() => setLayoutCompras('padrao')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutCompras === 'padrao' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutCompras('guiado')}
-              className={`rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-                layoutCompras === 'guiado' ? 'bg-[#16a34a] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Padrão 2
-            </button>
-          </div>
         </div>
 
         {abasToggle}
@@ -765,32 +738,13 @@ const CompraView: React.FC<CompraViewProps> = ({ onToast }) => {
                 </div>
               </div>
 
-              {layoutCompras === 'guiado' ? (
-                <div className="mt-5">{modoSelectorLabeled}</div>
-              ) : null}
+              <div className="mt-5">{modoSelectorLabeled}</div>
 
               <div className="mt-5">
                 <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold text-gray-700">
                   <Tags size={15} className="text-[#16a34a]" /> Animais por categoria
                 </h3>
                 <div className="flex flex-wrap items-end gap-3">
-                  {layoutCompras === 'padrao' ? (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <IconCardButton
-                        active={modoIndividual}
-                        onClick={() => setModoIndividual(true)}
-                        title="Detalhamento individual (por ID)"
-                        icon={<BrincoBovinoIcon size={22} />}
-                      />
-                      <IconCardButton
-                        active={!modoIndividual}
-                        onClick={() => setModoIndividual(false)}
-                        title="Lote de animais (visão coletiva)"
-                        icon={<LoteAnimaisIcon size={28} />}
-                      />
-                    </div>
-                  ) : null}
-
                   <div style={{ flex: '0 0 110px' }}>
                     <label className={labelCls}>
                       Quantidade <span className="text-red-500">*</span>

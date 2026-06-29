@@ -27,7 +27,7 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const CATALOGO: { nome: string; cor: string; icone: string; tipos: { nome: string; icone: string }[] }[] = [
   {
     nome: 'Pecuária', cor: '#16a34a', icone: 'Beef', tipos: [
-      { nome: 'Pastagem cultivada', icone: 'Sprout' },
+      { nome: 'Pastagem cultivada', icone: 'PastagemCultivada' },
       { nome: 'Pastagem nativa/natural', icone: 'Wheat' },
       { nome: 'Pastagem em formação/reforma', icone: 'Tractor' },
       { nome: 'Forrageira de corte/Silagem/Feno', icone: 'Leaf' },

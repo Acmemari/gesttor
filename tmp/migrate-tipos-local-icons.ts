@@ -45,7 +45,7 @@ const EMOJI_TO_LUCIDE: Record<string, string> = {
   '🅿️': 'SquareParking', '🚛': 'Truck',
 };
 
-const KNOWN_NAMES = new Set(Object.values(EMOJI_TO_LUCIDE));
+const KNOWN_NAMES = new Set([...Object.values(EMOJI_TO_LUCIDE), 'PastagemCultivada', 'BrachiariaHumidicola']);
 
 async function migrateTable(pool: Pool, table: 'tipos_local' | 'tipo_local_categorias') {
   const res = await pool.query(
