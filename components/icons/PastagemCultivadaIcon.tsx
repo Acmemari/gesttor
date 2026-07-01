@@ -1,0 +1,31 @@
+import React from 'react';
+
+export const PastagemCultivadaIcon: React.FC<{
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}> = ({ size = 24, className, style }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+    aria-hidden="true"
+  >
+    <path d="M5 20H19" />
+    <path d="M12 20V5" />
+    <path d="M12 20C10.8 15.8 9.2 12.4 6.2 9.5" />
+    <path d="M12 20C13.2 15.8 14.8 12.4 17.8 9.5" />
+    <path d="M8 20C7.4 16.8 6.2 14.5 4.2 13" />
+    <path d="M16 20C16.6 16.8 17.8 14.5 19.8 13" />
+    <path d="M10.1 20C9.8 15.7 9.3 11.6 8.1 7.7" />
+    <path d="M13.9 20C14.2 15.7 14.7 11.6 15.9 7.7" />
+  </svg>
+);

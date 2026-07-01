@@ -1,0 +1,6 @@
+feat(pecuário): sugestão de destinos no geocadastro e campo de retiro dinâmico
+
+- Geocadastro de Áreas: adicionado o botão "Sugerir destino" no CadastroAreasMestre, recomendando automaticamente categorias/tipos de locais do catálogo para feições importadas de arquivos KML/KMZ.
+- API de Sugestão (/api/areas-suggest-destino): nova rota serverless que usa IA (Claude) para classificar feições não identificadas localmente, baseando-se em nome e tipo de geometria (polígono, ponto, linha).
+- Campo Retiro Dinâmico: criado o componente RetiroField e hook useRetiros. Se o nível "Retiro" estiver desativado na fazenda, o campo fica desabilitado mostrando o retiro padrão, preservando referências sem quebrar a UI.
+- Telas de Lançamento/Movimentação: adaptadas diversas visualizações (Compra, Consumo, Desmame, Gestão de Lotes, Morte, Mudança de Categoria, Nascimento, Venda) para utilizar o novo campo dinâmico de retiro.

@@ -3939,9 +3939,10 @@ const CadastroAreasMestre: React.FC<Props> = ({
          * (existingAreas) agrupados por Categoria › Tipo, com hectares. */}
         {view === 'uso' && (
           <div className="absolute inset-0 z-[30] flex flex-col bg-white">
-            {/* Abas — só quando NÃO controlada pelo container (a barra externa do
-                FarmLocaisTab cuida da navegação no modo embutido). */}
-            {mestreView === undefined && (
+            {/* Abas — quando NÃO controlada pelo container (a barra externa do
+                FarmLocaisTab cuida da navegação no modo embutido) OU em tela cheia
+                (que cobre a barra externa do container; sem isto não há como voltar). */}
+            {(mestreView === undefined || fullscreen) && (
               <div className="flex flex-wrap items-center gap-2.5 border-b border-gray-100 px-6 pb-2 pt-3">
                 <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
                   <button

@@ -1,0 +1,523 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>Fazenda Monte Líbano</name>
+	<visibility>0</visibility>
+	<open>1</open>
+	<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10201"></atom:link>
+	<gx:CascadingStyle kml:id="__managed_style_38C4206FF53DCA564D53">
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>2</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<gx:CascadingStyle kml:id="__managed_style_1705A60F763DCA564D52">
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>1.62567</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<StyleMap id="__managed_style_0462C9274A3DCA564D52">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_1705A60F763DCA564D52</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_0272B80B5A3DCA564D53</styleUrl>
+		</Pair>
+	</StyleMap>
+	<gx:CascadingStyle kml:id="__managed_style_0272B80B5A3DCA564D53">
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>2.4385</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<Style id="inline4">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="inline6">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="inline">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<StyleMap id="inline5">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#inline7</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#inline</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style03">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<Style id="inline1">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<gx:CascadingStyle kml:id="__managed_style_2BFDD6F46A3DCA564D53">
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>1.33333</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<Style id="style4">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="stylemap_id01">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#style2</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#style02</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="inline2">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#inline6</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#inline4</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style00">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="stylemap_id03">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#style4</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#style00</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="inline0">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<StyleMap id="stylemap_id02">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#style1</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#style0</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<Style id="inline7">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="style1">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<Style id="style0">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<Style id="style02">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="inline3">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#inline0</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#inline1</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style2">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="__managed_style_1B91CFA2933DCA564D53">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_2BFDD6F46A3DCA564D53</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_38C4206FF53DCA564D53</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style3">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="stylemap_id0">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#style</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#style03</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="style01">
+		<LineStyle>
+			<color>ff0000ff</color>
+		</LineStyle>
+	</Style>
+	<StyleMap id="stylemap_id00">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#style3</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#style01</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Folder id="0FEFB189CF37C9506B3D">
+		<name>Trilhas</name>
+		<open>1</open>
+		<Placemark id="1A4079559F37C9506B3D">
+			<name>Trilha 0054</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6539848513374,-15.2675264077059,0 -40.6537689697792,-15.266055531841,0 -40.653716284491,-15.2655164524458,0 -40.6534315334431,-15.2632274255447,0 -40.6528581450477,-15.2584356858118,0 -40.6516774026331,-15.2486135313218,0 -40.6510449253174,-15.2436654510465,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="229F32353637C9506B3D">
+			<name>Trilha 0055</name>
+			<styleUrl>#stylemap_id00</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6510449253174,-15.2436654510465,0 -40.6521743489421,-15.2434353379437,0 -40.6535207886788,-15.2433939923224,0 -40.6541393517434,-15.2433150992859,0 -40.6546096405219,-15.2432343845318,0 -40.6576865032308,-15.2412599870536,0 -40.6579189802844,-15.2413658901324,0 -40.6605744094582,-15.2430112283361,0 -40.6609642006106,-15.2436025776012,0 -40.6613346905371,-15.2439295276305,0 -40.6621484090637,-15.2445359361034,0 -40.6625854600009,-15.245722039767,0 -40.662858543376,-15.246182033601,0 -40.6633842017667,-15.2470582821999,0 -40.6637292917877,-15.2476980548154,0 -40.6645989736351,-15.250375489537,0 -40.6626472582778,-15.2525833045533,0 -40.66529183062745,-15.25456184953145,0 -40.66705285682093,-15.25686003165046,0 -40.66786076045364,-15.25788225470138,0 -40.66914324882509,-15.2584720888141,0 -40.66911903908499,-15.25908662986791,0 -40.66897715127929,-15.25973453814787,0 -40.66884468137468,-15.26019609200716,0 -40.66880149224464,-15.26041629399509,0 -40.66873837285139,-15.26097790554189,0 -40.6686641523921,-15.26141269187316,0 -40.66855661462085,-15.26161095509047,0 -40.66855007596014,-15.26195584516499,0 -40.66854447030114,-15.26217992417784,0 -40.66865979011235,-15.26248971998179,0 -40.6686343698156,-15.2629567449479,0 -40.6685168467734,-15.26377001813893,0 -40.66794349682171,-15.26450648213277,0 -40.66740079877275,-15.26503434115423,0 -40.66718670121281,-15.26538607130818,0 -40.66695204805622,-15.26597699122929,0 -40.66688341767216,-15.26627205024323,0 -40.66655251154393,-15.26656898125236,0 -40.66676067651817,-15.26684972492465,0 -40.6653493918943,-15.2680014849419,0 -40.6641936189504,-15.267941094772,0 -40.6608333083852,-15.26656598318,0 -40.6599911209746,-15.2664118592322,0 -40.6597805131013,-15.2663299030245,0 -40.6591719366441,-15.2659764048789,0 -40.6587381656982,-15.2659792880906,0 -40.6583046049904,-15.2662051705035,0 -40.6582099679201,-15.2664077200492,0 -40.6566938703662,-15.2669985742132,0 -40.6565751871411,-15.2668858191251,0 -40.6562351899935,-15.2668261323406,0 -40.6557757223826,-15.2669283482632,0 -40.6549957991871,-15.2665869264766,0 -40.6543600189585,-15.2669797429199,0 -40.6541308184936,-15.2673851341243,0 -40.6539848513374,-15.2675264077059,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="0569E34C7337C9506B3E">
+			<name>Trilha 0064</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6571134759863,-15.2596141936039,0 -40.6572798053782,-15.2594227563684,0 -40.6606912343542,-15.2556230187091,0 -40.6623450243571,-15.2541054294117,0 -40.6626472582778,-15.2525833045533,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="1288A37E1937C9506B3E">
+			<name>Trilha 0065</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6666053868156,-15.25624941545593,0 -40.6658947419158,-15.2571121955793,0 -40.6648791742924,-15.2580523319641,0 -40.6630477890795,-15.2592054000418,0 -40.6648058752683,-15.2617509502401,0 -40.665846602006,-15.2608657962796,0 -40.6663492129819,-15.2604572370715,0 -40.666576007356,-15.2600918814768,0 -40.6668545482346,-15.259732397275,0 -40.6671749752348,-15.2592196661031,0 -40.6675093668337,-15.2583985209463,0 -40.6677231447447,-15.2577752541811,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="282E1669D037C9506B3E">
+			<name>Trilha 0066</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6630477890795,-15.2592054000418,0 -40.6619745694309,-15.2599555723474,0 -40.6615039144299,-15.2598089380503,0 -40.6607791003051,-15.2595602101517,0 -40.657261184339,-15.2594441883224,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="37C4902AB437C9506B3E">
+			<name>Trilha 0067</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6534237651405,-15.2631625088752,0 -40.6536132811754,-15.2632485204675,0 -40.6543303109686,-15.2633945293795,0 -40.6549083277619,-15.263520009572,0 -40.6557095602182,-15.2634492327493,0 -40.6561015901943,-15.2637351610847,0 -40.6566515616244,-15.2638666696751,0 -40.6576246836473,-15.2643412983617,0 -40.6577691915348,-15.2643402295021,0 -40.6584212190101,-15.2639156860954,0 -40.6586223262614,-15.2637515906786,0 -40.6589402490932,-15.2635815221164,0 -40.659080901284,-15.2631551940378,0 -40.6589439060773,-15.2624552407179,0 -40.6588306759274,-15.2618501042445,0 -40.658783692302,-15.2614675242532,0 -40.6586787438365,-15.2612051331214,0 -40.6585648808083,-15.2609969050589,0 -40.657911421237,-15.2603475789596,0 -40.6574301690588,-15.2599093197855,0 -40.6571134759863,-15.2596141936039,0 -40.65658552268189,-15.25944191991331,0 -40.656344160696,-15.2594157862984,0 -40.6554253157861,-15.2593300393318,0 -40.6545072557314,-15.2592443617374,0 -40.6531485041168,-15.2591449725605,0 -40.6529699124276,-15.2593697376992,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="4AB9AD836937C9506B3E">
+			<name>Trilha 0068</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6648058752683,-15.2617509502401,0 -40.6643050913314,-15.262233690664,0 -40.6638279005577,-15.2627053379293,0 -40.6636796497792,-15.2628099259092,0 -40.6633617737646,-15.2628918379693,0 -40.6616020073068,-15.2632292724074,0 -40.6597625022063,-15.2636029852853,0 -40.6595810986565,-15.2635227667229,0 -40.6589773757781,-15.2634689883026,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="5B840176E337C9506B3E">
+			<name>CORREDOR</name>
+			<styleUrl>#stylemap_id01</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6613170060118,-15.2633808229571,0 -40.6613099477018,-15.263406985394,0 -40.6614293174036,-15.2634527928778,0 -40.6616932857634,-15.263526471387,0 -40.6618173945499,-15.2635676419051,0 -40.6619511892725,-15.2636340195716,0 -40.6623058237735,-15.2638096248749,0 -40.6625499572248,-15.2639209078893,0 -40.662753581676,-15.2639705258078,0 -40.6631432345009,-15.2640394865958,0 -40.6633675052817,-15.2640619866682,0 -40.6634213099153,-15.2640666142412,0 -40.6636837296467,-15.264080913885,0 -40.663818861018,-15.2641158731843,0 -40.6640091155715,-15.264212069187,0 -40.6641183934901,-15.2643007386473,0 -40.6645176286001,-15.2647223755169,0 -40.6647654315338,-15.2649856121974,0 -40.6649904390295,-15.2652285295705,0 -40.6652169962773,-15.26543765608,0 -40.6657761866468,-15.2659038290819,0 -40.6659887353785,-15.2660927655035,0 -40.6661358924344,-15.2662229537555,0 -40.6662256653705,-15.2662837064042,0 -40.6664030784334,-15.2663612911196,0 -40.66652642275869,-15.26659161222649,0 -40.6664758148447,-15.26662606736369,0 -40.66647829044445,-15.26662604274734,0 -40.66652722464735,-15.26681535623302,0 -40.66654578744181,-15.26692007701961,0 -40.66658256299288,-15.26699231497794,0 -40.66637681706435,-15.26644732994561,0 -40.6663186015862,-15.2664071647827,0 -40.6662472551398,-15.2664017331101,0 -40.6661956495808,-15.266380638425,0 -40.6661319564564,-15.2663182828669,0 -40.6658219965582,-15.2660082232664,0 -40.665533600373,-15.2657675407316,0 -40.6652072882979,-15.2655075835992,0 -40.664950129074,-15.2652844329651,0 -40.6645894956603,-15.2648781512396,0 -40.6643778109566,-15.2646437148823,0 -40.6642350756853,-15.2645033575696,0 -40.6641067936473,-15.2643633421589,0 -40.6640017897414,-15.2642611870527,0 -40.6638446300243,-15.2641827707749,0 -40.6637152763872,-15.2641211768738,0 -40.6635297885983,-15.2641230499568,0 -40.6633053139187,-15.2641079163328,0 -40.6629263410393,-15.2640667179766,0 -40.6627932732503,-15.2640349050697,0 -40.6625323410628,-15.2639591170729,0 -40.6624338777671,-15.2639233982493,0 -40.6622335755351,-15.2638241912978,0 -40.6617597983865,-15.2635958370575,0 -40.6613276358265,-15.2634739400778,0 -40.6612484931452,-15.2634477079438,0 -40.6611414652066,-15.2634186785013,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="603E6D861C37C9506B3E">
+			<name>DV1</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6667484693715,-15.2600718041342,0 -40.6686626931717,-15.2614102138728,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="7FB3593EF937C9506B3E">
+			<name>DV2</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.666359922487,-15.2606230916185,0 -40.6664282685405,-15.2610776202102,0 -40.6665072307528,-15.2626467386102,0 -40.666626152872,-15.2649525032483,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="8361BB4A8E37C9506B3E">
+			<name>DV3</name>
+			<styleUrl>#stylemap_id0</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.66401242464551,-15.26265170956062,0 -40.6661351213069,-15.2645550986486,0 -40.6666276520483,-15.2649543086889,0 -40.6671839207621,-15.2653877484556,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="9E7ABF94CF37C9506B3E">
+			<name>AR1</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6635885695736,-15.2629267029949,0 -40.6640058167535,-15.2631724626241,0 -40.6642858331929,-15.2629127930538,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="A63A89D95D37C9506B3E">
+			<name>DV4</name>
+			<styleUrl>#stylemap_id03</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.663845040434,-15.264182016063,0 -40.660839006375,-15.2656940799521,0 -40.66019346051783,-15.26611795156694,0 -40.65978809358235,-15.26591545955156,0 -40.65963006685537,-15.26536327017505,0 -40.65954950162613,-15.26422619702272,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="0AC5ADAB1637C9506B3F">
+			<name>dv</name>
+			<styleUrl>#inline3</styleUrl>
+			<LineString>
+				<tessellate>1</tessellate>
+				<coordinates>
+					-40.66553226564576,-15.26576398999357,0 -40.66509949853594,-15.26676410314553,0 -40.66502450540544,-15.26694484890903,0 -40.66454038852189,-15.26691327257396,0 -40.66372110819374,-15.2666037418777,0 -40.6632967510757,-15.26643597270724,0 -40.66255373793607,-15.26634136625213,0 -40.66204336443936,-15.266292357637,0 -40.66135180632461,-15.26629545423215,0 -40.66133606358471,-15.26665581017113,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="1442D9877E37C9506B3F">
+			<name>dv22</name>
+			<styleUrl>#inline5</styleUrl>
+			<LineString>
+				<tessellate>1</tessellate>
+				<coordinates>
+					-40.66786205571709,-15.25788073463527,0 -40.66766467306237,-15.25838341148106,0 -40.66729694188177,-15.25917819298725,0 -40.66720492364954,-15.2593787093178,0 -40.66675184704279,-15.26007121213728,0 -40.66636263709254,-15.26063005194072,0 -40.6660054724593,-15.26090584561186,0 -40.66554643961729,-15.26125501438941,0 -40.66488125386605,-15.26184377074071,0 -40.66458220039589,-15.26210486606881,0 -40.6640043962479,-15.26266205220006,0 -40.66386429006859,-15.26280038747972,0 -40.66360184820154,-15.26294022520956,0 -40.66338250892868,-15.26300145500475,0 -40.66314078774376,-15.26305122168093,0 -40.66231806540408,-15.26320093563287,0 -40.66167283644003,-15.26331609049045,0 -40.66131525682182,-15.26338198484633,0 -40.66113932950838,-15.26341980368745,0 -40.66080832509908,-15.26348448549103,0 -40.6603497414885,-15.26357708747538,0 -40.6599831639987,-15.26363858182962,0 -40.65978388338191,-15.26367489214393,0 -40.65967784095631,-15.26369797595811,0 -40.65948391002127,-15.26376374976628,0 -40.65919223746909,-15.26380266660659,0 -40.65902680328264,-15.26382594143517,0 -40.65892910813992,-15.26385463976432,0 -40.65891616202263,-15.26381902170107,0 -40.65869869763125,-15.26387245578422,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="2F462C2AAF37C9506B3F">
+			<name>descanso</name>
+			<styleUrl>#inline2</styleUrl>
+			<LineString>
+				<tessellate>1</tessellate>
+				<coordinates>
+					-40.66789357707196,-15.26086574675115,0 -40.66779092096036,-15.2610314836538,0 -40.667569627546,-15.26093420740043,0 -40.66766743725934,-15.26070705835641,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+		<Placemark id="3D6EFF8B3037C9506B3F">
+			<name>Trilha 0069</name>
+			<styleUrl>#stylemap_id02</styleUrl>
+			<LineString>
+				<coordinates>
+					-40.6534336692188,-15.2632445946617,0 -40.6536550331168,-15.2633397042967,0 -40.6540770789589,-15.2634487450256,0 -40.6544549532757,-15.2635520555333,0 -40.6547874843774,-15.2636127380264,0 -40.6550573809677,-15.2636297724647,0 -40.6555870618604,-15.2635747191629,0 -40.6556995024893,-15.2635828712846,0 -40.6558807716078,-15.263749276619,0 -40.6561426720399,-15.2638439129542,0 -40.6564582962504,-15.2639149632774,0 -40.6567530211461,-15.2639937728073,0 -40.6572585884789,-15.2643054346211,0 -40.6576192419943,-15.2644725781226,0 -40.6577965453968,-15.2644332981899,0 -40.6585606663557,-15.2639258180186,0 -40.6587018807676,-15.2638706470834,0 -40.6588150114201,-15.2647719554244,0 -40.6587992936933,-15.2650087217565,0 -40.6585005169726,-15.26517279407,0 -40.658444292974,-15.2656646765091,0 -40.6584072623991,-15.2659886422817,0 -40.6583759886211,-15.2661679801662,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+	</Folder>
+	<Placemark id="08DA48D4D437CFFF662E">
+		<name>Fazenda Monte Líbano</name>
+		<LookAt>
+			<longitude>-40.65886898353271</longitude>
+			<latitude>-15.2640326093259</latitude>
+			<altitude>372.1958245084288</altitude>
+			<heading>278.843842953331</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>3764.671083362773</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_0462C9274A3DCA564D52</styleUrl>
+		<Point>
+			<coordinates>-40.6588820082363,-15.26399182355812,372.5603720926289</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark id="05AFEE96173AAC29E2A6">
+		<name>Captação Adutora</name>
+		<LookAt>
+			<longitude>-40.66036042448551</longitude>
+			<latitude>-15.26640921902516</latitude>
+			<altitude>343.9937664577968</altitude>
+			<heading>359.457991745746</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>245.1965653101797</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_1B91CFA2933DCA564D53</styleUrl>
+		<Point>
+			<coordinates>-40.66036042448551,-15.26640921902516,343.9937664577968</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark id="0C051545AE3AAC2D234B">
+		<name>Reservatório 1</name>
+		<LookAt>
+			<longitude>-40.65995814423774</longitude>
+			<latitude>-15.2559641602068</latitude>
+			<altitude>464.8104139114449</altitude>
+			<heading>345.7270915692018</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>154.2985750194384</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_1B91CFA2933DCA564D53</styleUrl>
+		<Point>
+			<coordinates>-40.65995739364249,-15.25596290982747,464.8035757288454</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark id="0B20020B193AAC2E5E39">
+		<name>Reservatório 2</name>
+		<LookAt>
+			<longitude>-40.65724312906286</longitude>
+			<latitude>-15.25982068204611</latitude>
+			<altitude>409.0402565822131</altitude>
+			<heading>345.7264952284819</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>176.0679034421082</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_1B91CFA2933DCA564D53</styleUrl>
+		<Point>
+			<coordinates>-40.65724521122819,-15.25982002624704,409.0506889832183</coordinates>
+		</Point>
+	</Placemark>
+</Document>
+</kml>
