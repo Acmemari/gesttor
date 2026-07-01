@@ -68,3 +68,6 @@ test-results/
 .vercel/
 **/__pycache__/
 *.pyc
+
+# Worktrees locais do Claude Code (nunca versionar — viram gitlinks órfãos e quebram o deploy do Vercel)
+.claude/worktrees/
