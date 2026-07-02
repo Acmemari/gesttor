@@ -1936,7 +1936,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
             nome: ctx.tipo ?? defaultNome(ctx.nivel),
             nivel: ctx.nivel,
             coords,
-            tipo: ctx.nivel === 'local' ? ctx.tipo ?? 'Pasto' : null,
+            // Sem tipo específico: numa categoria deixa em branco (o modal lista os
+            // tipos dela); fora de categoria mantém o padrão legado "Pasto".
+            tipo: ctx.nivel === 'local' ? (ctx.tipo ?? (ctx.categoriaId ? null : 'Pasto')) : null,
             detalhe: null,
             categoriaId: ctx.categoriaId,
             geomKind: isLine ? 'line' : 'area',
@@ -2490,7 +2492,10 @@ const CadastroAreasMestre: React.FC<Props> = ({
     [onToast],
   );
 
-  /** Botão "Desenhar" da barra do mapa: liga/desliga no nível atual. */
+  /** Botão "Desenhar" da barra do mapa: liga/desliga. Considera a CATEGORIA ativa:
+   *  fora de "Perímetro", desenha um LOCAL já vinculado à categoria selecionada (e ao
+   *  tipo, se um estiver expandido) — assim o modal "Classificar local" abre com a
+   *  categoria/tipo pré-preenchidos, sem cair em "sem categoria". */
   const toggleDraw = useCallback(() => {
     if (drawHandlerRef.current) {
       drawHandlerRef.current.disable();
@@ -2498,8 +2503,14 @@ const CadastroAreasMestre: React.FC<Props> = ({
       setDrawing(false);
       return;
     }
+    if (activeCat !== 'perimetro') {
+      const tAtivo = (tiposByCat.get(activeCat) ?? []).find((t) => t.id === expandedTipo) ?? null;
+      const geom = tAtivo && defaultGeomForTipo(tAtivo.nome) === 'line' ? 'line' : 'area';
+      beginDraw('local', tAtivo?.nome ?? null, activeCat, geom);
+      return;
+    }
     beginDraw(drawNivelRef.current);
-  }, [beginDraw]);
+  }, [beginDraw, activeCat, tiposByCat, expandedTipo]);
 
   // ── Editar forma (vértices) ──────────────────────────────────────────────
   const beginEdit = useCallback(
@@ -2735,7 +2746,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
           const guess = inferCatalogClassification(name, catalog);
           tipo = guess.tipo;
           detalhe = guess.detalhe;
-          categoriaId = guess.categoriaId;
+          // Numa categoria específica, ela é o padrão quando o palpite não achou nada.
+          categoriaId = guess.categoriaId ?? (!isPerim ? activeCat : null);
         }
       }
 
