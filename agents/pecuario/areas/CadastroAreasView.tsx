@@ -39,8 +39,9 @@ import {
   fazRootId,
   type AreaWrite,
 } from './areasClient';
-import { listFarmMaps, createFarmMap, deleteFarmMap, type FarmMapData } from '../../../lib/api/farmMapsClient';
+import { listFarmMaps, createFarmMap, updateFarmMap, deleteFarmMap, type FarmMapData } from '../../../lib/api/farmMapsClient';
 import { storageUpload } from '../../../lib/storage';
+import type { LineToPolyReport } from './kmlLineToPolygon';
 import { redesenhar, aposentar as apiAposentar } from '../../../lib/api/areaMovimentosClient';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import CadastroAreasMestre, {
@@ -616,11 +617,25 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     }
   }, [overlayMaps, overlayVisible, mapReady]);
 
-  // ── Importou um KMZ → persiste JÁ como ARQUIVO ORIGINAL (referência) ──────
-  // Regra do usuário: ao carregar o KMZ ele deve ser salvo e persistir como o
-  // arquivo original. O novo mapa (produção) é gerado depois, ao Salvar.
+  // ── Importou um KMZ → persiste o ARQUIVO ORIGINAL + a CÓPIA CORRIGIDA ──────
+  // Regra do usuário: ao carregar o KMZ ele deve ser salvo e persistir. Agora
+  // gravamos DE VERDADE no B2 o arquivo original (nunca sobrescrito) e, ao lado,
+  // uma cópia .kmz JÁ CORRIGIDA (linhas fechadas→polígonos). O GeoJSON salvo é o
+  // corrigido. As ações desfazer/converter do resumo re-chamam isto com o MESMO
+  // `file` → fazemos UPSERT (atualiza a mesma linha, não cria outra).
+  const importedMapRef = useRef<{ file: File; mapId: string } | null>(null);
   const handleImportOriginal = useCallback(
-    async ({ file, geojson }: { file: File; geojson: GeoJSON.FeatureCollection }) => {
+    async ({
+      file,
+      geojson,
+      correctedKmz,
+      correcaoReport,
+    }: {
+      file: File;
+      geojson: GeoJSON.FeatureCollection;
+      correctedKmz?: Blob;
+      correcaoReport?: LineToPolyReport;
+    }) => {
       // Guarda: nunca gravar um mapa sem fazenda — evita persistir com farm_id
       // errado/vazio por corrida de estado (a fazenda ainda não resolvida).
       if (!farmId) {
@@ -628,20 +643,69 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         return;
       }
       const ext = file.name.toLowerCase().endsWith('.kml') ? 'kml' : 'kmz';
+      // Sobe a cópia corrigida (quando houver) e devolve os metadados p/ o banco.
+      const uploadCorrected = async () => {
+        if (!correctedKmz) return { correctedStoragePath: null, correctedFileName: null, correctedFileSize: null };
+        const rel = `${farmId}/${crypto.randomUUID()}.kmz`;
+        await storageUpload('farm-maps', rel, correctedKmz, {
+          contentType: 'application/vnd.google-earth.kmz',
+        });
+        return {
+          correctedStoragePath: `farm-maps/${rel}`,
+          correctedFileName: file.name.replace(/\.(kml|kmz)$/i, '') + '_corrigido.kmz',
+          correctedFileSize: correctedKmz.size,
+        };
+      };
       try {
-        await createFarmMap({
+        const prev = importedMapRef.current;
+        // Re-persistência (mesmo arquivo): atualiza a linha existente.
+        if (prev && prev.file === file) {
+          const corr = await uploadCorrected();
+          await updateFarmMap(prev.mapId, {
+            geojson,
+            ...corr,
+            correcaoReport: correcaoReport ?? null,
+          });
+          setOverlayReload((v) => v + 1);
+          return;
+        }
+        // Primeiro import deste arquivo (ou re-importação): DEDUP — remove qualquer
+        // Original anterior com o MESMO nome, para re-importar substituir em vez de
+        // empilhar cópias. O mapa de Produção tem nome diferente e é preservado.
+        // `deleteFarmMap` remove também os blobs (original + corrigido) no B2.
+        // Espelha o dedupe do KMZ de produção (handleMestreSave).
+        try {
+          const atuais = await listFarmMaps(farmId);
+          for (const old of atuais.filter((m) => m.original_name === file.name)) {
+            await deleteFarmMap(old.id);
+          }
+        } catch (e) {
+          console.warn('Não foi possível limpar originais homônimos antigos:', e);
+        }
+        // Sobe o original + a cópia corrigida.
+        const origRel = `${farmId}/${crypto.randomUUID()}.${ext}`;
+        await storageUpload('farm-maps', origRel, file, {
+          contentType: ext === 'kml'
+            ? 'application/vnd.google-earth.kml+xml'
+            : 'application/vnd.google-earth.kmz',
+        });
+        const corr = await uploadCorrected();
+        const saved = await createFarmMap({
           farmId,
-          fileName: `${crypto.randomUUID()}.${ext}`,
+          fileName: origRel.split('/').pop() as string,
           originalName: file.name,
           fileType: ext,
           fileSize: file.size,
-          storagePath: `farm-maps/${farmId}/${crypto.randomUUID()}.${ext}`,
+          storagePath: `farm-maps/${origRel}`,
           geojson,
+          ...corr,
+          correcaoReport: correcaoReport ?? null,
         });
+        importedMapRef.current = { file, mapId: saved.id };
         setOverlayReload((v) => v + 1);
       } catch (e) {
-        console.error('Falha ao persistir o KMZ original:', e);
-        onToast?.('Arquivo importado, mas não foi possível guardá-lo como original.', 'warning');
+        console.error('Falha ao persistir o KMZ:', e);
+        onToast?.('Arquivo importado, mas não foi possível guardá-lo.', 'warning');
       }
     },
     [farmId, onToast],
@@ -1293,19 +1357,63 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
     [onMutated, onToast],
   );
 
+  // Redesenho de geometria de uma área JÁ salva, disparado pela edição de vértices
+  // no mapa (mestre). Locais poligonais passam pelo LEDGER (redesenhar → nova versão
+  // na linha do tempo); linhas e retiro/setor/fazenda são atualização direta.
+  const handleEditSavedGeometry = useCallback(
+    async (areaId: string, coords: [number, number][]) => {
+      const area = areasRef.current.find((a) => a.id === areaId);
+      if (!area) return;
+      const isLinha = area.geomKind === 'line';
+      try {
+        setBusy(true);
+        if (area.nivel === 'local' && organizationId && !isLinha) {
+          await redesenhar({
+            organizationId, farmId, data: hojeISODia(), areaId: area.id,
+            geometry: coords, geometrySource: 'desenho', area: haFromCoords(coords),
+          });
+        } else {
+          await apiUpdateGeometry(farmId, area, coords);
+        }
+        setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, coords } : a)));
+        onMutated?.();
+        onToast?.('Forma atualizada.', 'success');
+      } catch (err) {
+        console.error(err);
+        onToast?.('Não foi possível salvar a forma.', 'error');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [organizationId, farmId, onMutated, onToast],
+  );
+
   const handleDeleteSavedArea = useCallback(
     async (areaId: string) => {
       const area = areasRef.current.find((a) => a.id === areaId);
       if (!area) return;
       try {
         setBusy(true);
-        await apiDeleteArea(area);
+        try {
+          await apiDeleteArea(area);
+        } catch (e) {
+          // FK do rebanho (RESTRICT): local com lançamentos não deleta → APOSENTA
+          // (preserva a identidade e some do mapa). Retiro/setor presos propagam o erro.
+          if (area.nivel === 'local' && organizationId) {
+            await apiAposentar({
+              organizationId, farmId, data: new Date().toISOString().slice(0, 10),
+              areaId: area.id, motivo: 'exclusão pelo mapa',
+            });
+          } else {
+            throw e;
+          }
+        }
         setAreas((prev) =>
           prev.filter((x) => x.id !== areaId).map((x) => (x.parent === areaId ? { ...x, parent: null } : x)),
         );
         if (selId === areaId) selectArea(null);
         onMutated?.();
-        onToast?.(`Área excluída · ${area.nome} removida do cadastro.`, 'warning');
+        onToast?.(`Área removida · ${area.nome}.`, 'warning');
       } catch (err) {
         console.error(err);
         onToast?.('Não foi possível excluir a área.', 'error');
@@ -1313,7 +1421,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
         setBusy(false);
       }
     },
-    [selId, selectArea, onMutated, onToast],
+    [selId, selectArea, onMutated, onToast, organizationId, farmId],
   );
 
   // ── Reset do mapa de PRODUÇÃO: apaga as áreas geradas + perímetro ────────────
@@ -1636,6 +1744,7 @@ const CadastroAreasView: React.FC<CadastroAreasViewProps> = ({
           uploadedMaps={overlayMaps}
           readOnly={readOnly}
           onEditSavedArea={readOnly ? undefined : handleEditSavedArea}
+          onEditSavedGeometry={readOnly ? undefined : handleEditSavedGeometry}
           onDeleteSavedArea={readOnly ? undefined : handleDeleteSavedArea}
           onDeleteArquivo={readOnly ? undefined : handleDeleteArquivoKmz}
         />

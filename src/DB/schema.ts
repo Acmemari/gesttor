@@ -582,6 +582,14 @@ export const farmMaps = pgTable('farm_maps', {
   fileSize: integer('file_size').notNull(),
   storagePath: text('storage_path').notNull(),
   geojson: jsonb('geojson'),
+  // ── Correção automática linha→polígono (skill kmz-line-to-polygon) ──────────
+  // Cópia .kmz do arquivo JÁ CORRIGIDA (linhas fechadas viram polígonos), guardada
+  // ao lado do original (que nunca é sobrescrito). Nulo até haver correção.
+  correctedStoragePath: text('corrected_storage_path'),
+  correctedFileName: text('corrected_file_name'),
+  correctedFileSize: integer('corrected_file_size'),
+  /** relatório agregado da correção (contagens + listas) p/ reexibir o resumo. */
+  correcaoReport: jsonb('correcao_report'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

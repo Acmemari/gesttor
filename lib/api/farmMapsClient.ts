@@ -16,6 +16,12 @@ interface FarmMapData {
   file_size: number;
   storage_path: string;
   geojson: unknown;
+  /** .kmz já corrigido (linhas fechadas→polígonos), ao lado do original. */
+  corrected_storage_path: string | null;
+  corrected_file_name: string | null;
+  corrected_file_size: number | null;
+  /** relatório agregado da correção linha→polígono. */
+  correcao_report: unknown;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -75,6 +81,10 @@ function normalizeFarmMap(raw: Record<string, unknown>): FarmMapData {
     file_size: pick('file_size', 'fileSize') ?? 0,
     storage_path: pick('storage_path', 'storagePath') ?? '',
     geojson: raw.geojson ?? null,
+    corrected_storage_path: pick('corrected_storage_path', 'correctedStoragePath') ?? null,
+    corrected_file_name: pick('corrected_file_name', 'correctedFileName') ?? null,
+    corrected_file_size: pick('corrected_file_size', 'correctedFileSize') ?? null,
+    correcao_report: (raw.correcao_report ?? raw.correcaoReport) ?? null,
     created_at: pick('created_at', 'createdAt') ?? null,
     updated_at: pick('updated_at', 'updatedAt') ?? null,
   };
@@ -96,6 +106,10 @@ export async function createFarmMap(data: {
   fileSize: number;
   storagePath: string;
   geojson?: unknown;
+  correctedStoragePath?: string | null;
+  correctedFileName?: string | null;
+  correctedFileSize?: number | null;
+  correcaoReport?: unknown;
 }): Promise<FarmMapData> {
   const res = await fetchApi<Record<string, unknown>>(`${API_BASE}/farm-maps`, {
     method: 'POST',
@@ -105,13 +119,35 @@ export async function createFarmMap(data: {
   return normalizeFarmMap(res.data!);
 }
 
-export async function deleteFarmMapApi(id: string): Promise<{ storagePath: string }> {
-  const res = await fetchApi<{ deleted: boolean; storagePath: string }>(
+/** Atualiza um mapa existente (re-persistência das ações desfazer/converter
+ *  mesmo assim do resumo da correção): mesmo registro, novo GeoJSON/.kmz. */
+export async function updateFarmMap(
+  id: string,
+  data: {
+    geojson?: unknown;
+    correctedStoragePath?: string | null;
+    correctedFileName?: string | null;
+    correctedFileSize?: number | null;
+    correcaoReport?: unknown;
+  },
+): Promise<FarmMapData> {
+  const res = await fetchApi<Record<string, unknown>>(
+    `${API_BASE}/farm-maps?id=${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+  );
+  if (!res.ok) throw new Error(res.error);
+  return normalizeFarmMap(res.data!);
+}
+
+export async function deleteFarmMapApi(
+  id: string,
+): Promise<{ storagePath: string; correctedStoragePath: string | null }> {
+  const res = await fetchApi<{ deleted: boolean; storagePath: string; correctedStoragePath?: string | null }>(
     `${API_BASE}/farm-maps?id=${encodeURIComponent(id)}`,
     { method: 'DELETE' },
   );
   if (!res.ok) throw new Error(res.error);
-  return { storagePath: res.data!.storagePath };
+  return { storagePath: res.data!.storagePath, correctedStoragePath: res.data!.correctedStoragePath ?? null };
 }
 
 /**
@@ -125,12 +161,13 @@ export async function deleteFarmMapApi(id: string): Promise<{ storagePath: strin
  * saiu do banco/UI; o órfão só é registrado em console.warn.
  */
 export async function deleteFarmMap(id: string): Promise<void> {
-  const { storagePath } = await deleteFarmMapApi(id);
-  if (storagePath) {
+  const { storagePath, correctedStoragePath } = await deleteFarmMapApi(id);
+  const keys = [storagePath, correctedStoragePath].filter((k): k is string => !!k);
+  if (keys.length) {
     try {
-      await storageRemoveKeys([storagePath]);
+      await storageRemoveKeys(keys);
     } catch (e) {
-      console.warn('[farmMapsClient] arquivo de storage não removido:', storagePath, e);
+      console.warn('[farmMapsClient] arquivo(s) de storage não removido(s):', keys, e);
     }
   }
 }

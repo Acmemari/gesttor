@@ -115,6 +115,16 @@ export async function storageGetSignedUrl(
 }
 
 /**
+ * Generate a time-limited signed URL from a FULL storage key already stored in
+ * the DB (e.g. "farm-maps/<farmId>/<uuid>.kmz"). Complements
+ * `storageGetSignedUrl`, which composes the key from prefix + relative path.
+ */
+export async function storageSignedUrlForKey(key: string, expiresIn = 3600): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: getBucket(), Key: key });
+  return awsGetSignedUrl(getClient(), command, { expiresIn });
+}
+
+/**
  * Build a public URL for an object.
  * Requires the bucket (or prefix) to allow public reads in B2.
  */

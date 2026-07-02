@@ -34,6 +34,7 @@ import {
   Square,
   FileUp,
   ChevronDown,
+  ChevronRight,
   Search,
   Minus,
   Sparkles,
@@ -41,10 +42,13 @@ import {
   ArrowRight,
   Spline,
   ListChecks,
+  RotateCcw,
+  Download,
 } from 'lucide-react';
 import { areaM2, cleanRing, fmtArea } from './util';
 import { NIVEIS, ORDEM, type Area, type Fonte, type Nivel } from './types';
-import { importarKmlGoogleEarth, KmlImportError, inferCatalogClassification, defaultGeomForTipo, suggestDestino, type KmlImportResult } from './kmlImport';
+import { importarKmlGoogleEarth, recorrigirKml, KmlImportError, inferCatalogClassification, defaultGeomForTipo, suggestDestino, type KmlImportResult } from './kmlImport';
+import type { LineToPolyReport, ConvertidaEntry, IgnoradaNomeEntry } from './kmlLineToPolygon';
 import { suggestDestinos } from '../../../lib/api/areasSuggestDestinoClient';
 import { createVertexEditor, type VertexEditor } from './mapEditing';
 import {
@@ -56,7 +60,9 @@ import {
 import { TipoIcon } from '../../tiposLocalIcons';
 import { buildCatalogIndex, pointDivIcon, pointLatLng, type CatalogIndex } from './mapPoints';
 import type { FarmMapData } from '../../../lib/api/farmMapsClient';
+import { storageSignedUrlForKey } from '../../../lib/storage';
 import DateInputBR from '../../../components/DateInputBR';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import './cadastroAreas.css';
 
 /** Data local de hoje em ISO 'YYYY-MM-DD' (sem deslocamento de fuso). */
@@ -119,6 +125,11 @@ interface DraftArea {
    *  re-hidratação ao reabrir a tela. Marca a feição como `saved` e evita que a mesma
    *  Área case com duas linhas (consumo 1-para-1) — base do round-trip por id. */
   localId?: string | null;
+  /** feição que era uma LINHA fechada e foi convertida em área na importação
+   *  (correção automática do KMZ). Vem da proveniência `__corrigido` no GeoJSON. */
+  corrigido?: boolean;
+  /** distância (m) entre 1º e último ponto da linha original (só p/ tooltip). */
+  corrigidoGapM?: number;
 }
 
 /** Item enviado ao container para persistir. */
@@ -172,8 +183,16 @@ interface Props {
   onToggleLevel?: (nivel: 'retiro' | 'setor' | 'local') => void | Promise<void>;
   onClose: () => void;
   onConfirm: (payload: MestreSavePayload) => Promise<MestreSaveResult | void> | void;
-  /** Persiste o KMZ ORIGINAL (bruto) assim que importado — vira o arquivo de referência. */
-  onImportOriginal?: (payload: { file: File; geojson: GeoJSON.FeatureCollection }) => void | Promise<void>;
+  /** Persiste o KMZ assim que importado (arquivo de referência): o `file` bruto
+   *  original + o `.kmz` já corrigido (linhas fechadas→polígonos) + o GeoJSON
+   *  corrigido + o relatório da correção. É re-chamável nas ações desfazer/forçar
+   *  do resumo — o container faz UPSERT (mesmo `file` ⇒ atualiza a mesma linha). */
+  onImportOriginal?: (payload: {
+    file: File;
+    geojson: GeoJSON.FeatureCollection;
+    correctedKmz?: Blob;
+    correcaoReport?: LineToPolyReport;
+  }) => void | Promise<void>;
   onToast?: ToastFn;
   /**
    * Quando definido, esta tela é usada como tela inicial (não modal transitório)
@@ -214,7 +233,11 @@ interface Props {
     areaId: string,
     patch: { nome: string; strokeColor: string; fillColor: string; fillOpacity: number; strokeWeight: number },
   ) => void | Promise<void>;
-  /** Exclui um Retiro/Setor JÁ salvo (clicado no mapa). */
+  /** Redesenha a GEOMETRIA (vértices) de uma área JÁ salva — disparado ao concluir
+   *  a edição de forma no mapa. O container persiste (ledger p/ local, geometria
+   *  direta p/ retiro/setor/linha) e recarrega. Ausência ⇒ sem edição de forma salva. */
+  onEditSavedGeometry?: (areaId: string, coords: [number, number][]) => void | Promise<void>;
+  /** Exclui uma área JÁ salva (polígono ou linha), clicada no mapa. */
   onDeleteSavedArea?: (areaId: string) => void | Promise<void>;
   /** Exclui um arquivo KMZ (Original ou Produção) e limpa o que foi feito nele — o
    *  container apaga o arquivo e, se for produção, as áreas geradas (sequenciado). */
@@ -458,6 +481,9 @@ function buildItemsFromGeojson(geojson: GeoJSON.FeatureCollection): DraftArea[] 
         const sysRing = ring.map(([lng, lat]) => [lat, lng] as [number, number]);
         const clean = cleanRing(sysRing);
         if (clean.length >= 3) {
+          // Proveniência da correção linha→polígono (ExtendedData → properties).
+          const corrigido = f.properties?.__corrigido === '1' || f.properties?.__corrigido === true;
+          const gapRaw = f.properties?.__gapM;
           out.push({
             id: uuid(),
             nome: name,
@@ -476,6 +502,8 @@ function buildItemsFromGeojson(geojson: GeoJSON.FeatureCollection): DraftArea[] 
             fillOpacity: null,
             strokeWeight: null,
             srcTipo: (f.properties?.tipo as string) ?? null,
+            corrigido: corrigido || undefined,
+            corrigidoGapM: corrigido && gapRaw != null ? Number(gapRaw) : undefined,
           });
         }
       }
@@ -776,6 +804,213 @@ const SwatchGrid: React.FC<{ value: string; onChange: (c: string) => void; disab
     })}
   </div>
 );
+
+/** Resumo da correção automática de linhas fechadas → polígonos aplicada ao
+ *  importar um KMZ/KML. Mostra ao usuário o que foi feito (convertidas), o que
+ *  ficou de fora e por quê, com ações por feição: "desfazer" (volta a ser linha)
+ *  e "converter mesmo assim" (para as fechadas ignoradas por nome). */
+const CorrecaoResumoModal: React.FC<{
+  report: LineToPolyReport;
+  recorrigindo: boolean;
+  onClose: () => void;
+  onToggleConvertida: (e: ConvertidaEntry) => void;
+  onToggleIgnoradaNome: (e: IgnoradaNomeEntry) => void;
+}> = ({ report, recorrigindo, onClose, onToggleConvertida, onToggleIgnoradaNome }) => {
+  const [showAbertas, setShowAbertas] = useState(false);
+  const aplicadas = report.convertidas.filter((c) => c.aplicada).length;
+  const forcadas = report.ignoradasNome.filter((c) => c.forcada).length;
+  const nDegeneradas = report.ignoradasGeom.length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[2100] flex items-center justify-center bg-[rgba(16,24,40,.42)] p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-[460px] max-w-full flex-col rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start gap-3 px-5 pb-2 pt-4">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+            <Wand2 size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="m-0 text-[16px] font-bold text-gray-900">Correção automática do mapa</h3>
+            <div className="mt-0.5 text-[12.5px] text-gray-500">
+              Áreas desenhadas como <b>linha</b> foram convertidas em <b>polígono</b>. O arquivo é
+              salvo já corrigido; o original é preservado.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Resumo em números */}
+        <div className="flex flex-wrap gap-1.5 px-5 py-2 text-[11px]">
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">
+            {aplicadas} convertida{aplicadas === 1 ? '' : 's'}
+          </span>
+          {report.poligonosExistentes > 0 && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+              {report.poligonosExistentes} já {report.poligonosExistentes === 1 ? 'era' : 'eram'} polígono
+            </span>
+          )}
+          {report.pontos > 0 && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+              {report.pontos} ponto{report.pontos === 1 ? '' : 's'}
+            </span>
+          )}
+          {report.mantidasAbertas.length > 0 && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+              {report.mantidasAbertas.length} linha{report.mantidasAbertas.length === 1 ? '' : 's'} aberta{report.mantidasAbertas.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+
+        {/* Corpo (scroll) */}
+        <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-1">
+          {recorrigindo && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+              <Loader2 size={22} className="animate-spin text-indigo-600" />
+            </div>
+          )}
+
+          {/* Convertidas */}
+          {report.convertidas.length > 0 && (
+            <section className="mb-3">
+              <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                Convertidas em área
+              </h4>
+              <ul className="flex flex-col gap-1">
+                {report.convertidas.map((c) => (
+                  <li
+                    key={c.id}
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${
+                      c.aplicada ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-200 bg-gray-50 opacity-70'
+                    }`}
+                  >
+                    <Square size={13} className="shrink-0 text-emerald-600" />
+                    <span className={`min-w-0 flex-1 truncate ${c.aplicada ? 'text-gray-800' : 'text-gray-500 line-through'}`}>
+                      {c.nome}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[11px] text-gray-500">
+                      {c.areaHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
+                    </span>
+                    <button
+                      type="button"
+                      disabled={recorrigindo}
+                      onClick={() => onToggleConvertida(c)}
+                      className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-gray-500 hover:bg-white disabled:opacity-50"
+                      title={c.aplicada ? 'Manter como linha (desfazer)' : 'Converter de novo'}
+                    >
+                      {c.aplicada ? <><RotateCcw size={12} /> desfazer</> : <><Wand2 size={12} /> refazer</>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Ignoradas por nome (candidatas a "converter mesmo assim") */}
+          {report.ignoradasNome.length > 0 && (
+            <section className="mb-3">
+              <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                Fechadas, mas o nome parece de estrada/cerca/rede
+              </h4>
+              <p className="mb-1.5 text-[11px] text-gray-500">
+                Não convertidas por precaução. Converta se forem áreas de verdade.
+              </p>
+              <ul className="flex flex-col gap-1">
+                {report.ignoradasNome.map((c) => (
+                  <li
+                    key={c.id}
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${
+                      c.forcada ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'
+                    }`}
+                  >
+                    {c.forcada ? <Square size={13} className="shrink-0 text-emerald-600" /> : <Spline size={13} className="shrink-0 text-amber-600" />}
+                    <span className="min-w-0 flex-1 truncate text-gray-800">{c.nome}</span>
+                    <span className="shrink-0 tabular-nums text-[11px] text-gray-500">
+                      {c.areaHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
+                    </span>
+                    <button
+                      type="button"
+                      disabled={recorrigindo}
+                      onClick={() => onToggleIgnoradaNome(c)}
+                      className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
+                        c.forcada ? 'text-gray-500 hover:bg-white' : 'text-emerald-700 hover:bg-white'
+                      }`}
+                      title={c.forcada ? 'Manter como linha (desfazer)' : 'Converter mesmo assim'}
+                    >
+                      {c.forcada ? <><RotateCcw size={12} /> desfazer</> : <><Wand2 size={12} /> converter</>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {forcadas > 0 && (
+                <div className="mt-1 text-[10.5px] text-emerald-700">{forcadas} forçada(s) a converter.</div>
+              )}
+            </section>
+          )}
+
+          {/* Mantidas abertas (colapsável) */}
+          {report.mantidasAbertas.length > 0 && (
+            <section className="mb-2">
+              <button
+                type="button"
+                onClick={() => setShowAbertas((v) => !v)}
+                className="flex w-full items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+              >
+                {showAbertas ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                Mantidas como linha ({report.mantidasAbertas.length})
+              </button>
+              {showAbertas && (
+                <ul className="mt-1 flex flex-col gap-1">
+                  {report.mantidasAbertas.map((c) => (
+                    <li key={c.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-[12px]">
+                      <Spline size={13} className="shrink-0 text-gray-400" />
+                      <span className="min-w-0 flex-1 truncate text-gray-600">{c.nome}</span>
+                      <span className="shrink-0 text-[10.5px] text-gray-400">abertura {c.gapM} m</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {nDegeneradas > 0 && (
+            <div className="mb-2 text-[10.5px] text-gray-400">
+              {nDegeneradas} feição(ões) ignorada(s) por geometria inválida (poucos pontos ou área ínfima).
+            </div>
+          )}
+
+          {report.convertidas.length === 0 && report.ignoradasNome.length === 0 && (
+            <div className="py-6 text-center text-[13px] text-gray-500">
+              Nenhuma linha fechada para converter — o arquivo já estava correto. 👍
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            <Check size={16} /> Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const EstiloAreaModal: React.FC<{
   nivel: Nivel;
@@ -1161,6 +1396,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
   uploadedMaps,
   readOnly = false,
   onEditSavedArea,
+  onEditSavedGeometry,
   onDeleteSavedArea,
   onDeleteArquivo,
   mestreView,
@@ -1173,6 +1409,15 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [items, setItems] = useState<DraftArea[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
   const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  // ── Correção automática linha→polígono (skill kmz-line-to-polygon) ──────────
+  // Relatório da correção aplicada ao importar; abre o resumo e alimenta os selos.
+  const [correcaoReport, setCorrecaoReport] = useState<LineToPolyReport | null>(null);
+  const [showCorrecao, setShowCorrecao] = useState(false);
+  // Overrides por feição (lpId): forçadas ("converter mesmo assim") e desfeitas.
+  const [forceIds, setForceIds] = useState<Set<string>>(new Set());
+  const [revertIds, setRevertIds] = useState<Set<string>>(new Set());
+  // Recomputando a correção após uma ação do resumo (evita cliques concorrentes).
+  const [recorrigindo, setRecorrigindo] = useState(false);
   // Mapa importado é guardado como camada de referência por padrão (auto ao carregar o KMZ).
   const [saveOverlay, setSaveOverlay] = useState(true);
   const [drawNivel, setDrawNivel] = useState<Nivel>('local');
@@ -1263,6 +1508,14 @@ const CadastroAreasMestre: React.FC<Props> = ({
   const [styleId, setStyleId] = useState<string | null>(null);
   /** id de um retiro/setor JÁ SALVO em edição de estilo (clicado no mapa). */
   const [savedEditId, setSavedEditId] = useState<string | null>(null);
+  /** área JÁ salva (Produção) selecionada no mapa p/ Editar forma / Apagar. */
+  const [savedSelId, setSavedSelId] = useState<string | null>(null);
+  const savedSelIdRef = useRef<string | null>(null);
+  /** camadas Leaflet das áreas salvas, por id (p/ o editor de vértices pegar a forma). */
+  const savedLayersRef = useRef<Map<string, L.Polygon | L.Polyline>>(new Map());
+  /** true enquanto se edita a forma de uma área SALVA (≠ rascunho): muda o destino
+   *  do "Concluir forma" e faz o effect das áreas salvas não recriar a camada. */
+  const editingSavedRef = useRef(false);
   /** categorias/tipos ocultos no visualizador (além dos níveis). */
   const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
   const [hiddenTipos, setHiddenTipos] = useState<Set<string>>(new Set());
@@ -1379,6 +1632,51 @@ const CadastroAreasMestre: React.FC<Props> = ({
     return { groups, totalHa, count };
   }, [existingAreas, catalogIndex]);
 
+  const allTipos = useMemo(() => {
+    const list: Array<{
+      tipo: string;
+      categoria: string;
+      cor: string;
+      icone: string | null;
+      totalHa: number;
+      items: Array<{ id: string; nome: string; detalhe: string | null; ha: number }>;
+    }> = [];
+
+    for (const g of usoTerra.groups) {
+      for (const t of g.tipos) {
+        list.push({
+          tipo: t.tipo,
+          categoria: g.categoria,
+          cor: t.cor,
+          icone: t.icone,
+          totalHa: t.totalHa,
+          items: t.items,
+        });
+      }
+    }
+
+    return list.sort((a, b) => b.totalHa - a.totalHa);
+  }, [usoTerra]);
+
+  // Tipos expandidos na tabela "Uso da terra" (mostra os Locais-folha do tipo).
+  const [expandedTipos, setExpandedTipos] = useState<Set<string>>(new Set());
+  const toggleTipoExpanded = useCallback((tipoName: string) => {
+    setExpandedTipos((prev) => {
+      const next = new Set(prev);
+      if (next.has(tipoName)) next.delete(tipoName);
+      else next.add(tipoName);
+      return next;
+    });
+  }, []);
+
+  const pieData = useMemo(() => {
+    return allTipos.map((t) => ({
+      name: t.tipo,
+      value: t.totalHa,
+      color: t.cor,
+    }));
+  }, [allTipos]);
+
   const toggleCatVisibility = useCallback((key: string) => {
     setHiddenCats((prev) => {
       const next = new Set(prev);
@@ -1431,10 +1729,19 @@ const CadastroAreasMestre: React.FC<Props> = ({
   editingRef.current = editing;
   drawingRef.current = drawing;
   pointModeRef.current = pointMode;
+  savedSelIdRef.current = savedSelId;
 
   const selectItem = useCallback((id: string | null) => {
     if (editingRef.current) return; // seleção travada durante a edição de forma
     setSelId(id);
+    if (id) setSavedSelId(null); // selecionar um rascunho tira a seleção de área salva
+  }, []);
+
+  /** Seleciona uma área JÁ salva (Produção) no mapa p/ Editar forma / Apagar. */
+  const selectSaved = useCallback((id: string) => {
+    if (editingRef.current) return; // não troca seleção durante a edição de forma
+    setSavedSelId(id);
+    setSelId(null); // limpa a seleção de rascunho
   }, []);
 
   // ── Importa um arquivo KML/KMZ → áreas-rascunho ──────────────────────────
@@ -1443,6 +1750,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
     setFile(f);
     setError(null);
     setParsing(true);
+    // Cada novo arquivo zera os overrides da correção da sessão anterior.
+    setForceIds(new Set());
+    setRevertIds(new Set());
     try {
       const r = await importarKmlGoogleEarth(f);
       setGeojson(r.geojson);
@@ -1454,7 +1764,18 @@ const CadastroAreasMestre: React.FC<Props> = ({
       // Ao importar, mostra o original (referência) + a produção que vai sendo desenhada.
       setMapSource('ambos');
       pendingFitRef.current = true;
-      void onImportOriginal?.({ file: f, geojson: r.geojson });
+      // Resumo da correção: abre só quando há algo a mostrar (convertidas ou
+      // linhas fechadas ignoradas por nome, candidatas a "converter mesmo assim").
+      setCorrecaoReport(r.correcaoReport);
+      const temResumo =
+        r.correcaoReport.convertidas.length > 0 || r.correcaoReport.ignoradasNome.length > 0;
+      setShowCorrecao(temResumo);
+      void onImportOriginal?.({
+        file: f,
+        geojson: r.geojson,
+        correctedKmz: r.correctedKmz,
+        correcaoReport: r.correcaoReport,
+      });
     } catch (err) {
       setError(
         err instanceof KmlImportError
@@ -1465,6 +1786,59 @@ const CadastroAreasMestre: React.FC<Props> = ({
       setParsing(false);
     }
   }, [onImportOriginal]);
+
+  // ── Ações do resumo da correção (desfazer / converter mesmo assim) ─────────
+  // Recomputa a correção do MESMO arquivo com os overrides ajustados: gera um
+  // GeoJSON e um .kmz consistentes, reconstrói as feições brutas (preservando o
+  // perímetro e o que foi desenhado à mão) e re-persiste (o container faz upsert).
+  const aplicarOverridesCorrecao = useCallback(
+    async (nextForce: Set<string>, nextRevert: Set<string>) => {
+      if (!file) return;
+      setRecorrigindo(true);
+      try {
+        const r = await recorrigirKml(file, { forceIds: nextForce, revertIds: nextRevert });
+        setForceIds(nextForce);
+        setRevertIds(nextRevert);
+        setGeojson(r.geojson);
+        setCorrecaoReport(r.report);
+        setItems((prev) => {
+          const preservar = prev.filter((i) => i.source === 'perimeter' || i.source === 'drawn');
+          return [...preservar, ...buildItemsFromGeojson(r.geojson)];
+        });
+        void onImportOriginal?.({
+          file,
+          geojson: r.geojson,
+          correctedKmz: r.correctedKmz,
+          correcaoReport: r.report,
+        });
+      } catch {
+        onToast?.('Não foi possível recalcular a correção do arquivo.', 'error');
+      } finally {
+        setRecorrigindo(false);
+      }
+    },
+    [file, onImportOriginal, onToast],
+  );
+
+  const toggleConvertida = useCallback(
+    (e: ConvertidaEntry) => {
+      const nr = new Set(revertIds);
+      if (e.aplicada) nr.add(e.id);
+      else nr.delete(e.id); // refazer a conversão desfeita
+      void aplicarOverridesCorrecao(forceIds, nr);
+    },
+    [forceIds, revertIds, aplicarOverridesCorrecao],
+  );
+
+  const toggleIgnoradaNome = useCallback(
+    (e: IgnoradaNomeEntry) => {
+      const nf = new Set(forceIds);
+      if (e.forcada) nf.delete(e.id); // desfazer o "converter mesmo assim"
+      else nf.add(e.id);
+      void aplicarOverridesCorrecao(nf, revertIds);
+    },
+    [forceIds, revertIds, aplicarOverridesCorrecao],
+  );
 
   // ── Excluir um arquivo KMZ (Original ou Produção) e LIMPAR o trabalho feito nele ──
   // UMA confirmação aqui; o container faz a exclusão (arquivo + se produção, as áreas)
@@ -1487,6 +1861,20 @@ const CadastroAreasMestre: React.FC<Props> = ({
       setSelectedMapIds((prev) => { const n = new Set(prev); n.delete(m.id); return n; });
     },
     [onDeleteArquivo],
+  );
+
+  // ── Baixar a cópia .kmz JÁ CORRIGIDA (linhas fechadas→polígonos) do arquivo ──
+  const baixarCorrigido = useCallback(
+    async (m: FarmMapData) => {
+      if (!m.corrected_storage_path) return;
+      try {
+        const url = await storageSignedUrlForKey(m.corrected_storage_path);
+        if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener');
+      } catch {
+        onToast?.('Não foi possível gerar o link do arquivo corrigido.', 'error');
+      }
+    },
+    [onToast],
   );
 
   // ── Carrega o catálogo "Tipos de Locais" da organização ──────────────────
@@ -1894,14 +2282,20 @@ const CadastroAreasMestre: React.FC<Props> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+    // Enquanto se edita a FORMA de uma área salva, o editor de vértices está montado
+    // sobre uma dessas camadas — recriar o grupo removeria a camada em edição e
+    // quebraria o arraste. Preserva tudo como está até "Concluir forma".
+    if (editingSavedRef.current) return;
     if (!existingLayerRef.current) existingLayerRef.current = L.layerGroup().addTo(map);
     const grp = existingLayerRef.current;
     grp.clearLayers();
+    savedLayersRef.current.clear();
     if (!showProducao) return; // áreas salvas = produção; some quando a fonte é só "Original"
-    // Editar retiro/setor já salvo clicando no mapa (decisão do usuário). Só fora do
-    // modo desenho/edição (senão os cliques são para os vértices) e quando o container
-    // ofereceu o callback. interactive=false durante desenho/edição (deps abaixo).
-    const editavelSalvo = !readOnly && !!onEditSavedArea && !drawing && !editing;
+    // Selecionar/editar/apagar área já salva clicando no mapa. Só fora do modo
+    // desenho/edição (senão os cliques são para os vértices) e quando o container
+    // ofereceu os callbacks. Agora vale p/ TODOS os níveis + linhas (não só retiro/setor).
+    const editavelSalvo = !readOnly && (!!onEditSavedGeometry || !!onDeleteSavedArea) && !drawing && !editing;
+    const estilizavel = !readOnly && !!onEditSavedArea; // modal de estilo: só polígono retiro/setor/fazenda
     // Hover deve mostrar o NOME da própria feição. Para isso TODA área salva precisa
     // capturar o mouse (interactive) quando não se está desenhando/editando — senão o
     // clique do desenho seria interceptado. Sem isto, só o perímetro (Fazenda) era
@@ -1917,13 +2311,27 @@ const CadastroAreasMestre: React.FC<Props> = ({
     for (const a of ordered) {
       if (hiddenLevels.has(a.nivel) || hiddenAreaIds.has(a.id) || (a.tipo != null && hiddenTipos.has(a.tipo))) continue;
       const ring = cleanRing(a.coords);
-      // Linha salva (cerca/estrada/rede) → polyline de referência.
+      const selecionada = a.id === savedSelId;
+      // Linha salva (cerca/estrada/rede) → polyline. Agora selecionável p/ editar/apagar.
       if (a.geomKind === 'line') {
         if (ring.length < 2) continue;
         const cor = (a.tipo ? catalogIndex.resolve(a.tipo)?.cor : null) ?? '#6366f1';
-        const line = L.polyline(ring, { color: cor, weight: 3, opacity: 0.85, interactive: hoverable });
-        line.bindTooltip(`${a.nome} · já cadastrado`, { sticky: true });
+        const line = L.polyline(ring, {
+          color: selecionada ? '#2563eb' : cor,
+          weight: selecionada ? 5 : 3,
+          opacity: 0.9,
+          interactive: editavelSalvo || hoverable,
+        });
+        line.bindTooltip(`${a.nome} · já cadastrado${editavelSalvo ? ' · clique para selecionar' : ''}`, { sticky: true });
+        if (editavelSalvo) {
+          line.on('click', (e: L.LeafletMouseEvent) => {
+            if (pointModeRef.current) return;
+            L.DomEvent.stop(e);
+            selectSaved(a.id);
+          });
+        }
         grp.addLayer(line);
+        savedLayersRef.current.set(a.id, line);
         line.bringToBack();
         continue;
       }
@@ -1934,32 +2342,39 @@ const CadastroAreasMestre: React.FC<Props> = ({
       const stroke = a.strokeColor ?? baseCor;
       const fill = a.fillColor ?? baseCor;
       const fillOp = a.fillOpacity != null ? a.fillOpacity : (a.nivel === 'fazenda' ? 0.04 : 0.1);
-      const podeEditar = editavelSalvo && (a.nivel === 'fazenda' || a.nivel === 'retiro' || a.nivel === 'setor');
+      // Estilo (nome/cor) por duplo-clique só faz sentido p/ polígono retiro/setor/fazenda.
+      const podeEstilo = estilizavel && (a.nivel === 'fazenda' || a.nivel === 'retiro' || a.nivel === 'setor');
       const poly = L.polygon(ring, {
-        color: stroke,
-        weight: a.strokeWeight != null ? a.strokeWeight : a.nivel === 'fazenda' ? 3 : 1.5,
-        opacity: 0.85,
+        color: selecionada ? '#2563eb' : stroke,
+        weight: selecionada ? 3.5 : (a.strokeWeight != null ? a.strokeWeight : a.nivel === 'fazenda' ? 3 : 1.5),
+        opacity: 0.9,
         fillColor: fill,
-        fillOpacity: fillOp,
-        dashArray: a.nivel === 'fazenda' ? '6 4' : undefined,
-        // Editáveis (Fazenda/Retiro/Setor) capturam clique; as demais capturam apenas
-        // o hover (quando não se desenha/edita) para exibir o próprio nome no tooltip.
-        interactive: podeEditar || hoverable,
+        fillOpacity: selecionada ? Math.max(fillOp, 0.18) : fillOp,
+        dashArray: selecionada ? '6 3' : (a.nivel === 'fazenda' ? '6 4' : undefined),
+        interactive: editavelSalvo || hoverable,
       });
-      poly.bindTooltip(`${a.nome} · já cadastrado${podeEditar ? ' · clique para editar' : ''}`, { sticky: true });
-      if (podeEditar) {
-        const openStyle = (e: L.LeafletMouseEvent) => {
+      poly.bindTooltip(`${a.nome} · já cadastrado${editavelSalvo ? ' · clique para selecionar' : ''}`, { sticky: true });
+      if (editavelSalvo) {
+        // Clique simples SELECIONA (p/ Editar forma / Apagar na barra do mapa).
+        poly.on('click', (e: L.LeafletMouseEvent) => {
           if (pointModeRef.current) return;
-          L.DomEvent.stop(e); // duplo-clique não dá zoom no mapa
-          setSavedEditId(a.id);
-        };
-        poly.on('click', openStyle);
-        poly.on('dblclick', openStyle);
+          L.DomEvent.stop(e);
+          selectSaved(a.id);
+        });
+        // Duplo-clique abre o estilo (nome/cor) dos polígonos retiro/setor/fazenda.
+        if (podeEstilo) {
+          poly.on('dblclick', (e: L.LeafletMouseEvent) => {
+            if (pointModeRef.current) return;
+            L.DomEvent.stop(e);
+            setSavedEditId(a.id);
+          });
+        }
       }
       grp.addLayer(poly);
+      savedLayersRef.current.set(a.id, poly);
       poly.bringToBack(); // fica atrás dos rascunhos (que são adicionados depois)
     }
-  }, [existingAreas, hiddenLevels, hiddenAreaIds, hiddenTipos, catalogIndex, mapReady, readOnly, onEditSavedArea, drawing, editing, showProducao]);
+  }, [existingAreas, hiddenLevels, hiddenAreaIds, hiddenTipos, catalogIndex, mapReady, readOnly, onEditSavedArea, onEditSavedGeometry, onDeleteSavedArea, drawing, editing, showProducao, savedSelId, selectSaved]);
 
   // ── Enquadra nas áreas já cadastradas ao abrir (quando não há rascunhos) ──
   // Fallback: sem perímetro/áreas estruturadas, enquadra no mapa de referência
@@ -2114,33 +2529,103 @@ const CadastroAreasMestre: React.FC<Props> = ({
     [onToast],
   );
 
+  // ── Editar a FORMA (vértices) de uma área JÁ salva (Produção) ──────────────
+  // Reusa o mesmo editor de vértices; ao concluir, persiste via onEditSavedGeometry
+  // (o container decide ledger p/ local ou geometria direta p/ retiro/setor/linha).
+  const beginEditSaved = useCallback(
+    (id: string) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const area = existingAreas.find((a) => a.id === id);
+      const layer = savedLayersRef.current.get(id);
+      if (!area || !layer) return;
+      const isLine = area.geomKind === 'line';
+      const latlngs = isLine
+        ? (layer.getLatLngs() as L.LatLng[])
+        : ((layer.getLatLngs()[0] as L.LatLng[]) ?? []);
+      const ring = cleanRing(latlngs.map((p) => [p.lat, p.lng] as [number, number]));
+      const minV = isLine ? 2 : 3;
+      if (ring.length < minV) {
+        onToast?.('Esta feição não tem uma forma editável.', 'warning');
+        return;
+      }
+      if (drawHandlerRef.current) {
+        drawHandlerRef.current.disable();
+        drawHandlerRef.current = null;
+        setDrawing(false);
+      }
+      if (!editorRef.current) editorRef.current = createVertexEditor(map);
+      editingSavedRef.current = true;
+      editorRef.current.begin(layer, ring, { closed: !isLine, onWarn: (m) => onToast?.(m, 'warning') });
+      setEditing(true);
+      layer.bringToFront();
+      onToast?.('Arraste os vértices. Clique no ponto claro para inserir e botão direito para remover. Depois clique em "Concluir forma".', 'info');
+    },
+    [existingAreas, onToast],
+  );
+
   const endEdit = useCallback(() => {
     const coords = cleanRing(editorRef.current?.current() ?? []);
+    const wasSaved = editingSavedRef.current;
     editorRef.current?.teardown();
+    editingSavedRef.current = false;
     setEditing(false);
+    // Edição de área JÁ salva → persiste no banco (via container).
+    if (wasSaved) {
+      const id = savedSelIdRef.current;
+      const area = id ? existingAreas.find((a) => a.id === id) : null;
+      const minV = area?.geomKind === 'line' ? 2 : 3;
+      if (id && coords.length >= minV) {
+        void onEditSavedGeometry?.(id, coords);
+      } else {
+        onToast?.('Forma inválida — edição descartada.', 'warning');
+      }
+      return;
+    }
+    // Edição de rascunho → atualiza a lista local.
     const id = selIdRef.current;
     if (id && coords.length >= 3) {
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, coords, areaM2: areaM2(coords) } : i)));
     } else if (coords.length < 3) {
       onToast?.('A forma precisa de pelo menos 3 vértices — edição descartada.', 'warning');
     }
-  }, [onToast]);
+  }, [onToast, existingAreas, onEditSavedGeometry]);
 
   const toggleEdit = useCallback(() => {
     if (editing) {
       endEdit();
       return;
     }
+    // Prioriza a área salva selecionada (Produção); senão, o rascunho selecionado.
+    if (savedSelIdRef.current) {
+      beginEditSaved(savedSelIdRef.current);
+      return;
+    }
     const id = selIdRef.current;
     if (!id) {
-      onToast?.('Selecione uma área para ajustar a forma.', 'warning');
+      onToast?.('Selecione uma área (clique nela no mapa) para ajustar a forma.', 'warning');
       return;
     }
     beginEdit(id);
-  }, [editing, beginEdit, endEdit, onToast]);
+  }, [editing, beginEdit, beginEditSaved, endEdit, onToast]);
 
-  /** Apaga o polígono selecionado (descartando a edição de vértices em andamento). */
+  /** Apaga a feição selecionada: área SALVA (via container, com aposentar do local
+   *  com rebanho) OU rascunho (remoção local). Descarta a edição em andamento. */
   const removeSelected = useCallback(() => {
+    const savedId = savedSelIdRef.current;
+    if (savedId) {
+      const area = existingAreas.find((a) => a.id === savedId);
+      if (editingRef.current) {
+        editorRef.current?.teardown();
+        editingSavedRef.current = false;
+        setEditing(false);
+      }
+      if (typeof window !== 'undefined' &&
+          !window.confirm(`Excluir "${area?.nome ?? 'esta feição'}" do mapa de produção?\nEsta ação não pode ser desfeita.`)) return;
+      void onDeleteSavedArea?.(savedId);
+      setSavedSelId(null);
+      return;
+    }
     const id = selIdRef.current;
     if (!id) {
       onToast?.('Selecione uma área para apagar.', 'warning');
@@ -2153,7 +2638,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
     setItems((prev) => prev.filter((i) => i.id !== id));
     setSelId(null);
     onToast?.('Polígono apagado.', 'info');
-  }, [onToast]);
+  }, [onToast, existingAreas, onDeleteSavedArea]);
 
   // ── Edição da lista (nível / nome / manter / tipo / pai) ──────────────────
   const patchItem = useCallback((id: string, patch: Partial<DraftArea>) => {
@@ -3099,6 +3584,16 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                     </span>
                                   </span>
                                 </button>
+                                {m.corrected_storage_path && (
+                                  <button
+                                    type="button"
+                                    onClick={() => baixarCorrigido(m)}
+                                    title="Baixar o .kmz já corrigido (linhas fechadas viraram áreas)"
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700"
+                                  >
+                                    <Download size={14} />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   disabled={busy || !onDeleteArquivo}
@@ -3148,6 +3643,16 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                     <span className="min-w-0 flex-1 truncate text-[12px] text-gray-700" title={m.original_name || m.file_name}>
                                       {m.original_name || m.file_name || 'arquivo'}
                                     </span>
+                                    {m.corrected_storage_path && (
+                                      <button
+                                        type="button"
+                                        onClick={() => baixarCorrigido(m)}
+                                        title="Baixar o .kmz já corrigido (linhas fechadas viraram áreas)"
+                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700"
+                                      >
+                                        <Download size={14} />
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       disabled={busy || !onDeleteArquivo}
@@ -3312,6 +3817,14 @@ const CadastroAreasMestre: React.FC<Props> = ({
                                       {geomLabel(g.items[0].geomKind)}
                                       {g.items[0].geomKind === 'area' && g.items[0].areaM2 > 0 && (
                                         <span className="tabular-nums text-gray-500"> · {(g.items[0].areaM2 / 10000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha</span>
+                                      )}
+                                      {g.items[0].corrigido && (
+                                        <span
+                                          title={`Era uma linha fechada no arquivo; convertida em área automaticamente${g.items[0].corrigidoGapM != null ? ` (fechamento de ${g.items[0].corrigidoGapM} m)` : ''}.`}
+                                          className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 align-middle"
+                                        >
+                                          <Spline size={9} /> linha → área
+                                        </span>
                                       )}
                                     </span>
                                   </div>
@@ -3727,7 +4240,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={toggleEdit}
-                disabled={!selId && !editing}
+                disabled={!selId && !savedSelId && !editing}
+                title="Editar os vértices da feição selecionada"
                 className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-50 ${
                   editing ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
@@ -3738,8 +4252,8 @@ const CadastroAreasMestre: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={removeSelected}
-                disabled={!selId && !editing}
-                title="Apagar polígono"
+                disabled={!selId && !savedSelId && !editing}
+                title="Apagar a feição selecionada"
                 className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[12.5px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
               >
                 <Trash2 size={15} />
@@ -3752,6 +4266,23 @@ const CadastroAreasMestre: React.FC<Props> = ({
                 {drawing
                   ? `Clique no mapa para marcar os vértices do(a) ${NIVEIS[drawNivel].label.toLowerCase()}. Clique no primeiro ponto para fechar.`
                   : 'Arraste os vértices · clique no ponto claro para inserir · botão direito remove.'}
+              </div>
+            )}
+
+            {/* Feição de PRODUÇÃO selecionada: instrui a usar Editar forma / Apagar. */}
+            {savedSelId && !drawing && !editing && !pointMode && (
+              <div className="absolute left-3 top-16 z-[600] flex max-w-[340px] items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[11.5px] leading-snug text-blue-800 shadow-[0_2px_10px_rgba(16,24,40,.12)]">
+                <Crosshair size={14} className="shrink-0 text-blue-600" />
+                <span className="min-w-0 flex-1">
+                  Feição de produção selecionada — use <b>Editar forma</b> para mover os pontos ou <b>Apagar</b> para excluir.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSavedSelId(null)}
+                  className="shrink-0 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-500 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
               </div>
             )}
 
@@ -3938,7 +4469,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
          * barra de abas para voltar ao mapa / colunas. Lê os Locais já salvos
          * (existingAreas) agrupados por Categoria › Tipo, com hectares. */}
         {view === 'uso' && (
-          <div className="absolute inset-0 z-[30] flex flex-col bg-white">
+          <div className="absolute inset-0 z-[1100] flex flex-col bg-white">
             {/* Abas — quando NÃO controlada pelo container (a barra externa do
                 FarmLocaisTab cuida da navegação no modo embutido) OU em tela cheia
                 (que cobre a barra externa do container; sem isto não há como voltar). */}
@@ -3997,9 +4528,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Corpo — tabela agrupada por Categoria › Tipo */}
+            {/* Corpo — tabela unificada + gráfico de pizza */}
             <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
-              {usoTerra.groups.length === 0 ? (
+              {usoTerra.totalHa === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
                   <Layers size={28} className="text-gray-300" />
                   <p className="text-[13px]">
@@ -4007,77 +4538,146 @@ const CadastroAreasMestre: React.FC<Props> = ({
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-4">
-                  {usoTerra.groups.map((g) => {
-                    const gPct = usoTerra.totalHa > 0 ? (g.totalHa / usoTerra.totalHa) * 100 : 0;
-                    return (
-                      <section key={g.categoria} className="overflow-hidden rounded-xl border border-gray-200">
-                        <div className="flex items-center justify-between gap-3 bg-gray-50 px-4 py-2.5">
-                          <span className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-gray-800">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: g.cor }} />
-                            <span className="truncate">{g.categoria}</span>
-                          </span>
-                          <span className="shrink-0 text-[12px] font-semibold tabular-nums text-gray-600">
-                            {g.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
-                            <span className="ml-1.5 font-normal text-gray-400">{gPct.toFixed(1)}%</span>
-                          </span>
-                        </div>
-                        <table className="w-full border-collapse text-[12.5px]">
-                          <thead>
-                            <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-                              <th className="px-4 py-1.5 text-left font-semibold">Tipo / Local</th>
-                              <th className="px-3 py-1.5 text-left font-semibold">Detalhe</th>
-                              <th className="px-4 py-1.5 text-right font-semibold">Área (ha)</th>
-                              <th className="px-4 py-1.5 text-right font-semibold">%</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {g.tipos.map((t) => {
-                              const tPct = usoTerra.totalHa > 0 ? (t.totalHa / usoTerra.totalHa) * 100 : 0;
-                              return (
-                                <React.Fragment key={t.tipo}>
-                                  <tr className="border-t border-gray-100 bg-white">
-                                    <td colSpan={2} className="px-4 py-1.5">
-                                      <span className="flex items-center gap-2 font-semibold text-gray-700">
-                                        <span className="flex h-4 w-4 shrink-0 items-center justify-center" style={{ color: t.cor }}>
-                                          <TipoIcon name={t.icone} size={14} fallback={<span className="h-2 w-2 rounded-full" style={{ background: t.cor }} />} />
-                                        </span>
-                                        <span className="truncate">{t.tipo}</span>
-                                        <span className="text-[11px] font-normal text-gray-400">
-                                          ({t.items.length})
-                                        </span>
+                <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+                  {/* Tabela de feições */}
+                  <div className="min-w-0">
+                    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                      <table className="w-full border-collapse text-[12.5px]">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
+                            <th className="px-4 py-3 text-left font-semibold">Tipo / Local</th>
+                            <th className="px-3 py-3 text-left font-semibold">Detalhe</th>
+                            <th className="px-4 py-3 text-right font-semibold">Área (ha)</th>
+                            <th className="px-4 py-3 text-right font-semibold">%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allTipos.map((t) => {
+                            const tPct = usoTerra.totalHa > 0 ? (t.totalHa / usoTerra.totalHa) * 100 : 0;
+                            const isExpanded = expandedTipos.has(t.tipo);
+                            return (
+                              <React.Fragment key={t.tipo}>
+                                <tr
+                                  className="border-b border-gray-100 bg-white hover:bg-gray-50 cursor-pointer select-none transition-colors"
+                                  onClick={() => toggleTipoExpanded(t.tipo)}
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2 font-semibold text-gray-700">
+                                      <span className="text-gray-400 transition-transform duration-200">
+                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                       </span>
-                                    </td>
-                                    <td className="px-4 py-1.5 text-right font-semibold tabular-nums text-gray-800">
-                                      {t.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </td>
-                                    <td className="px-4 py-1.5 text-right tabular-nums text-gray-500">{tPct.toFixed(1)}%</td>
-                                  </tr>
-                                  {t.items.map((it) => {
+                                      <span className="flex h-4 w-4 shrink-0 items-center justify-center" style={{ color: t.cor }}>
+                                        <TipoIcon name={t.icone} size={14} fallback={<span className="h-2 w-2 rounded-full" style={{ background: t.cor }} />} />
+                                      </span>
+                                      <span className="truncate">{t.tipo}</span>
+                                      <span
+                                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                        style={{ background: `${t.cor}1a`, color: t.cor }}
+                                      >
+                                        {t.categoria}
+                                      </span>
+                                      <span className="text-[11px] font-normal text-gray-400">
+                                        ({t.items.length})
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3 text-gray-400">—</td>
+                                  <td className="px-4 py-3 text-right font-bold tabular-nums text-gray-800">
+                                    {t.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-bold tabular-nums text-gray-600">
+                                    {tPct.toFixed(1)}%
+                                  </td>
+                                </tr>
+                                {isExpanded &&
+                                  t.items.map((it) => {
                                     const iPct = usoTerra.totalHa > 0 ? (it.ha / usoTerra.totalHa) * 100 : 0;
                                     return (
-                                      <tr key={it.id} className="border-t border-gray-50 text-gray-600">
-                                        <td className="py-1 pl-10 pr-4">
-                                          <span className="block truncate">{it.nome}</span>
+                                      <tr key={it.id} className="border-b border-gray-50 bg-gray-50/20 text-gray-600 hover:bg-gray-50">
+                                        <td className="py-2.5 pl-10 pr-4">
+                                          <span className="block truncate font-medium text-gray-700">{it.nome}</span>
                                         </td>
-                                        <td className="px-3 py-1 text-gray-400">
+                                        <td className="px-3 py-2.5 text-gray-400">
                                           <span className="block truncate">{it.detalhe || '—'}</span>
                                         </td>
-                                        <td className="px-4 py-1 text-right tabular-nums">
+                                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-600">
                                           {it.ha.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
-                                        <td className="px-4 py-1 text-right tabular-nums text-gray-400">{iPct.toFixed(1)}%</td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-400">
+                                          {iPct.toFixed(1)}%
+                                        </td>
                                       </tr>
                                     );
                                   })}
-                                </React.Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </section>
-                    );
-                  })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Coluna do Gráfico de Pizza */}
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                      <h4 className="m-0 text-[14px] font-bold text-gray-900">Distribuição do Uso da Terra</h4>
+                      <p className="mt-1 text-[11.5px] text-gray-500">Distribuição proporcional da área ocupada por cada tipo de local.</p>
+                      
+                      <div className="mt-4 flex flex-col items-center justify-center min-h-[220px]">
+                        <ResponsiveContainer width="100%" height={220}>
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={85}
+                              paddingAngle={2}
+                              dataKey="value"
+                            >
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(value: number) => {
+                                const pct = usoTerra.totalHa > 0 ? (value / usoTerra.totalHa) * 100 : 0;
+                                return [
+                                  `${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha (${pct.toFixed(1)}%)`,
+                                  'Área'
+                                ];
+                              }}
+                              contentStyle={{
+                                fontSize: '12px',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                boxShadow: '0 2px 10px rgba(16,24,40,.08)'
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legenda Customizada */}
+                      <div className="mt-4 flex flex-col gap-2 overflow-auto max-h-[200px] border-t border-gray-100 pt-3">
+                        {allTipos.map((t) => {
+                          const tPct = usoTerra.totalHa > 0 ? (t.totalHa / usoTerra.totalHa) * 100 : 0;
+                          return (
+                            <div key={t.tipo} className="flex items-center justify-between gap-3 text-[12.5px]">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: t.cor }} />
+                                <span className="truncate font-medium text-gray-700">{t.tipo}</span>
+                              </div>
+                              <span className="shrink-0 font-semibold tabular-nums text-gray-600 font-mono">
+                                {t.totalHa.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ha
+                                <span className="ml-1.5 font-normal text-gray-400">{tPct.toFixed(1)}%</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -4109,6 +4709,17 @@ const CadastroAreasMestre: React.FC<Props> = ({
           />
         );
       })()}
+
+    {/* Resumo da correção automática linha→polígono (skill kmz-line-to-polygon). */}
+    {showCorrecao && correcaoReport && (
+      <CorrecaoResumoModal
+        report={correcaoReport}
+        recorrigindo={recorrigindo}
+        onClose={() => setShowCorrecao(false)}
+        onToggleConvertida={toggleConvertida}
+        onToggleIgnoradaNome={toggleIgnoradaNome}
+      />
+    )}
 
     {/* Estilo de um RASCUNHO de retiro/setor (ao desenhar ou ao clicar nele). */}
     {styleId &&

@@ -27,28 +27,35 @@ export const midOf = (a: [number, number], b: [number, number]): [number, number
 export interface VertexEditorOpts {
   /** anel atualizado (cópia) — disparado ao soltar um vértice / inserir / remover. */
   onChange?: (coords: [number, number][]) => void;
-  /** aviso amigável (ex.: tentou remover abaixo de 3 vértices). */
+  /** aviso amigável (ex.: tentou remover abaixo do mínimo de vértices). */
   onWarn?: (msg: string) => void;
+  /** forma fechada (polígono, default) ou aberta (linha/polilinha). Uma linha não
+   *  liga o último ao primeiro ponto e aceita mínimo de 2 vértices. */
+  closed?: boolean;
 }
 
+/** Camada editável: polígono (fechado) ou polilinha (linha aberta). */
+export type EditableLayer = L.Polygon | L.Polyline;
+
 export interface VertexEditor {
-  /** Entra em edição sobre `poly`, usando `ring` como ponto de partida. */
-  begin: (poly: L.Polygon, ring: [number, number][], opts?: VertexEditorOpts) => void;
-  /** Anel atual (cópia) — leia ao concluir. */
+  /** Entra em edição sobre `poly` (polígono OU polilinha), usando `ring`/traço como partida. */
+  begin: (poly: EditableLayer, ring: [number, number][], opts?: VertexEditorOpts) => void;
+  /** Anel/traço atual (cópia) — leia ao concluir. */
   current: () => [number, number][];
   /** Há uma edição em andamento? */
   active: () => boolean;
-  /** O polígono em edição (para o efeito de sync ignorá-lo). */
-  layer: () => L.Polygon | null;
+  /** A camada em edição (para o efeito de sync ignorá-la). */
+  layer: () => EditableLayer | null;
   /** Remove os manipuladores e zera o estado (idempotente; seguro em teardown). */
   teardown: () => void;
 }
 
 export function createVertexEditor(map: L.Map): VertexEditor {
-  let poly: L.Polygon | null = null;
+  let poly: EditableLayer | null = null;
   let coords: [number, number][] = [];
   let vertex: L.Marker[] = [];
   let mid: L.Marker[] = [];
+  let closed = true;
   let onChange: VertexEditorOpts['onChange'];
   let onWarn: VertexEditorOpts['onWarn'];
 
@@ -73,16 +80,22 @@ export function createVertexEditor(map: L.Map): VertexEditor {
         const ll = mk.getLatLng();
         coords[i] = [ll.lat, ll.lng];
         sync(); // a forma acompanha o vértice em tempo real
-        // Reposiciona os pontos-médios vizinhos durante o arraste.
-        const prev = (i - 1 + coords.length) % coords.length;
-        if (mid[prev]) mid[prev].setLatLng(midOf(coords[prev], coords[i]));
-        if (mid[i]) mid[i].setLatLng(midOf(coords[i], coords[(i + 1) % coords.length]));
+        // Reposiciona os pontos-médios vizinhos durante o arraste (respeita aberto/fechado).
+        if (closed) {
+          const prev = (i - 1 + coords.length) % coords.length;
+          if (mid[prev]) mid[prev].setLatLng(midOf(coords[prev], coords[i]));
+          if (mid[i]) mid[i].setLatLng(midOf(coords[i], coords[(i + 1) % coords.length]));
+        } else {
+          if (i > 0 && mid[i - 1]) mid[i - 1].setLatLng(midOf(coords[i - 1], coords[i]));
+          if (i < coords.length - 1 && mid[i]) mid[i].setLatLng(midOf(coords[i], coords[i + 1]));
+        }
       });
       mk.on('dragend', emit);
       mk.on('contextmenu', (e) => {
         L.DomEvent.stop(e);
-        if (coords.length <= 3) {
-          onWarn?.('A forma precisa de pelo menos 3 vértices.');
+        const minV = closed ? 3 : 2;
+        if (coords.length <= minV) {
+          onWarn?.(`A forma precisa de pelo menos ${minV} vértices.`);
           return;
         }
         coords.splice(i, 1);
@@ -94,11 +107,13 @@ export function createVertexEditor(map: L.Map): VertexEditor {
       vertex.push(mk);
     });
 
-    // Pontos-médios (inserir vértice) — só em formas pouco densas.
+    // Pontos-médios (inserir vértice) — só em formas pouco densas. Numa linha
+    // (aberta) não há ponto-médio entre o último e o primeiro vértice.
     if (coords.length <= MAX_VERTICES_FOR_MIDPOINTS) {
-      coords.forEach((c, i) => {
+      const nSegs = closed ? coords.length : coords.length - 1;
+      for (let i = 0; i < nSegs; i++) {
         const next = (i + 1) % coords.length;
-        const m = L.marker(midOf(c, coords[next]), { icon: MID_ICON, zIndexOffset: 900, keyboard: false });
+        const m = L.marker(midOf(coords[i], coords[next]), { icon: MID_ICON, zIndexOffset: 900, keyboard: false });
         m.on('click', (e) => {
           L.DomEvent.stop(e);
           const at = m.getLatLng();
@@ -109,7 +124,7 @@ export function createVertexEditor(map: L.Map): VertexEditor {
         });
         m.addTo(map);
         mid.push(m);
-      });
+      }
     }
   };
 
@@ -126,6 +141,7 @@ export function createVertexEditor(map: L.Map): VertexEditor {
       teardown();
       poly = p;
       coords = ring.map((c) => [c[0], c[1]] as [number, number]);
+      closed = opts?.closed !== false; // default: forma fechada (polígono)
       onChange = opts?.onChange;
       onWarn = opts?.onWarn;
       rebuild();

@@ -1,8 +1,10 @@
 /**
  * API route for farm maps (KMZ/KML uploads).
- * GET  ?farmId=xxx        — list maps for a farm
- * POST { farmId, fileName, originalName, fileType, fileSize, storagePath, geojson }
- * DELETE ?id=xxx           — delete a map
+ * GET   ?farmId=xxx  — list maps for a farm
+ * POST  { farmId, fileName, originalName, fileType, fileSize, storagePath, geojson,
+ *         correctedStoragePath?, correctedFileName?, correctedFileSize?, correcaoReport? }
+ * PATCH ?id=xxx { geojson?, correctedStoragePath?, correctedFileName?, correctedFileSize?, correcaoReport? }
+ * DELETE ?id=xxx    — delete a map
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthUserIdFromRequest } from './_lib/betterAuthAdapter.js';
@@ -11,6 +13,7 @@ import { getUserRole, assertFarmAccess } from './_lib/orgAccess.js';
 import {
   getFarmMaps,
   createFarmMap,
+  updateFarmMap,
   deleteFarmMap,
   getFarmMap,
 } from '../src/DB/repositories/farm-maps.js';
@@ -46,8 +49,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { farmId, fileName, originalName, fileType, fileSize, storagePath, geojson } =
-        req.body ?? {};
+      const {
+        farmId, fileName, originalName, fileType, fileSize, storagePath, geojson,
+        correctedStoragePath, correctedFileName, correctedFileSize, correcaoReport,
+      } = req.body ?? {};
       if (!farmId || !fileName || !originalName || !fileType || !storagePath) {
         jsonError(res, 'Campos obrigatórios: farmId, fileName, originalName, fileType, storagePath', {
           status: 400,
@@ -64,7 +69,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fileSize: fileSize ?? 0,
         storagePath,
         geojson: geojson ?? null,
+        correctedStoragePath: correctedStoragePath ?? null,
+        correctedFileName: correctedFileName ?? null,
+        correctedFileSize: correctedFileSize ?? null,
+        correcaoReport: correcaoReport ?? null,
       });
+      jsonSuccess(res, row);
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      const id = typeof req.query?.id === 'string' ? req.query.id : '';
+      if (!id) {
+        jsonError(res, 'id obrigatório', { status: 400 });
+        return;
+      }
+      const existing = await getFarmMap(id);
+      if (!existing) {
+        jsonError(res, 'Mapa não encontrado', { status: 404 });
+        return;
+      }
+      // Autoriza pela fazenda DO REGISTRO (não confia em farmId do cliente).
+      await assertFarmAccess(existing.farmId, userId, role);
+      const { geojson, correctedStoragePath, correctedFileName, correctedFileSize, correcaoReport } =
+        req.body ?? {};
+      const patch: Record<string, unknown> = {};
+      if (geojson !== undefined) patch.geojson = geojson;
+      if (correctedStoragePath !== undefined) patch.correctedStoragePath = correctedStoragePath;
+      if (correctedFileName !== undefined) patch.correctedFileName = correctedFileName;
+      if (correctedFileSize !== undefined) patch.correctedFileSize = correctedFileSize;
+      if (correcaoReport !== undefined) patch.correcaoReport = correcaoReport;
+      const row = await updateFarmMap(id, patch);
       jsonSuccess(res, row);
       return;
     }
@@ -83,9 +118,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Autoriza pela fazenda DO REGISTRO (não confia em farmId vindo do cliente).
       await assertFarmAccess(existing.farmId, userId, role);
       await deleteFarmMap(id);
-      // A linha do Drizzle vem em camelCase (storagePath); o cliente usa esse
-      // caminho para apagar o arquivo (KMZ/KML) no storage (B2).
-      jsonSuccess(res, { deleted: true, storagePath: existing.storagePath });
+      // A linha do Drizzle vem em camelCase (storagePath); o cliente usa esses
+      // caminhos para apagar os arquivos (original + corrigido) no storage (B2).
+      jsonSuccess(res, {
+        deleted: true,
+        storagePath: existing.storagePath,
+        correctedStoragePath: (existing as { correctedStoragePath?: string | null }).correctedStoragePath ?? null,
+      });
       return;
     }
 

@@ -28,6 +28,7 @@ import {
   union as turfUnion,
 } from '@turf/turf';
 import { cleanRing, areaM2, centroid as ringCentroid, pointInPoly } from './util';
+import { corrigirLinhasFechadasKml, type LineToPolyReport } from './kmlLineToPolygon';
 import type { TipoLocal } from './types';
 
 /** Erro com mensagem amigável (pt-BR) para exibir num toast. */
@@ -71,24 +72,75 @@ export interface KmlImportResult {
   paddocks: KmlPaddock[];
   lineCount: number;
   polygonCount: number;
+  /** Relatório da correção automática linha→polígono aplicada ao importar. */
+  correcaoReport: LineToPolyReport;
+  /** .kmz já corrigido (linhas fechadas viram polígonos), fiel ao original
+   *  (mesmos estilos/pastas/ícones). Guardado ao lado do original no B2. */
+  correctedKmz: Blob;
 }
 
-// ── Leitura do arquivo (.kml ou .kmz) → GeoJSON via togeojson ─────────────────
-async function fileToGeojson(file: File): Promise<GeoJSON.FeatureCollection> {
+// ── Leitura do arquivo (.kml ou .kmz) → DOM do KML (+ zip p/ re-empacotar) ─────
+interface KmlDoc {
+  doc: Document;
+  /** zip do KMZ original (null se entrada for .kml puro) — p/ preservar extras. */
+  zip: JSZip | null;
+  /** nome do .kml dentro do zip (ou 'doc.kml' p/ entrada .kml). */
+  kmlEntryName: string;
+}
+
+async function readKmlDoc(file: File): Promise<KmlDoc> {
   const buf = await file.arrayBuffer();
-  let text: string;
   if (/\.kmz$/i.test(file.name)) {
     const zip = await JSZip.loadAsync(buf);
     const name = Object.keys(zip.files).find((f) => /\.kml$/i.test(f) && !zip.files[f].dir);
     if (!name) throw new KmlImportError('KMZ sem KML: não encontrei um arquivo .kml dentro do KMZ.');
-    text = await zip.files[name].async('text');
-  } else if (/\.kml$/i.test(file.name)) {
-    text = new TextDecoder().decode(buf);
-  } else {
-    throw new KmlImportError('Formato não suportado. Envie um arquivo .kml ou .kmz.');
+    const text = await zip.files[name].async('text');
+    return { doc: new DOMParser().parseFromString(text, 'text/xml'), zip, kmlEntryName: name };
   }
-  const xml = new DOMParser().parseFromString(text, 'text/xml');
-  return kmlToGeoJSON(xml) as GeoJSON.FeatureCollection;
+  if (/\.kml$/i.test(file.name)) {
+    const text = new TextDecoder().decode(buf);
+    return { doc: new DOMParser().parseFromString(text, 'text/xml'), zip: null, kmlEntryName: 'doc.kml' };
+  }
+  throw new KmlImportError('Formato não suportado. Envie um arquivo .kml ou .kmz.');
+}
+
+// ── Re-empacota o KML corrigido preservando os demais entries do KMZ ───────────
+async function buildCorrectedKmz(doc: Document, zip: JSZip | null, kmlEntryName: string): Promise<Blob> {
+  const kmlText = new XMLSerializer().serializeToString(doc);
+  const out = new JSZip();
+  out.file(kmlEntryName, kmlText);
+  if (zip) {
+    for (const name of Object.keys(zip.files)) {
+      if (name === kmlEntryName || zip.files[name].dir) continue;
+      out.file(name, await zip.files[name].async('uint8array'));
+    }
+  }
+  return out.generateAsync({ type: 'blob', mimeType: 'application/vnd.google-earth.kmz' });
+}
+
+// ── Núcleo: lê o arquivo, corrige linhas fechadas e devolve GeoJSON + .kmz ─────
+// `overrides` (forceIds/revertIds) vêm das ações "converter mesmo assim"/"desfazer".
+async function corrigirEConstruir(
+  file: File,
+  overrides: { forceIds?: Set<string>; revertIds?: Set<string> } = {},
+): Promise<{ geojson: GeoJSON.FeatureCollection; correctedKmz: Blob; report: LineToPolyReport }> {
+  const { doc, zip, kmlEntryName } = await readKmlDoc(file);
+  const { doc: corr, report } = corrigirLinhasFechadasKml(doc, overrides);
+  const geojson = kmlToGeoJSON(corr) as GeoJSON.FeatureCollection;
+  if (!geojson || !Array.isArray(geojson.features)) {
+    throw new KmlImportError('Arquivo inválido: não consegui ler as feições do KML.');
+  }
+  const correctedKmz = await buildCorrectedKmz(corr, zip, kmlEntryName);
+  return { geojson, correctedKmz, report };
+}
+
+/** Recomputa a correção com novos overrides (usado pelas ações desfazer/forçar
+ *  no modal de resumo): mesmo arquivo + override → GeoJSON e .kmz consistentes. */
+export async function recorrigirKml(
+  file: File,
+  overrides: { forceIds?: Set<string>; revertIds?: Set<string> },
+): Promise<{ geojson: GeoJSON.FeatureCollection; correctedKmz: Blob; report: LineToPolyReport }> {
+  return corrigirEConstruir(file, overrides);
 }
 
 // ── Helpers de geometria ──────────────────────────────────────────────────────
@@ -648,10 +700,11 @@ export function derivePaddocks(geojson: GeoJSON.FeatureCollection, perimeterM2: 
 
 // ── Entrada principal ─────────────────────────────────────────────────────────
 export async function importarKmlGoogleEarth(file: File): Promise<KmlImportResult> {
-  const geojson = await fileToGeojson(file);
-  if (!geojson || !Array.isArray(geojson.features)) {
-    throw new KmlImportError('Arquivo inválido: não consegui ler as feições do KML.');
-  }
+  // Corrige linhas fechadas → polígonos ANTES da reconstrução de perímetro/piquetes:
+  // se o contorno foi desenhado como linha, ele já vira Polygon e `reconstructPerimeter`
+  // usa o ramo preferido (fonte:'polygon'); os piquetes convertidos seguem contribuindo
+  // suas arestas p/ `derivePaddocks` via `boundaryLines`/`outerRingsOfPolygon`.
+  const { geojson, correctedKmz, report } = await corrigirEConstruir(file, {});
 
   let polygonCount = 0;
   let lineCount = 0;
@@ -677,5 +730,7 @@ export async function importarKmlGoogleEarth(file: File): Promise<KmlImportResul
     paddocks,
     lineCount,
     polygonCount,
+    correcaoReport: report,
+    correctedKmz,
   };
 }
