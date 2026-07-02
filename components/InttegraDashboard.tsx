@@ -22,6 +22,7 @@ type SubView =
   | 'estacao-monta'
   | 'especies-forrageiras'
   | 'tipos-local'
+  | 'regimes-alimentares'
   | 'people'
   | 'ficha-animal'
   | 'propriedades';
@@ -42,6 +43,7 @@ const CADASTRO_SUBVIEWS: readonly SubView[] = [
   'estacao-monta',
   'especies-forrageiras',
   'tipos-local',
+  'regimes-alimentares',
   'people',
   'ficha-animal',
   'propriedades',
@@ -74,6 +76,7 @@ const LotesManagement = lazyWithRetry(() => import('../agents/LotesManagement'))
 const EstacaoMontaManagement = lazyWithRetry(() => import('../agents/EstacaoMontaManagement'));
 const EspeciesForrageirasManagement = lazyWithRetry(() => import('../agents/EspeciesForrageirasManagement'));
 const TiposLocalManagement = lazyWithRetry(() => import('../agents/TiposLocalManagement'));
+const RegimesAlimentaresManagement = lazyWithRetry(() => import('../agents/RegimesAlimentaresManagement'));
 const FarmManagement = lazyWithRetry(() => import('../agents/FarmManagement'));
 const PeopleManagement = lazyWithRetry(() => import('../agents/PeopleManagement'));
 
@@ -349,6 +352,15 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
         </Suspense>
       );
     }
+    if (subView === 'regimes-alimentares') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <div className="bg-white text-gray-900 min-h-screen rounded-2xl overflow-hidden shadow-lg border border-gray-200">
+            <RegimesAlimentaresManagement theme="dark" onToast={onToast} onBack={() => setSubView('desktop')} />
+          </div>
+        </Suspense>
+      );
+    }
     if (subView === 'people') {
       return (
         <Suspense fallback={<LoadingFallback />}>
@@ -395,6 +407,7 @@ const InttegraDashboard: React.FC<InttegraDashboardProps> = ({ view, navNonce, o
           onSelectEstacaoMonta={() => setSubView('estacao-monta')}
           onSelectEspeciesForrageiras={() => setSubView('especies-forrageiras')}
           onSelectTiposLocal={() => setSubView('tipos-local')}
+          onSelectRegimesAlimentares={() => setSubView('regimes-alimentares')}
           onSelectPessoas={() => setSubView('people')}
           onSelectFichaAnimal={() => setSubView('ficha-animal')}
           onSelectPropriedades={() => setSubView('propriedades')}

@@ -41,6 +41,7 @@ const LocaisManagement = lazyWithRetry(() => import('./agents/LocaisManagement')
 const PerfisCargoConfig = lazyWithRetry(() => import('./agents/PerfisCargoConfig'));
 const EmpAssManagement = lazyWithRetry(() => import('./agents/EmpAssManagement'));
 const AnimalCategoriesManagement = lazyWithRetry(() => import('./agents/AnimalCategoriesManagement'));
+const RegimesAlimentaresManagement = lazyWithRetry(() => import('./agents/RegimesAlimentaresManagement'));
 const QuestionnaireFiller = lazyWithRetry(() => import('./agents/QuestionnaireFiller'));
 const ClientManagement = lazyWithRetry(() => import('./agents/ClientManagement'));
 const AgilePlanning = lazyWithRetry(() => import('./agents/AgilePlanning'));
@@ -128,7 +129,7 @@ const AppContent: React.FC = () => {
   const [viewMode, setViewMode] = useState<
     'desktop' | 'simulator' | 'comparator' | 'agile-planning' | 'avaliacao-protocolo' | 'herd-evolution' | 'noticias-pecuaria' | 'vendo-ou-engordo'
   >('desktop');
-  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'locais' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories'>(
+  const [cadastroView, setCadastroView] = useState<'desktop' | 'farm' | 'locais' | 'client' | 'people' | 'delivery' | 'project' | 'perfis-config' | 'emp-ass' | 'animal-categories' | 'regimes-alimentares'>(
     'desktop',
   );
 
@@ -921,6 +922,13 @@ const AppContent: React.FC = () => {
             </Suspense>
           );
         }
+        if (cadastroView === 'regimes-alimentares') {
+          return (
+            <Suspense fallback={<LoadingFallback />}>
+              <RegimesAlimentaresManagement onToast={handleToast} onBack={() => setCadastroView('desktop')} />
+            </Suspense>
+          );
+        }
         if (cadastroView === 'delivery') {
           return (
             <Suspense fallback={<LoadingFallback />}>
@@ -1248,6 +1256,7 @@ const AppContent: React.FC = () => {
                     : cadastroView === 'project' ? 'Projeto'
                     : cadastroView === 'delivery' ? 'Entregas'
                     : cadastroView === 'animal-categories' ? 'Categorias de Animais'
+                    : cadastroView === 'regimes-alimentares' ? 'Regimes Alimentares'
                     : 'Cadastro';
 
                   const cancelEvent =

@@ -51,5 +51,7 @@ export default defineConfig({
     'mudanca_categoria_movimentos', 'mudanca_categoria_fichas',
     // Configuração de campos genérica (Compra/Venda/Morte)
     'movimento_field_configs',
+    // Zootechnical registers
+    'regimes_alimentares', 'regimes_alimentares_historico', 'tipos_chifre', 'motivos_morte', 'especies_forrageiras', 'pelagens', 'reprodutores', 'lotes', 'estacao_monta', 'tipos_local',
   ],
 });

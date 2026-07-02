@@ -21,6 +21,7 @@ export const PECUARIO_CADASTROS: CadastroRef[] = [
   { id: 'estacao-monta', label: 'Estação de Monta' },
   { id: 'especies-forrageiras', label: 'Espécies Forrageiras' },
   { id: 'tipos-local', label: 'Tipos de Locais' },
+  { id: 'regimes-alimentares', label: 'Regimes Alimentares' },
   { id: 'people', label: 'Cadastro de Pessoas' },
   { id: 'propriedades', label: 'Cadastro de Fazendas' },
 ];

@@ -325,6 +325,9 @@ app.all('/api/lote-eventos', (req, res) => handleApiRoute('./api/lote-eventos.ts
 // Tipo de Chifre - Aspas
 app.all('/api/tipos-chifre', (req, res) => handleApiRoute('./api/tipos-chifre.ts', req, res));
 
+// Regimes Alimentares
+app.all('/api/regimes-alimentares', (req, res) => handleApiRoute('./api/regimes-alimentares.ts', req, res));
+
 // Mapa de Rebanho (Estoque de Partida)
 app.all('/api/mapa-rebanho', (req, res) => handleApiRoute('./api/mapa-rebanho.ts', req, res));
 

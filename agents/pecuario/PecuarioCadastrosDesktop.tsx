@@ -244,6 +244,7 @@ interface PecuarioCadastrosDesktopProps {
   onSelectEstacaoMonta?: () => void;
   onSelectEspeciesForrageiras?: () => void;
   onSelectTiposLocal?: () => void;
+  onSelectRegimesAlimentares?: () => void;
   onSelectPessoas?: () => void;
   onSelectFichaAnimal?: () => void;
   onSelectPropriedades?: () => void;
@@ -270,6 +271,7 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
   onSelectEstacaoMonta,
   onSelectEspeciesForrageiras,
   onSelectTiposLocal,
+  onSelectRegimesAlimentares,
   onSelectPessoas,
   onSelectFichaAnimal,
   onSelectPropriedades,
@@ -896,6 +898,43 @@ const PecuarioCadastrosDesktop: React.FC<PecuarioCadastrosDesktopProps> = ({
               message: 'Os tipos de locais cadastrados padronizam a classificação das áreas e infraestrutura da fazenda.',
               impact: 'Tipos bem definidos facilitam a organização das áreas e a análise por finalidade de uso.',
               actionLabel: 'Gerenciar Tipos de Locais',
+            }
+          },
+        ]
+      : []),
+    ...(onSelectRegimesAlimentares
+      ? [
+          {
+            id: 'regimes-alimentares',
+            label: 'Regimes Alimentares',
+            title: <CadastroTitle entity="Regimes Alimentares" theme={theme} />,
+            description: 'Cadastre os regimes alimentares do rebanho para controle de dietas e custos de suplementação.',
+            onClick: onSelectRegimesAlimentares,
+            active: true,
+            alertColor: 'green' as const,
+            instructions: {
+              intro: 'Os Regimes Alimentares reúnem as formulações, suplementações e dietas oferecidas ao rebanho. Cada regime inclui o tipo de suplementação, o nível de ingestão diário e o custo estimado por quilo.',
+              steps: [
+                {
+                  title: 'Definir o Regime',
+                  desc: 'Informe o nome (ex: Suplementação 0,3% PV), código curto (ex: SUP03) e selecione o tipo zootécnico.',
+                },
+                {
+                  title: 'Ajustar Detalhes Técnicos',
+                  desc: 'Defina o nível de ingestão esperado (em % do Peso Vivo ou Gramas/cabeça/dia) e o custo do produto.',
+                },
+                {
+                  title: 'Anexar Documentos',
+                  desc: 'Adicione documentos, análises laboratoriais ou fichas técnicas do suplemento para consultas rápidas.',
+                },
+              ],
+              proTip: 'Cadastrar os regimes de forma clara e padronizada é essencial para controlar os custos de nutrição e planejar o suprimento de cocho.'
+            },
+            alert: {
+              status: 'Módulo Regularizado',
+              message: 'Os regimes alimentares cadastrados padronizam as dietas e o controle de consumo de suplementos.',
+              impact: 'Regimes bem definidos facilitam o lançamento do manejo de lotes e o monitoramento financeiro de nutrição.',
+              actionLabel: 'Gerenciar Regimes Alimentares',
             }
           },
         ]

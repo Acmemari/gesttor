@@ -1162,6 +1162,45 @@ export const tiposChifre = pgTable('tipos_chifre', {
   index('idx_tipos_chifre_org_id').on(t.organizationId),
 ]);
 
+// ── Regimes Alimentares (Pecuário › Cadastros) ──────────────────────────────────
+// Cadastro de regimes alimentares (suplementação/dieta) dos animais.
+export const regimesAlimentares = pgTable('regimes_alimentares', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  codigoCurto: text('codigo_curto').notNull(),
+  tipo: text('tipo').notNull(),
+  nivelIngestaoValor: numeric('nivel_ingestao_valor', { precision: 8, scale: 2 }),
+  nivelIngestaoTipo: text('nivel_ingestao_tipo'), // '% do PV' | 'Gramas/cab/dia'
+  custoQuilo: numeric('custo_quilo', { precision: 10, scale: 2 }),
+  anexoUrl: text('anexo_url'),
+  anexoNome: text('anexo_nome'),
+  ativo: boolean('ativo').notNull().default(true),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_regimes_alimentares_org_id').on(t.organizationId),
+]);
+
+// Histórico de preços e formulações dos regimes alimentares.
+export const regimesAlimentaresHistorico = pgTable('regimes_alimentares_historico', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  regimeAlimentarId: uuid('regime_alimentar_id').notNull()
+    .references(() => regimesAlimentares.id, { onDelete: 'cascade' }),
+  dataVigencia: date('data_vigencia').notNull(),
+  custoQuilo: numeric('custo_quilo', { precision: 10, scale: 2 }).notNull(),
+  formulacao: text('formulacao'),
+  anexoUrl: text('anexo_url'),
+  anexoNome: text('anexo_nome'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_regimes_alimentares_hist_regime_id').on(t.regimeAlimentarId),
+]);
+
+
 // ── Other ──────────────────────────────────────────────────────────────────────
 
 export const empAss = pgTable('consulting_firms', {
