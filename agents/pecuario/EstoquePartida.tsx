@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { ArrowLeft, Boxes, Loader2, Plus, Trash2, MapPin, CalendarDays, Save, Pencil, AlertTriangle, LayoutGrid, List, Lock } from 'lucide-react';
 import { useHierarchy } from '../../contexts/HierarchyContext';
 import { listAnimalCategories, type AnimalCategory } from '../../lib/api/animalCategoriesClient';
 import {
@@ -123,6 +123,42 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   // ── View mode: 'pasto' (Mapa de Pasto) or 'categoria' (Distribuição por Categoria)
   const [viewMode, setViewMode] = useState<'pasto' | 'categoria'>('pasto');
 
+  // ── Trava mútua entre os dois modos de lançamento ─────────────────────────
+  // O primeiro modo a receber dados "trava" o mapa nele; o outro fica
+  // somente-leitura (vê os resultados, mas não lança/edita). Enquanto zerado
+  // (distribuicaoModo === null) ambos ficam liberados.
+  const distribuicaoModo: 'pasto' | 'categoria' | null = openMapa?.distribuicaoModo ?? null;
+  const modeLocked = distribuicaoModo !== null && distribuicaoModo !== viewMode;
+
+  // Persiste (ou limpa) o modo dono do mapa, com atualização otimista.
+  const persistDistribuicaoModo = useCallback(async (next: 'pasto' | 'categoria' | null) => {
+    if (!openMapa) return;
+    if ((openMapa.distribuicaoModo ?? null) === next) return;
+    const prevModo = openMapa.distribuicaoModo ?? null;
+    setOpenMapa(prev => (prev ? { ...prev, distribuicaoModo: next } : prev));
+    setMapas(prev => prev.map(m => (m.id === openMapa.id ? { ...m, distribuicaoModo: next } : m)));
+    try {
+      await api.updateMapa(openMapa.id, { distribuicaoModo: next });
+    } catch (err: any) {
+      // Reverte em caso de falha
+      setOpenMapa(prev => (prev ? { ...prev, distribuicaoModo: prevModo } : prev));
+      setMapas(prev => prev.map(m => (m.id === openMapa.id ? { ...m, distribuicaoModo: prevModo } : m)));
+      onToast?.(err?.message || 'Erro ao travar modo de lançamento', 'error');
+    }
+  }, [openMapa, api, onToast]);
+
+  // Após um lançamento, sincroniza a trava: define o dono no primeiro dado e
+  // destrava sozinho quando o mapa é zerado.
+  const syncModoAfterEdit = useCallback((nextLancamentos: Record<string, { quantidade: number; pesoKgCabeca: number }>, editedMode: 'pasto' | 'categoria') => {
+    const totalQtd = Object.values(nextLancamentos).reduce((s, v) => s + v.quantidade, 0);
+    const current = openMapa?.distribuicaoModo ?? null;
+    if (totalQtd > 0) {
+      if (current === null) void persistDistribuicaoModo(editedMode);
+    } else if (current !== null) {
+      void persistDistribuicaoModo(null);
+    }
+  }, [openMapa, persistDistribuicaoModo]);
+
   // ── Category mode editing state ────────────────────────────────────────────
   const [catEditingCell, setCatEditingCell] = useState<{ catId: string; field: 'qtd' | 'peso' } | null>(null);
   const [catEditingValue, setCatEditingValue] = useState<string>('');  
@@ -183,6 +219,10 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   const handleOpenMapa = useCallback((mapa: MapaRebanhoHeader) => {
     setOpenMapaId(mapa.id);
     setOpenMapa(mapa);
+    // Abre já no modo dono (editável), evitando cair no modo somente-leitura.
+    if (mapa.distribuicaoModo === 'pasto' || mapa.distribuicaoModo === 'categoria') {
+      setViewMode(mapa.distribuicaoModo);
+    }
     void loadEditor(mapa);
   }, [loadEditor]);
 
@@ -268,7 +308,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
 
   // ── Cell editing ──────────────────────────────────────────────────────────
   const startEditCell = useCallback((key: string, field: 'qtd' | 'peso') => {
-    if (!openMapa || openMapa.status === 'salvo') return;
+    if (!openMapa || openMapa.status === 'salvo' || modeLocked) return;
     const current = lancamentos[key];
     const value = current
       ? field === 'qtd' ? String(current.quantidade) : String(current.pesoKgCabeca).replace('.', ',')
@@ -277,7 +317,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     setEditingValue(value);
     setIsNavigationMode(false);
     setTimeout(() => editInputRef.current?.select(), 0);
-  }, [openMapa, lancamentos]);
+  }, [openMapa, lancamentos, modeLocked]);
 
   const commitEditCell = useCallback(async (nextEdit?: { key: string; field: 'qtd' | 'peso' } | null) => {
     if (!editingCell || !openMapa) return;
@@ -295,9 +335,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     };
 
     // Optimistic local update
-    setLancamentos(prev => ({ ...prev, [key]: payload }));
+    const nextLancamentos = { ...lancamentos, [key]: payload };
+    setLancamentos(nextLancamentos);
     setEditingCell(nextEdit ?? null);
     setEditingValue('');
+    // Trava/destrava o modo conforme os dados (Mapa de Pasto vira o dono)
+    syncModoAfterEdit(nextLancamentos, 'pasto');
 
     // If no next edit, return to navigation mode keeping focus on current cell
     if (!nextEdit) {
@@ -319,7 +362,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
       // Reload to recover ground truth
       void loadEditor(openMapa);
     }
-  }, [editingCell, editingValue, openMapa, lancamentos, onToast, loadEditor, api]);
+  }, [editingCell, editingValue, openMapa, lancamentos, onToast, loadEditor, api, syncModoAfterEdit]);
 
   const cancelEditCell = useCallback(() => {
     const prev = editingCell;
@@ -394,7 +437,9 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   // ── Keyboard handler for navigation mode (on table container) ─────────────
   const handleTableKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!isNavigationMode) return;
-    const isLocked = openMapa?.status === 'salvo';
+    // A navegação por teclado só existe no Mapa de Pasto; se a Categoria for a
+    // dona do mapa, o Pasto fica somente-leitura (isLocked cobre os dois casos).
+    const isLocked = openMapa?.status === 'salvo' || (distribuicaoModo === 'categoria');
 
     // Initialize focus if not set
     if (!focusedCell && flatCells.length > 0) {
@@ -472,7 +517,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
         }
         break;
     }
-  }, [isNavigationMode, focusedCell, flatCells, navigateTo, startEditCell, findCellIndex, openMapa]);
+  }, [isNavigationMode, focusedCell, flatCells, navigateTo, startEditCell, findCellIndex, openMapa, distribuicaoModo]);
 
   // ── Scroll focused cell into view ──────────────────────────────────────────
   useEffect(() => {
@@ -583,14 +628,14 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
 
   // ── Category mode: editing ────────────────────────────────────────────────
   const startCatEdit = useCallback((catId: string, field: 'qtd' | 'peso') => {
-    if (!openMapa || openMapa.status === 'salvo') return;
+    if (!openMapa || openMapa.status === 'salvo' || modeLocked) return;
     const t = totaisPorCategoria[catId] ?? { qtd: 0, pesoTotal: 0 };
     const pesoMedio = t.qtd > 0 ? t.pesoTotal / t.qtd : 0;
     const value = field === 'qtd' ? (t.qtd ? String(t.qtd) : '') : (pesoMedio ? String(pesoMedio).replace('.', ',') : '');
     setCatEditingCell({ catId, field });
     setCatEditingValue(value);
     setTimeout(() => catEditInputRef.current?.select(), 0);
-  }, [openMapa, totaisPorCategoria]);
+  }, [openMapa, totaisPorCategoria, modeLocked]);
 
   const commitCatEdit = useCallback(async () => {
     if (!catEditingCell || !openMapa || locais.length === 0) return;
@@ -610,9 +655,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
     };
 
     // Optimistic update
-    setLancamentos(prev => ({ ...prev, [key]: payload }));
+    const nextLancamentos = { ...lancamentos, [key]: payload };
+    setLancamentos(nextLancamentos);
     setCatEditingCell(null);
     setCatEditingValue('');
+    // Trava/destrava o modo conforme os dados (Categoria vira o dono)
+    syncModoAfterEdit(nextLancamentos, 'categoria');
 
     try {
       await api.upsertLancamento({
@@ -625,7 +673,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
       onToast?.(err?.message || 'Erro ao salvar', 'error');
       void loadEditor(openMapa);
     }
-  }, [catEditingCell, catEditingValue, openMapa, locais, lancamentos, onToast, loadEditor, api]);
+  }, [catEditingCell, catEditingValue, openMapa, locais, lancamentos, onToast, loadEditor, api, syncModoAfterEdit]);
 
   const cancelCatEdit = useCallback(() => {
     setCatEditingCell(null);
@@ -679,6 +727,14 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
   // ── Editor view ───────────────────────────────────────────────────────────
   if (openMapa) {
     const isLocked = openMapa.status === 'salvo';
+    // Trava de modo: o modo atual está somente-leitura porque o OUTRO modo é o
+    // dono do mapa. `editLocked` combina a trava por status ("salvo") com essa.
+    const editLocked = isLocked || modeLocked;
+    const ownerModeLabel = distribuicaoModo === 'pasto'
+      ? 'Mapa de Pasto'
+      : distribuicaoModo === 'categoria'
+        ? 'Distribuição por Categoria'
+        : null;
     return (
       <div className="h-full flex flex-col p-4 md:p-6 max-w-[1400px] mx-auto w-full animate-in fade-in duration-500" style={{ height: '100vh', maxHeight: '100vh' }}>
         <header className="mb-3 shrink-0">
@@ -759,6 +815,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
               <button
                 type="button"
                 onClick={() => setViewMode('pasto')}
+                title={distribuicaoModo === 'categoria' ? 'Somente leitura — este mapa está sendo lançado por Categoria' : undefined}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold transition-all duration-200 ${
                   viewMode === 'pasto'
                     ? 'bg-[#16A34A] text-white shadow-sm'
@@ -767,10 +824,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
               >
                 <LayoutGrid size={13} />
                 Mapa de Pasto
+                {distribuicaoModo === 'categoria' && <Lock size={11} className={viewMode === 'pasto' ? 'text-white/90' : 'text-[#9CA3AF]'} />}
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('categoria')}
+                title={distribuicaoModo === 'pasto' ? 'Somente leitura — este mapa está sendo lançado pelo Mapa de Pasto' : undefined}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold transition-all duration-200 border-l border-[#E5E7EB] ${
                   viewMode === 'categoria'
                     ? 'bg-[#16A34A] text-white shadow-sm'
@@ -779,9 +838,20 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
               >
                 <List size={13} />
                 Distribuição por Categoria
+                {distribuicaoModo === 'pasto' && <Lock size={11} className={viewMode === 'categoria' ? 'text-white/90' : 'text-[#9CA3AF]'} />}
               </button>
             </div>
           </div>
+
+          {/* Aviso de trava: o modo atual é somente-leitura porque o outro é o dono */}
+          {modeLocked && ownerModeLabel && (
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] text-[#92400E] text-xs font-semibold">
+              <Lock size={13} className="shrink-0" />
+              <span>
+                Somente leitura. Este estoque de partida está sendo lançado por <b>{ownerModeLabel}</b>. Para lançar aqui, zere os dados em <b>{ownerModeLabel}</b>.
+              </span>
+            </div>
+          )}
         </header>
 
         {loadingEditor ? (
@@ -822,12 +892,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                         </td>
                         {/* QTD */}
                         <td
-                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${editLocked ? 'cursor-default' : 'cursor-text'} ${
                             editingQtd
                               ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
                               : 'hover:bg-[#F9FAFB]'
                           }`}
-                          onClick={() => !isLocked && startCatEdit(ct.catId, 'qtd')}
+                          onClick={() => !editLocked && startCatEdit(ct.catId, 'qtd')}
                         >
                           {editingQtd ? (
                             <input
@@ -849,12 +919,12 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                         </td>
                         {/* PESO MÉDIO */}
                         <td
-                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                          className={`px-4 py-3 text-right border-l font-medium border-[#E5E7EB] transition-all duration-150 ${editLocked ? 'cursor-default' : 'cursor-text'} ${
                             editingPeso
                               ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
                               : 'hover:bg-[#F9FAFB]'
                           }`}
-                          onClick={() => !isLocked && startCatEdit(ct.catId, 'peso')}
+                          onClick={() => !editLocked && startCatEdit(ct.catId, 'peso')}
                         >
                           {editingPeso ? (
                             <input
@@ -966,7 +1036,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                               <td
                                 id={`cell-${key}-qtd`}
                                 role="gridcell"
-                                className={`px-3 py-2 text-right border-l font-medium transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                                className={`px-3 py-2 text-right border-l font-medium transition-all duration-150 border-[#E5E7EB] ${editLocked ? 'cursor-default' : 'cursor-text'} ${
                                   editingQtd
                                     ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
                                     : focusedQtd
@@ -975,7 +1045,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                                 }`}
                                 onClick={() => {
                                   setFocusedCell({ key, field: 'qtd' });
-                                  if (!isLocked) {
+                                  if (!editLocked) {
                                     startEditCell(key, 'qtd');
                                   }
                                 }}
@@ -1001,7 +1071,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                               <td
                                 id={`cell-${key}-peso`}
                                 role="gridcell"
-                                className={`px-3 py-2 text-right border-r transition-all duration-150 border-[#E5E7EB] ${isLocked ? 'cursor-default' : 'cursor-text'} ${
+                                className={`px-3 py-2 text-right border-r transition-all duration-150 border-[#E5E7EB] ${editLocked ? 'cursor-default' : 'cursor-text'} ${
                                   editingPeso
                                     ? 'bg-[#DCFCE7] ring-2 ring-inset ring-[#16A34A] text-[#15803D] font-bold'
                                     : focusedPeso
@@ -1010,7 +1080,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                                 }`}
                                 onClick={() => {
                                   setFocusedCell({ key, field: 'peso' });
-                                  if (!isLocked) {
+                                  if (!editLocked) {
                                     startEditCell(key, 'peso');
                                   }
                                 }}
@@ -1067,7 +1137,7 @@ const EstoquePartida: React.FC<EstoquePartidaProps> = ({ onToast, onBack, theme 
                 </tfoot>
               </table>
             </div>
-            {!isLocked && (
+            {!editLocked && (
               <div className="px-3 py-2 border-t border-[#E5E7EB] bg-[#F9FAFB]/50 text-[#6B7280] text-[0.65rem] leading-snug font-semibold shrink-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.6rem] font-bold uppercase tracking-wider bg-[#DCFCE7] text-[#166534]">

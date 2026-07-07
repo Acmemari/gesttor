@@ -33,6 +33,7 @@ import {
 } from '../src/DB/repositories/mapao.js';
 
 const VALID_STATUS = ['rascunho', 'salvo'];
+const VALID_DIST_MODO = ['pasto', 'categoria'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
@@ -147,13 +148,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, status, observacao, dataReferencia } = req.body ?? {};
+      const { id, status, observacao, dataReferencia, distribuicaoModo } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
       }
       if (status && !VALID_STATUS.includes(status)) {
         jsonError(res, `status inválido. Valores: ${VALID_STATUS.join(', ')}`, { status: 400 });
+        return;
+      }
+      if (
+        distribuicaoModo !== undefined &&
+        distribuicaoModo !== null &&
+        !VALID_DIST_MODO.includes(distribuicaoModo)
+      ) {
+        jsonError(res, `distribuicaoModo inválido. Valores: ${VALID_DIST_MODO.join(', ')} ou null`, { status: 400 });
         return;
       }
       if (dataReferencia && !/^\d{4}-\d{2}-\d{2}$/.test(String(dataReferencia))) {
@@ -175,6 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (status !== undefined) payload.status = status;
       if (observacao !== undefined) payload.observacao = observacao?.trim() || null;
       if (dataReferencia !== undefined) payload.dataReferencia = dataReferencia;
+      if (distribuicaoModo !== undefined) payload.distribuicaoModo = distribuicaoModo ?? null;
       const row = await updateHeader(id, payload);
       jsonSuccess(res, row);
       return;

@@ -380,16 +380,7 @@ const ComposicaoRacialEditor: React.FC<{
 
 interface SortableRowProps {
   breed: AnimalBreed;
-  editing: boolean;
-  editNome: string;
-  editCodigoAsbia: string;
-  editAtivo: boolean;
   onStartEdit: (b: AnimalBreed) => void;
-  onChangeEditNome: (v: string) => void;
-  onChangeEditCodigoAsbia: (v: string) => void;
-  onToggleEditAtivo: () => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
   onDelete: (id: string) => void;
   onToggleAtivoDirect: (b: AnimalBreed) => void;
   onEditComposicao: (b: AnimalBreed) => void;
@@ -397,23 +388,13 @@ interface SortableRowProps {
 
 const SortableRow: React.FC<SortableRowProps> = ({
   breed,
-  editing,
-  editNome,
-  editCodigoAsbia,
-  editAtivo,
   onStartEdit,
-  onChangeEditNome,
-  onChangeEditCodigoAsbia,
-  onToggleEditAtivo,
-  onSaveEdit,
-  onCancelEdit,
   onDelete,
   onToggleAtivoDirect,
   onEditComposicao,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: breed.id,
-    disabled: editing,
   });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -431,7 +412,6 @@ const SortableRow: React.FC<SortableRowProps> = ({
       <td className="px-3 py-3 w-8">
         <button
           type="button"
-          disabled={editing}
           className="cursor-grab active:cursor-grabbing transition-colors text-gray-400 hover:text-[#16A34A] disabled:opacity-30"
           {...attributes}
           {...listeners}
@@ -440,49 +420,20 @@ const SortableRow: React.FC<SortableRowProps> = ({
         </button>
       </td>
       <td className="px-4 py-3 text-[#0F172A]">
-        {editing ? (
-          <input
-            type="text"
-            autoFocus
-            value={editNome}
-            onChange={(e) => onChangeEditNome(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onSaveEdit();
-              if (e.key === 'Escape') onCancelEdit();
-            }}
-            className={inputCls}
-          />
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="font-bold">{breed.nome}</span>
-            {isSystem && (
-              <span
-                title="Raça padrão do sistema — só pode ser ativada/inativada"
-                className="inline-flex items-center gap-1 rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#64748B]"
-              >
-                <Lock size={10} /> Padrão
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="font-bold">{breed.nome}</span>
+          {isSystem && (
+            <span
+              title="Raça padrão do sistema — não pode ser excluída"
+              className="inline-flex items-center gap-1 rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#64748B]"
+            >
+              <Lock size={10} /> Padrão
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-[#0F172A]">
-        {editing ? (
-          <input
-            type="text"
-            value={editCodigoAsbia}
-            maxLength={2}
-            onChange={(e) => onChangeEditCodigoAsbia(e.target.value.toUpperCase())}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onSaveEdit();
-              if (e.key === 'Escape') onCancelEdit();
-            }}
-            placeholder="—"
-            className={`${inputCls} w-20 text-center font-mono uppercase tracking-widest`}
-          />
-        ) : (
-          <CodigoCell codigo={breed.codigoAsbia} />
-        )}
+        <CodigoCell codigo={breed.codigoAsbia} />
       </td>
       <td className="px-4 py-3 text-[#0F172A]">
         <div className="flex items-start gap-2">
@@ -500,10 +451,8 @@ const SortableRow: React.FC<SortableRowProps> = ({
         </div>
       </td>
       <td className="px-4 py-3">
-        {editing ? (
-          <SituacaoSwitch checked={editAtivo} onClick={onToggleEditAtivo} />
-        ) : isSystem ? (
-          // Raça padrão: situação é editável diretamente (único controle permitido).
+        {isSystem ? (
+          // Raça padrão: situação é editável diretamente na lista.
           <SituacaoSwitch checked={breed.ativo} onClick={() => onToggleAtivoDirect(breed)} />
         ) : (
           <span
@@ -517,49 +466,30 @@ const SortableRow: React.FC<SortableRowProps> = ({
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1.5">
-          {editing ? (
-            <>
-              <button
-                type="button"
-                onClick={onSaveEdit}
-                className="p-1.5 rounded-lg transition-all text-[#16A34A] hover:bg-[#E7F6EC]"
-                title="Salvar"
-              >
-                <Check size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={onCancelEdit}
-                className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#0F172A] hover:bg-gray-100"
-                title="Cancelar"
-              >
-                <X size={16} />
-              </button>
-            </>
-          ) : isSystem ? (
+          <button
+            type="button"
+            onClick={() => onStartEdit(breed)}
+            className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#16A34A] hover:bg-[#E7F6EC]"
+            title="Editar raça"
+          >
+            <Edit2 size={15} />
+          </button>
+          {isSystem ? (
             <span
-              title="Raça padrão do sistema não pode ser alterada ou excluída"
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-300"
+              title="Raça padrão do sistema não pode ser excluída"
+              className="inline-flex items-center gap-1 p-1.5 text-[11px] font-semibold text-gray-300"
             >
               <Lock size={13} />
             </span>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => onStartEdit(breed)}
-                className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#16A34A] hover:bg-[#E7F6EC]"
-              >
-                <Edit2 size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(breed.id)}
-                className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#DC2626] hover:bg-red-50"
-              >
-                <Trash2 size={15} />
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => onDelete(breed.id)}
+              className="p-1.5 rounded-lg transition-all text-gray-400 hover:text-[#DC2626] hover:bg-red-50"
+              title="Excluir raça"
+            >
+              <Trash2 size={15} />
+            </button>
           )}
         </div>
       </td>
@@ -590,11 +520,14 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [observacao, setObservacao] = useState('');
   const draftSeq = useRef(1);
 
-  // Edição inline (aba Registros)
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Edição da raça (abre a tela de cadastro num modal, com todos os campos)
+  const [editId, setEditId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState('');
   const [editCodigoAsbia, setEditCodigoAsbia] = useState('');
+  const [editComposicao, setEditComposicao] = useState<ComposicaoComponente[]>([]);
+  const [editObservacao, setEditObservacao] = useState('');
   const [editAtivo, setEditAtivo] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Edição da composição racial (modal — vale para qualquer raça, inclusive padrão do sistema)
   const [composicaoEditId, setComposicaoEditId] = useState<string | null>(null);
@@ -713,40 +646,50 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
     }
   }, [drafts, organizationId, onToast, loadBreeds]);
 
-  // ── Edição inline (Registros) ───────────────────────────────────────────────
+  // ── Edição da raça (tela de cadastro em modal) ──────────────────────────────
 
   const startEdit = useCallback((breed: AnimalBreed) => {
-    if (breed.sistema) return; // raça padrão não é editável
-    setEditingId(breed.id);
+    setEditId(breed.id);
     setEditNome(breed.nome);
     setEditCodigoAsbia(breed.codigoAsbia ?? '');
+    setEditComposicao(breed.composicaoRacial ?? []);
+    setEditObservacao(breed.observacao ?? '');
     setEditAtivo(breed.ativo);
   }, []);
 
   const cancelEdit = useCallback(() => {
-    setEditingId(null);
+    setEditId(null);
   }, []);
 
   const saveEdit = useCallback(async () => {
-    if (!editingId) return;
+    if (!editId) return;
     const clean = editNome.trim();
     if (!clean) {
       onToast?.('Informe o nome da raça', 'error');
       return;
     }
+    if (!composicaoValida(editComposicao)) {
+      onToast?.('Composição inválida: a soma deve ser 100% e ter exatamente uma raça principal', 'error');
+      return;
+    }
+    setSavingEdit(true);
     try {
-      await updateAnimalBreed(editingId, {
+      await updateAnimalBreed(editId, {
         nome: clean,
         codigoAsbia: editCodigoAsbia.trim().toUpperCase() || null,
+        composicaoRacial: editComposicao,
+        observacao: editObservacao.trim() || null,
         ativo: editAtivo,
       });
       onToast?.('Raça atualizada com sucesso', 'success');
-      setEditingId(null);
+      setEditId(null);
       await loadBreeds();
     } catch (err: any) {
       onToast?.(err.message || 'Erro ao salvar raça', 'error');
+    } finally {
+      setSavingEdit(false);
     }
-  }, [editingId, editNome, editCodigoAsbia, editAtivo, onToast, loadBreeds]);
+  }, [editId, editNome, editCodigoAsbia, editComposicao, editObservacao, editAtivo, onToast, loadBreeds]);
 
   // Toggle direto de situação (usado nas raças padrão do sistema).
   const toggleAtivoDirect = useCallback(
@@ -1036,16 +979,7 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                       <SortableRow
                         key={breed.id}
                         breed={breed}
-                        editing={editingId === breed.id}
-                        editNome={editNome}
-                        editCodigoAsbia={editCodigoAsbia}
-                        editAtivo={editAtivo}
                         onStartEdit={startEdit}
-                        onChangeEditNome={setEditNome}
-                        onChangeEditCodigoAsbia={setEditCodigoAsbia}
-                        onToggleEditAtivo={() => setEditAtivo((v) => !v)}
-                        onSaveEdit={saveEdit}
-                        onCancelEdit={cancelEdit}
                         onDelete={(id) => setDeleteConfirmId(id)}
                         onToggleAtivoDirect={toggleAtivoDirect}
                         onEditComposicao={openComposicaoEdit}
@@ -1161,6 +1095,93 @@ const AnimalBreedsManagement: React.FC<Props> = ({ onToast, onBack }) => {
                 className="inline-flex items-center gap-2 rounded-xl bg-[#16A34A] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all duration-300 hover:bg-[#15803D] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingComposicao && <Loader2 size={14} className="animate-spin" />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Editar Raça (tela de cadastro completa em modal) ──────────────────── */}
+      {editId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-2xl transition-all duration-300">
+            <div className="mb-4 flex items-center gap-2">
+              <Edit2 size={18} className="text-[#16A34A]" />
+              <h3 className="text-lg font-black tracking-tight text-[#0F172A]">Editar Raça</h3>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
+                    Nome da Raça <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editNome}
+                    onChange={(e) => setEditNome(e.target.value)}
+                    placeholder="Ex: Nelore, Angus, Brangus..."
+                    className={inputCls}
+                  />
+                </div>
+                <div className="w-[150px]">
+                  <label className="mb-1 flex items-center gap-1 text-[12.5px] font-semibold text-gray-700">
+                    Código
+                    <Info size={13} className="text-gray-400" aria-hidden />
+                    <span className="sr-only">ASBIA/INTERBULL</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editCodigoAsbia}
+                    maxLength={2}
+                    title="ASBIA/INTERBULL"
+                    onChange={(e) => setEditCodigoAsbia(e.target.value.toUpperCase())}
+                    placeholder="Ex: NE"
+                    className={`${inputCls} text-center font-mono uppercase tracking-widest`}
+                  />
+                </div>
+              </div>
+
+              <ComposicaoRacialEditor
+                breeds={breeds}
+                value={editComposicao}
+                onChange={setEditComposicao}
+                onToast={onToast}
+              />
+
+              <div>
+                <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Observação</label>
+                <textarea
+                  value={editObservacao}
+                  onChange={(e) => setEditObservacao(e.target.value)}
+                  placeholder="Observação livre sobre a raça (opcional)"
+                  rows={2}
+                  className={textareaCls}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Situação</label>
+                <SituacaoSwitch checked={editAtivo} onClick={() => setEditAtivo((v) => !v)} />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-xl border border-[#E5E7EB] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-[#6B7280] transition-all duration-300 hover:bg-[#F9FAFB]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={!editNome.trim() || !composicaoValida(editComposicao) || savingEdit}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#16A34A] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all duration-300 hover:bg-[#15803D] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingEdit && <Loader2 size={14} className="animate-spin" />}
                 Salvar
               </button>
             </div>

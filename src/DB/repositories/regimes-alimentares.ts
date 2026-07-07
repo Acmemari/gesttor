@@ -1,6 +1,6 @@
-import { eq, asc, max, desc } from 'drizzle-orm';
+import { eq, asc, max, desc, and } from 'drizzle-orm';
 import { db } from '../index.js';
-import { regimesAlimentares, regimesAlimentaresHistorico } from '../schema.js';
+import { regimesAlimentares, regimesAlimentaresHistorico, regimesAlimentaresGmd } from '../schema.js';
 
 export async function listByOrganization(organizationId: string) {
   return db.select().from(regimesAlimentares)
@@ -13,37 +13,46 @@ export async function create(data: {
   nome: string;
   codigoCurto: string;
   tipo: string;
+  produtoFormulado?: string | null;
   nivelIngestaoValor?: string | number | null;
   nivelIngestaoTipo?: string | null;
   custoQuilo?: string | number | null;
   anexoUrl?: string | null;
   anexoNome?: string | null;
+  produtos?: any | null;
 }) {
   const [maxRow] = await db.select({ maxOrdem: max(regimesAlimentares.ordem) })
     .from(regimesAlimentares)
     .where(eq(regimesAlimentares.organizationId, data.organizationId));
   const nextOrdem = (maxRow?.maxOrdem ?? -1) + 1;
 
+  let costToUse = data.custoQuilo !== undefined && data.custoQuilo !== null ? String(data.custoQuilo) : null;
+  if (data.produtos && Array.isArray(data.produtos) && data.produtos.length > 0) {
+    costToUse = String(data.produtos[0].custoQuilo);
+  }
+
   const [row] = await db.insert(regimesAlimentares).values({
     organizationId: data.organizationId,
     nome: data.nome,
     codigoCurto: data.codigoCurto,
     tipo: data.tipo,
+    produtoFormulado: data.produtoFormulado ?? null,
     nivelIngestaoValor: data.nivelIngestaoValor !== undefined && data.nivelIngestaoValor !== null ? String(data.nivelIngestaoValor) : null,
     nivelIngestaoTipo: data.nivelIngestaoTipo ?? null,
-    custoQuilo: data.custoQuilo !== undefined && data.custoQuilo !== null ? String(data.custoQuilo) : null,
+    custoQuilo: costToUse,
     anexoUrl: data.anexoUrl ?? null,
     anexoNome: data.anexoNome ?? null,
+    produtos: data.produtos ?? null,
     ordem: nextOrdem,
   }).returning();
 
-  // If a cost was provided, create the initial history entry
-  if (data.custoQuilo !== undefined && data.custoQuilo !== null) {
+  // If a cost was provided or calculated, create the initial history entry
+  if (costToUse !== null) {
     const todayStr = new Date().toISOString().split('T')[0];
     await db.insert(regimesAlimentaresHistorico).values({
       regimeAlimentarId: row.id,
       dataVigencia: todayStr,
-      custoQuilo: String(data.custoQuilo),
+      custoQuilo: costToUse,
       formulacao: 'Formulação inicial',
       anexoUrl: data.anexoUrl ?? null,
       anexoNome: data.anexoNome ?? null,
@@ -57,20 +66,31 @@ export async function update(id: string, data: {
   nome?: string;
   codigoCurto?: string;
   tipo?: string;
+  produtoFormulado?: string | null;
   nivelIngestaoValor?: string | number | null;
   nivelIngestaoTipo?: string | null;
   custoQuilo?: string | number | null;
   anexoUrl?: string | null;
   anexoNome?: string | null;
+  produtos?: any | null;
   ativo?: boolean;
 }) {
   const payload: Record<string, any> = { ...data, updatedAt: new Date() };
   if (data.nivelIngestaoValor !== undefined) {
     payload.nivelIngestaoValor = data.nivelIngestaoValor !== null ? String(data.nivelIngestaoValor) : null;
   }
-  if (data.custoQuilo !== undefined) {
+  
+  if (data.produtos !== undefined) {
+    payload.produtos = data.produtos ?? null;
+    if (Array.isArray(data.produtos) && data.produtos.length > 0) {
+      payload.custoQuilo = String(data.produtos[0].custoQuilo);
+    } else {
+      payload.custoQuilo = null;
+    }
+  } else if (data.custoQuilo !== undefined) {
     payload.custoQuilo = data.custoQuilo !== null ? String(data.custoQuilo) : null;
   }
+
   const [row] = await db.update(regimesAlimentares)
     .set(payload)
     .where(eq(regimesAlimentares.id, id as any))
@@ -154,4 +174,53 @@ export async function updateMainCache(regimeAlimentarId: string) {
       })
       .where(eq(regimesAlimentares.id, regimeAlimentarId as any));
   }
+}
+
+// ── GMD (Ganho Médio Diário) Helpers ──────────────────────────────────────────
+
+export async function listGmdConfigs(regimeAlimentarId: string) {
+  return db.select()
+    .from(regimesAlimentaresGmd)
+    .where(eq(regimesAlimentaresGmd.regimeAlimentarId, regimeAlimentarId));
+}
+
+export async function setGmdConfig(data: {
+  regimeAlimentarId: string;
+  categoriaId: string;
+  estacao: string;
+  gmd: string | number;
+}) {
+  const existing = await db.select()
+    .from(regimesAlimentaresGmd)
+    .where(
+      and(
+        eq(regimesAlimentaresGmd.regimeAlimentarId, data.regimeAlimentarId),
+        eq(regimesAlimentaresGmd.categoriaId, data.categoriaId),
+        eq(regimesAlimentaresGmd.estacao, data.estacao)
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    const [row] = await db.update(regimesAlimentaresGmd)
+      .set({
+        gmd: String(data.gmd),
+        updatedAt: new Date()
+      })
+      .where(eq(regimesAlimentaresGmd.id, existing[0].id))
+      .returning();
+    return row;
+  } else {
+    const [row] = await db.insert(regimesAlimentaresGmd).values({
+      regimeAlimentarId: data.regimeAlimentarId,
+      categoriaId: data.categoriaId,
+      estacao: data.estacao,
+      gmd: String(data.gmd),
+    }).returning();
+    return row;
+  }
+}
+
+export async function removeGmdConfig(id: string) {
+  await db.delete(regimesAlimentaresGmd).where(eq(regimesAlimentaresGmd.id, id as any));
 }

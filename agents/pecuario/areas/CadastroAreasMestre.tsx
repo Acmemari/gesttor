@@ -1560,6 +1560,22 @@ const CadastroAreasMestre: React.FC<Props> = ({
 
   const catalogIndex = useMemo<CatalogIndex>(() => buildCatalogIndex(catalog), [catalog]);
 
+  /**
+   * Foco da aba de categoria ativa no header: cada aba mostra no mapa apenas as
+   * SUAS feições (filtro além dos olhos manuais de visibilidade).
+   *   - 'perimetro'      (Geocadastro): visão geral do de-para → mostra tudo.
+   *   - 'perimetroLista' (Perímetro)  : só a estrutura (Fazenda/Retiro/Setor).
+   *   - <categoriaId>    (Pecuária/Água/…): só os Locais daquela categoria.
+   */
+  const inActiveCat = useCallback(
+    (nivel: Nivel, categoriaId: string | null): boolean => {
+      if (activeCat === 'perimetro') return true;
+      if (activeCat === 'perimetroLista') return nivel === 'fazenda' || nivel === 'retiro' || nivel === 'setor';
+      return nivel === 'local' && categoriaId === activeCat;
+    },
+    [activeCat],
+  );
+
   const tiposByCat = useMemo(() => {
     const m = new Map<string, TipoLocalItem[]>();
     (catalog?.tipos ?? []).forEach((t) => {
@@ -2140,8 +2156,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
       if (it.saved) continue; // já cadastrada → desenhada pela camada de referência
       const ring = cleanRing(it.coords);
       // O NOVO mapa (produção) desenha só feições classificadas (keep) e quando a
-      // fonte inclui produção; legenda (hiddenOf) filtra por nível/categoria/tipo.
-      const hidden = !showProducao || !it.keep || hiddenOf(it);
+      // fonte inclui produção; legenda (hiddenOf) filtra por nível/categoria/tipo;
+      // a aba de categoria ativa (inActiveCat) foca só as suas feições.
+      const hidden = !showProducao || !it.keep || hiddenOf(it) || !inActiveCat(it.nivel, it.categoriaId);
 
       // ── Ponto (1 coordenada) → marcador com o ícone do tipo ──
       if (it.geomKind === 'point' || ring.length === 1) {
@@ -2276,7 +2293,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
       // Perímetro (Fazenda) ao fundo: assim o hover acerta a feição interna, não o contorno.
       else if (it.nivel === 'fazenda') layer.bringToBack();
     }
-  }, [items, selId, selectItem, hiddenLevels, hiddenAreaIds, hiddenCats, hiddenTipos, catalogIndex, showProducao]);
+  }, [items, selId, selectItem, hiddenLevels, hiddenAreaIds, hiddenCats, hiddenTipos, catalogIndex, showProducao, inActiveCat]);
 
   // ── Áreas JÁ cadastradas: camada de referência read-only no mapa ──────────
   // Sem isto, a tela mestra (embutida em tela cheia) mostraria o mapa vazio mesmo
@@ -2312,6 +2329,9 @@ const CadastroAreasMestre: React.FC<Props> = ({
     const ordered = [...existingAreas].sort((a, b) => stackRank(b) - stackRank(a));
     for (const a of ordered) {
       if (hiddenLevels.has(a.nivel) || hiddenAreaIds.has(a.id) || (a.tipo != null && hiddenTipos.has(a.tipo))) continue;
+      // Aba de categoria ativa: mostra só as feições daquela categoria (Locais) ou a
+      // estrutura (Perímetro). Categoria de um Local salvo = a do seu tipo no catálogo.
+      if (!inActiveCat(a.nivel, a.tipo ? catalogIndex.resolve(a.tipo)?.categoriaId ?? null : null)) continue;
       const ring = cleanRing(a.coords);
       const selecionada = a.id === savedSelId;
       // Linha salva (cerca/estrada/rede) → polyline. Agora selecionável p/ editar/apagar.
@@ -2376,7 +2396,7 @@ const CadastroAreasMestre: React.FC<Props> = ({
       savedLayersRef.current.set(a.id, poly);
       poly.bringToBack(); // fica atrás dos rascunhos (que são adicionados depois)
     }
-  }, [existingAreas, hiddenLevels, hiddenAreaIds, hiddenTipos, catalogIndex, mapReady, readOnly, onEditSavedArea, onEditSavedGeometry, onDeleteSavedArea, drawing, editing, showProducao, savedSelId, selectSaved]);
+  }, [existingAreas, hiddenLevels, hiddenAreaIds, hiddenTipos, catalogIndex, mapReady, readOnly, onEditSavedArea, onEditSavedGeometry, onDeleteSavedArea, drawing, editing, showProducao, savedSelId, selectSaved, inActiveCat]);
 
   // ── Enquadra nas áreas já cadastradas ao abrir (quando não há rascunhos) ──
   // Fallback: sem perímetro/áreas estruturadas, enquadra no mapa de referência

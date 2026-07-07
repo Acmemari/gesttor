@@ -322,6 +322,9 @@ app.all('/api/tipos-local', (req, res) => handleApiRoute('./api/tipos-local.ts',
 // Movimentação › Gestão de Lotes (ledger de eventos)
 app.all('/api/lote-eventos', (req, res) => handleApiRoute('./api/lote-eventos.ts', req, res));
 
+// Movimentação › Gestão de Lotes › Planejamento Nutricional (plano por lote)
+app.all('/api/planejamento-nutricional', (req, res) => handleApiRoute('./api/planejamento-nutricional.ts', req, res));
+
 // Tipo de Chifre - Aspas
 app.all('/api/tipos-chifre', (req, res) => handleApiRoute('./api/tipos-chifre.ts', req, res));
 

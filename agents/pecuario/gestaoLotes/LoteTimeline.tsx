@@ -30,7 +30,7 @@ const LoteTimeline: React.FC<{ items: TimelineItem[] }> = ({ items }) => {
                 <span className="text-[11.5px] font-semibold text-gray-400">{formatDateBR(it.data)}</span>
               </div>
               {it.meta && <p className="mt-0.5 text-[12.5px] text-gray-600">{it.meta}</p>}
-              {it.resp && <p className="mt-0.5 text-[11.5px] text-gray-400">Responsável: {it.resp}</p>}
+              {it.resp && <p className="mt-0.5 text-[11.5px] text-gray-400">Observação: {it.resp}</p>}
             </li>
           ))}
         </ol>

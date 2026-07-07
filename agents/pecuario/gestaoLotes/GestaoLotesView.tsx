@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, Layers, MapPin, Leaf, Baby, Tag, AlertTriangle, ArrowLeftRight,
-  Loader2, List, LayoutGrid, MoreVertical, Pencil, Ban,
+  Loader2, List, LayoutGrid, MoreVertical, Pencil, Ban, ClipboardList,
 } from 'lucide-react';
 import { useHierarchy } from '../../../contexts/HierarchyContext';
 import LoteAnimaisIcon from '../nascimento/LoteAnimaisIcon';
@@ -28,6 +28,7 @@ import {
 } from './LoteModals';
 import { IncluirPorIdModal } from './IncluirPorIdModal';
 import { ManejoLotesModal } from './ManejoLotesModal';
+import PlanejamentoNutricionalModal from './PlanejamentoNutricionalModal';
 
 interface GestaoLotesViewProps {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -40,6 +41,7 @@ type ModalKind =
   | { kind: 'manejoLotes' }
   | { kind: 'transferir' }
   | { kind: 'regime' }
+  | { kind: 'planejamento' }
   | { kind: 'repro' }
   | { kind: 'novo' }
   | { kind: 'editar' }
@@ -480,9 +482,16 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
                 </ControleCard>
 
                 <ControleCard
-                  cor="#15803d" icon={<Leaf size={16} />} titulo="Regime nutricional" pergunta="Como é alimentado?"
+                  cor="#15803d" icon={<Leaf size={16} />} titulo="Regime nutricional" pergunta="Como é alimentado e o plano até o abate?"
                   mudaPor="Evento de Manejo"
-                  acoes={encerrado ? null : <CardBtn onClick={() => setModal({ kind: 'regime' })} icon={<Plus size={13} />}>Mudar regime</CardBtn>}
+                  acoes={encerrado ? (
+                    <CardBtn variant="ghost" onClick={() => setModal({ kind: 'planejamento' })} icon={<ClipboardList size={13} />}>Planejamento</CardBtn>
+                  ) : (
+                    <div className="flex gap-2">
+                      <CardBtn variant="ghost" onClick={() => setModal({ kind: 'regime' })} icon={<Plus size={13} />}>Mudar regime</CardBtn>
+                      <CardBtn onClick={() => setModal({ kind: 'planejamento' })} icon={<ClipboardList size={13} />}>Planejamento</CardBtn>
+                    </div>
+                  )}
                 >
                   <p className="text-[14px] font-bold text-gray-900">{planoNutri(selectedEventos) || 'Sem plano definido'}</p>
                   {protocolo(selectedEventos) ? (
@@ -545,6 +554,15 @@ const GestaoLotesView: React.FC<GestaoLotesViewProps> = ({ onToast, onAbrirFicha
       )}
       {modal?.kind === 'regime' && selected && (
         <MudarRegimeModal lote={selected} onClose={() => setModal(null)} onSubmit={lancarEventos} />
+      )}
+      {modal?.kind === 'planejamento' && selected && (
+        <PlanejamentoNutricionalModal
+          lote={selected}
+          organizationId={organizationId}
+          encerrado={encerrado}
+          onClose={() => setModal(null)}
+          onToast={onToast}
+        />
       )}
       {modal?.kind === 'repro' && selected && (
         <RegistrarReproModal lote={selected} onClose={() => setModal(null)} onSubmit={lancarEventos} />

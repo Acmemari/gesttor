@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   List,
@@ -32,7 +32,6 @@ import { useAuth } from '../contexts/AuthContext';
 import PageHeader from '../components/ui/PageHeader';
 import TabSwitch from '../components/ui/TabSwitch';
 import FormActions from '../components/ui/FormActions';
-import InlineEntryTable, { type Column } from '../components/ui/InlineEntryTable';
 import {
   listPadraoRacial,
   createPadraoRacial,
@@ -48,16 +47,6 @@ interface Props {
   onToast?: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onBack?: () => void;
   theme?: 'light' | 'dark';
-}
-
-/** Registro ainda não persistido, acumulado na régua de lançamento. */
-interface DraftPadrao {
-  localId: number;
-  nome: string;
-  classificacao: string | null;
-  ceip: boolean;
-  grauSangue: string | null;
-  observacao: string;
 }
 
 /** Padrão Racial — opções exclusivas (selecione apenas uma). */
@@ -427,15 +416,13 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // Régua de lançamento (aba Lançamentos)
+  // Entrada da aba Lançamentos (salva direto)
   const [aba, setAba] = useState<'lancar' | 'registros'>('lancar');
-  const [drafts, setDrafts] = useState<DraftPadrao[]>([]);
   const [nome, setNome] = useState('');
   const [classificacao, setClassificacao] = useState<string | null>(null);
   const [ceip, setCeip] = useState(false);
   const [grauSangue, setGrauSangue] = useState<string | null>(null);
   const [observacao, setObservacao] = useState('');
-  const draftSeq = useRef(1);
 
   // Edição inline (aba Registros)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -490,70 +477,42 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setObservacao('');
   }, []);
 
-  const addDraft = useCallback(() => {
+  const cancelLancamento = useCallback(() => {
+    resetEntrada();
+  }, [resetEntrada]);
+
+  const salvarDireto = useCallback(async () => {
     const clean = nome.trim();
     if (!clean) {
       onToast?.('Informe o nome do registro', 'error');
       return;
     }
     const lower = clean.toLowerCase();
-    const dupDraft = drafts.some((d) => d.nome.trim().toLowerCase() === lower);
-    const dupSaved = items.some((p) => p.nome.trim().toLowerCase() === lower);
-    if (dupDraft || dupSaved) {
-      onToast?.('Esse registro já foi adicionado', 'warning');
+    if (items.some((p) => p.nome.trim().toLowerCase() === lower)) {
+      onToast?.('Esse registro já existe', 'warning');
       return;
     }
-    setDrafts((prev) => [
-      ...prev,
-      {
-        localId: draftSeq.current++,
+    setSaving(true);
+    try {
+      await createPadraoRacial({
         nome: clean,
         classificacao,
         ceip,
         grauSangue,
-        observacao: observacao.trim(),
-      },
-    ]);
-    resetEntrada();
-  }, [nome, classificacao, ceip, grauSangue, observacao, drafts, items, onToast, resetEntrada]);
-
-  const removeDraft = useCallback((localId: number) => {
-    setDrafts((prev) => prev.filter((d) => d.localId !== localId));
-  }, []);
-
-  const cancelLancamento = useCallback(() => {
-    setDrafts([]);
-    resetEntrada();
-  }, [resetEntrada]);
-
-  const salvarLote = useCallback(async () => {
-    if (!drafts.length) return;
-    setSaving(true);
-    try {
-      for (const d of drafts) {
-        await createPadraoRacial({
-          nome: d.nome.trim(),
-          classificacao: d.classificacao,
-          ceip: d.ceip,
-          grauSangue: d.grauSangue,
-          observacao: d.observacao || null,
-          ativo: true,
-          organizationId,
-        });
-      }
-      const n = drafts.length;
-      onToast?.(`${n} ${n === 1 ? 'registro salvo' : 'registros salvos'} com sucesso`, 'success');
-      setDrafts([]);
+        observacao: observacao.trim() || null,
+        ativo: true,
+        organizationId,
+      });
+      onToast?.('Registro salvo com sucesso', 'success');
       resetEntrada();
       await loadItems();
       setAba('registros');
     } catch (err: any) {
-      onToast?.(err.message || 'Erro ao salvar registros', 'error');
-      await loadItems();
+      onToast?.(err.message || 'Erro ao salvar registro', 'error');
     } finally {
       setSaving(false);
     }
-  }, [drafts, organizationId, onToast, loadItems, resetEntrada]);
+  }, [nome, classificacao, ceip, grauSangue, observacao, items, organizationId, onToast, loadItems, resetEntrada]);
 
   // ── Edição inline (Registros) ───────────────────────────────────────────────
 
@@ -658,32 +617,6 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const sortableIds = items.map((p) => p.id);
   const activeDragItem = activeId ? items.find((p) => p.id === activeId) : null;
 
-  // ── Régua de lançamento: colunas ────────────────────────────────────────────
-
-  const draftColumns: Column<DraftPadrao>[] = [
-    { key: 'nome', header: 'Nome', render: (d) => <span className="font-semibold text-gray-800">{d.nome}</span> },
-    {
-      key: 'classificacao',
-      header: 'Padrão Racial',
-      render: (d) => <PadraoRacialCell value={d.classificacao} ceip={d.ceip} />,
-    },
-    {
-      key: 'grauSangue',
-      header: 'Grau de Sangue',
-      render: (d) => <GrauSangueCell value={d.grauSangue} />,
-    },
-    {
-      key: 'observacao',
-      header: 'Observação',
-      render: (d) =>
-        d.observacao ? (
-          <span className="text-gray-700">{d.observacao}</span>
-        ) : (
-          <span className="text-gray-300">—</span>
-        ),
-    },
-  ];
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (!organizationId) {
@@ -736,7 +669,7 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') addDraft();
+                if (e.key === 'Enter') salvarDireto();
               }}
               placeholder="Ex: PO Nelore, 1/2 Sangue Angus, Comercial..."
               className={inputCls}
@@ -771,27 +704,11 @@ const PadraoRacialManagement: React.FC<Props> = ({ onToast, onBack }) => {
             />
           </div>
 
-          {drafts.length > 0 && (
-            <InlineEntryTable
-              columns={draftColumns}
-              rows={drafts}
-              rowKey={(d) => d.localId}
-              onRemove={(d) => removeDraft(d.localId)}
-            />
-          )}
-
           <FormActions
             onCancel={cancelLancamento}
-            onSave={salvarLote}
-            saveDisabled={drafts.length === 0 || saving}
+            onSave={salvarDireto}
+            saveDisabled={!nome.trim() || saving}
             saveIcon={saving ? <Loader2 size={16} className="animate-spin" /> : undefined}
-            status={
-              drafts.length ? (
-                <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#16a34a]">
-                  <Check size={14} /> {drafts.length} {drafts.length === 1 ? 'registro a salvar' : 'registros a salvar'}
-                </span>
-              ) : null
-            }
           />
         </div>
       ) : (

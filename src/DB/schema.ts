@@ -1171,12 +1171,14 @@ export const regimesAlimentares = pgTable('regimes_alimentares', {
   nome: text('nome').notNull(),
   codigoCurto: text('codigo_curto').notNull(),
   tipo: text('tipo').notNull(),
+  produtoFormulado: text('produto_formulado'),
   nivelIngestaoValor: numeric('nivel_ingestao_valor', { precision: 8, scale: 2 }),
   nivelIngestaoTipo: text('nivel_ingestao_tipo'), // '% do PV' | 'Gramas/cab/dia'
   custoQuilo: numeric('custo_quilo', { precision: 10, scale: 2 }),
   anexoUrl: text('anexo_url'),
   anexoNome: text('anexo_nome'),
   ativo: boolean('ativo').notNull().default(true),
+  produtos: jsonb('produtos'),
   ordem: integer('ordem').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -1198,6 +1200,21 @@ export const regimesAlimentaresHistorico = pgTable('regimes_alimentares_historic
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => [
   index('idx_regimes_alimentares_hist_regime_id').on(t.regimeAlimentarId),
+]);
+
+// GMDs (Ganho Médio Diário) planejados para o regime alimentar por categoria e estação
+export const regimesAlimentaresGmd = pgTable('regimes_alimentares_gmd', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  regimeAlimentarId: uuid('regime_alimentar_id').notNull()
+    .references(() => regimesAlimentares.id, { onDelete: 'cascade' }),
+  categoriaId: uuid('categoria_id').notNull()
+    .references(() => animalCategories.id, { onDelete: 'cascade' }),
+  estacao: text('estacao').notNull(), // 'aguas' | 'transicao_aguas_secas' | 'secas' | 'transicao_secas_aguas'
+  gmd: numeric('gmd', { precision: 6, scale: 3 }).notNull(), // ex: 0.750
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_regimes_alimentares_gmd_regime_id').on(t.regimeAlimentarId),
 ]);
 
 
@@ -1457,6 +1474,11 @@ export const mapaRebanhoHeaders = pgTable('mapa_rebanho_headers', {
   dataReferencia: date('data_referencia').notNull(),
   // 'rascunho' | 'salvo'
   status: text('status').notNull().default('rascunho'),
+  // Trava mútua entre os dois modos de lançamento: 'pasto' (Mapa de Pasto) ou
+  // 'categoria' (Distribuição por Categoria). O primeiro modo a receber dados
+  // "trava" o mapa nele; o outro fica somente-leitura. null = ainda não travado
+  // (nenhum dado lançado / mapa zerado — destrava sozinho).
+  distribuicaoModo: text('distribuicao_modo'),
   observacao: text('observacao'),
   criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -1497,6 +1519,8 @@ export const mapaoHeaders = pgTable('mapao_headers', {
   dataReferencia: date('data_referencia').notNull(),
   // 'rascunho' | 'salvo'
   status: text('status').notNull().default('rascunho'),
+  // Trava mútua entre os dois modos de lançamento (ver mapaRebanhoHeaders).
+  distribuicaoModo: text('distribuicao_modo'),
   observacao: text('observacao'),
   criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2230,5 +2254,33 @@ export const loteEventos = pgTable('lote_eventos', {
 }, (t) => [
   index('idx_lote_eventos_org').on(t.organizationId),
   index('idx_lote_eventos_lote').on(t.loteId),
+]);
+
+// ── Planejamento Nutricional (por lote) ───────────────────────────────────────
+// Plano de terminação de um lote: as METAS de abate (peso vivo, rendimento de
+// carcaça, valor de venda) + o PLANO por fases (data início/final, regime
+// alimentar do cadastro, ganho previsto kg/dia). Diferente do ledger de eventos,
+// este é um documento EDITÁVEL — 1 linha por lote (upsert). Os valores derivados
+// (peso morto, @, peso ao fim de cada fase, data de abate prevista) NÃO são
+// gravados: são calculados no front (ver agents/pecuario/gestaoLotes/planejamentoNutri.ts).
+export const planejamentoNutricional = pgTable('planejamento_nutricional', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  loteId: uuid('lote_id').notNull()
+    .references(() => lotes.id, { onDelete: 'cascade' }),
+  // Metas de abate.
+  pesoInicial: numeric('peso_inicial', { precision: 8, scale: 2 }),        // peso de entrada (kg)
+  pesoVivoAbate: numeric('peso_vivo_abate', { precision: 8, scale: 2 }),   // meta (kg)
+  rendimentoCarcaca: numeric('rendimento_carcaca', { precision: 5, scale: 2 }), // %
+  metaValorVenda: numeric('meta_valor_venda', { precision: 12, scale: 2 }),     // R$
+  // Plano por fases: [{ id, dataInicio, dataFinal, regimeAlimentarId, regimeNome, ganhoPrevisto }]
+  fases: jsonb('fases').notNull().default('[]'),
+  criadoPor: text('criado_por').references(() => userProfiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  index('idx_planej_nutri_org').on(t.organizationId),
+  uniqueIndex('planej_nutri_lote_uidx').on(t.loteId),
 ]);
 

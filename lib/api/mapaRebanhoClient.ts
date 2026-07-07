@@ -13,6 +13,8 @@ export interface MapaRebanhoHeader {
   farmId: string;
   dataReferencia: string; // 'AAAA-MM-DD'
   status: 'rascunho' | 'salvo';
+  // Modo que "trava" o mapa: 'pasto' | 'categoria' | null (ainda não travado)
+  distribuicaoModo: 'pasto' | 'categoria' | null;
   observacao: string | null;
   criadoPor: string | null;
   createdAt: string;
@@ -68,6 +70,7 @@ export async function updateMapa(id: string, data: {
   status?: 'rascunho' | 'salvo';
   observacao?: string;
   dataReferencia?: string;
+  distribuicaoModo?: 'pasto' | 'categoria' | null;
 }): Promise<MapaRebanhoHeader> {
   return fetchJson<MapaRebanhoHeader>(API_BASE, {
     method: 'PATCH',

@@ -19,6 +19,9 @@ import {
   listHistory,
   addHistoryEntry,
   removeHistoryEntry,
+  listGmdConfigs,
+  setGmdConfig,
+  removeGmdConfig,
 } from '../src/DB/repositories/regimes-alimentares.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -46,6 +49,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const history = await listHistory(regimeId);
         jsonSuccess(res, history);
+        return;
+      }
+
+      if (action === 'gmd') {
+        const regimeId = typeof req.query?.regimeId === 'string' ? req.query.regimeId : '';
+        if (!regimeId) {
+          jsonError(res, 'regimeId obrigatório', { status: 400 });
+          return;
+        }
+        const gmdConfigs = await listGmdConfigs(regimeId);
+        jsonSuccess(res, gmdConfigs);
         return;
       }
 
@@ -115,17 +129,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
 
+      // Set GMD Config
+      if (action === 'set-gmd') {
+        const { regimeAlimentarId, categoriaId, estacao, gmd } = req.body;
+        if (!regimeAlimentarId || !categoriaId || !estacao || gmd === undefined || gmd === null) {
+          jsonError(res, 'Campos obrigatórios: regimeAlimentarId, categoriaId, estacao, gmd', { status: 400 });
+          return;
+        }
+        const row = await setGmdConfig({ regimeAlimentarId, categoriaId, estacao, gmd });
+        jsonSuccess(res, row);
+        return;
+      }
+
+      // Delete GMD Config
+      if (action === 'delete-gmd') {
+        const { id } = req.body;
+        if (!id) {
+          jsonError(res, 'id obrigatório', { status: 400 });
+          return;
+        }
+        await removeGmdConfig(id);
+        jsonSuccess(res, { deleted: true });
+        return;
+      }
+
       // Create
       const {
         organizationId,
         nome,
         codigoCurto,
         tipo,
+        produtoFormulado,
         nivelIngestaoValor,
         nivelIngestaoTipo,
         custoQuilo,
         anexoUrl,
         anexoNome,
+        produtos,
       } = req.body ?? {};
 
       if (!organizationId || !nome || !String(nome).trim() || !codigoCurto || !String(codigoCurto).trim() || !tipo || !String(tipo).trim()) {
@@ -138,11 +178,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         nome: String(nome).trim(),
         codigoCurto: String(codigoCurto).trim(),
         tipo: String(tipo).trim(),
+        produtoFormulado: produtoFormulado !== undefined && produtoFormulado !== null ? String(produtoFormulado).trim() || null : null,
         nivelIngestaoValor: nivelIngestaoValor !== undefined && nivelIngestaoValor !== null ? String(nivelIngestaoValor).trim() || null : null,
         nivelIngestaoTipo: nivelIngestaoTipo !== undefined && nivelIngestaoTipo !== null ? String(nivelIngestaoTipo).trim() || null : null,
         custoQuilo: custoQuilo !== undefined && custoQuilo !== null ? String(custoQuilo).trim() || null : null,
         anexoUrl: anexoUrl !== undefined && anexoUrl !== null ? String(anexoUrl).trim() || null : null,
         anexoNome: anexoNome !== undefined && anexoNome !== null ? String(anexoNome).trim() || null : null,
+        produtos: produtos !== undefined ? produtos : null,
       });
       jsonSuccess(res, row);
       return;
@@ -155,12 +197,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         nome,
         codigoCurto,
         tipo,
+        produtoFormulado,
         nivelIngestaoValor,
         nivelIngestaoTipo,
         custoQuilo,
         anexoUrl,
         anexoNome,
         ativo,
+        produtos,
       } = req.body ?? {};
 
       if (!id) {
@@ -190,6 +234,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         payload.tipo = String(tipo).trim();
       }
+      if (produtoFormulado !== undefined) {
+        payload.produtoFormulado = produtoFormulado === null ? null : (String(produtoFormulado).trim() || null);
+      }
       if (nivelIngestaoValor !== undefined) {
         payload.nivelIngestaoValor = nivelIngestaoValor === null ? null : (String(nivelIngestaoValor).trim() || null);
       }
@@ -207,6 +254,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (ativo !== undefined) {
         payload.ativo = Boolean(ativo);
+      }
+      if (produtos !== undefined) {
+        payload.produtos = produtos;
       }
 
       const row = await update(id, payload);

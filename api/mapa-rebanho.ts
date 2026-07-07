@@ -30,6 +30,7 @@ import {
 } from '../src/DB/repositories/mapaRebanho.js';
 
 const VALID_STATUS = ['rascunho', 'salvo'];
+const VALID_DIST_MODO = ['pasto', 'categoria'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res, req);
@@ -142,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── PATCH ──────────────────────────────────────────────────────────────
     if (req.method === 'PATCH') {
-      const { id, status, observacao, dataReferencia } = req.body ?? {};
+      const { id, status, observacao, dataReferencia, distribuicaoModo } = req.body ?? {};
       if (!id) {
         jsonError(res, 'id obrigatório', { status: 400 });
         return;
@@ -155,10 +156,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         jsonError(res, 'dataReferencia deve estar no formato AAAA-MM-DD', { status: 400 });
         return;
       }
+      if (
+        distribuicaoModo !== undefined &&
+        distribuicaoModo !== null &&
+        !VALID_DIST_MODO.includes(distribuicaoModo)
+      ) {
+        jsonError(res, `distribuicaoModo inválido. Valores: ${VALID_DIST_MODO.join(', ')} ou null`, { status: 400 });
+        return;
+      }
       const payload: Record<string, any> = {};
       if (status !== undefined) payload.status = status;
       if (observacao !== undefined) payload.observacao = observacao?.trim() || null;
       if (dataReferencia !== undefined) payload.dataReferencia = dataReferencia;
+      if (distribuicaoModo !== undefined) payload.distribuicaoModo = distribuicaoModo ?? null;
       const row = await updateHeader(id, payload);
       jsonSuccess(res, row);
       return;

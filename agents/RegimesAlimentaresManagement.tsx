@@ -12,6 +12,8 @@ import {
   Eye,
   Ban,
   CheckCircle2,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   DndContext,
@@ -45,7 +47,13 @@ import {
   addRegimeHistoryEntry,
   deleteRegimeHistoryEntry,
   type RegimeAlimentarHistorico,
+  listRegimeGmds,
+  setRegimeGmd,
+  deleteRegimeGmd,
+  type RegimeAlimentarGmd,
+  type RegimeAlimentarProduto,
 } from '../lib/api/regimesAlimentaresClient';
+import { listAnimalCategories, type AnimalCategory } from '../lib/api/animalCategoriesClient';
 
 // ── Types & Constants ─────────────────────────────────────────────────────────
 
@@ -73,11 +81,11 @@ const FIXED_TYPES = [
     detalhe: 'Suplementação para bezerros ao pé da vaca',
   },
   {
-    tipo: 'Recria intensiva a pasto',
+    tipo: 'Recria Intensiva a pasto (RIP)',
     detalhe: 'Estratégia de recria com suplementação a pasto acima de 0,7%',
   },
   {
-    tipo: 'Terminação intensiva a pasto, TIP',
+    tipo: 'Terminação Intensiva a pasto (TIP)',
     detalhe: 'Terminação no pasto com alto nível de concentrado. Oferta acima de 1,5% do peso vivo',
   },
   {
@@ -92,6 +100,12 @@ const FIXED_TYPES = [
     tipo: 'Outros',
     detalhe: '',
   },
+];
+
+const SIMULATED_STOCK_PRODUCTS = [
+  { nome: 'Suplemento 1', custoQuilo: 3.50, estoqueQtd: 5000 },
+  { nome: 'Suplemento 2', custoQuilo: 4.20, estoqueQtd: 2500 },
+  { nome: 'Suplemento 3', custoQuilo: 5.00, estoqueQtd: 1000 },
 ];
 
 const inputCls =
@@ -225,6 +239,13 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [anexoNome, setAnexoNome] = useState('');
   const nomeRef = useRef<HTMLInputElement>(null);
 
+  // Origem e produtos para lançamento
+  const [origemProduto, setOrigemProduto] = useState<'estoque' | 'manual'>('estoque');
+  const [selectedStockProductIdx, setSelectedStockProductIdx] = useState(0);
+  const [manualProductName, setManualProductName] = useState('');
+  const [manualProductCost, setManualProductCost] = useState('');
+  const [produtosList, setProdutosList] = useState<RegimeAlimentarProduto[]>([]);
+
   // Detalhamento editável (aba Registros)
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState('');
@@ -236,8 +257,22 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
   const [editAnexoUrl, setEditAnexoUrl] = useState('');
   const [editAnexoNome, setEditAnexoNome] = useState('');
 
+  // Origem e produtos para edição
+  const [editOrigemProduto, setEditOrigemProduto] = useState<'estoque' | 'manual'>('estoque');
+  const [editSelectedStockProductIdx, setEditSelectedStockProductIdx] = useState(0);
+  const [editManualProductName, setEditManualProductName] = useState('');
+  const [editManualProductCost, setEditManualProductCost] = useState('');
+  const [editProdutosList, setEditProdutosList] = useState<RegimeAlimentarProduto[]>([]);
+
   // Detalhamento abas
-  const [detailTab, setDetailTab] = useState<'geral' | 'historico'>('geral');
+  const [detailTab, setDetailTab] = useState<'geral' | 'historico' | 'gmd'>('geral');
+
+  // GMD States
+  const [categories, setCategories] = useState<AnimalCategory[]>([]);
+  const [gmdConfigs, setGmdConfigs] = useState<RegimeAlimentarGmd[]>([]);
+  const [loadingGmd, setLoadingGmd] = useState(false);
+  const [editingGmdCell, setEditingGmdCell] = useState<{ categoryId: string; estacao: string } | null>(null);
+  const [gmdInputValue, setGmdInputValue] = useState('');
 
   // Histórico & Formulação
   const [historyList, setHistoryList] = useState<RegimeAlimentarHistorico[]>([]);
@@ -292,6 +327,11 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
       setEditCustoQuilo(selected.custoQuilo ?? '');
       setEditAnexoUrl(selected.anexoUrl ?? '');
       setEditAnexoNome(selected.anexoNome ?? '');
+      setEditProdutosList(selected.produtos ?? []);
+      setEditOrigemProduto('estoque');
+      setEditSelectedStockProductIdx(0);
+      setEditManualProductName('');
+      setEditManualProductCost('');
       setDetailTab('geral');
     }
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -399,7 +439,156 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
     }
   }, [selectedId, detailTab, loadHistory]);
 
-  // ── Lançamento ──────────────────────────────────────────────────────────────
+  // ── GMD Lógica ─────────────────────────────────────────────────────────────
+
+  const loadGmdData = useCallback(async (regimeId: string) => {
+    if (!organizationId) return;
+    try {
+      setLoadingGmd(true);
+      const [cats, configs] = await Promise.all([
+        listAnimalCategories(organizationId),
+        listRegimeGmds(regimeId),
+      ]);
+      setCategories(cats.filter((c) => c.ativo || configs.some((cfg) => cfg.categoriaId === c.id)));
+      setGmdConfigs(configs);
+    } catch (err: any) {
+      onToast?.(err.message || 'Erro ao carregar dados do GMD', 'error');
+    } finally {
+      setLoadingGmd(false);
+    }
+  }, [organizationId, onToast]);
+
+  const handleSaveGmdValue = async (categoriaId: string, estacao: string, valueStr: string) => {
+    if (!selectedId) return;
+    const cleanStr = valueStr.trim().replace(',', '.');
+    if (!cleanStr) return;
+
+    const value = parseFloat(cleanStr);
+    if (isNaN(value) || value < 0) {
+      onToast?.('Informe um valor de GMD válido', 'warning');
+      return;
+    }
+
+    try {
+      await setRegimeGmd({
+        regimeAlimentarId: selectedId,
+        categoriaId,
+        estacao,
+        gmd: value,
+      });
+      await loadGmdData(selectedId);
+      onToast?.('GMD configurado com sucesso!', 'success');
+    } catch (err: any) {
+      onToast?.(err.message || 'Erro ao salvar GMD', 'error');
+    }
+  };
+
+  const handleDeleteGmdValue = async (id: string) => {
+    if (!selectedId) return;
+    try {
+      await deleteRegimeGmd(id);
+      await loadGmdData(selectedId);
+      onToast?.('Configuração de GMD removida', 'success');
+    } catch (err: any) {
+      onToast?.(err.message || 'Erro ao remover GMD', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (selectedId && detailTab === 'gmd') {
+      loadGmdData(selectedId);
+    }
+  }, [selectedId, detailTab, loadGmdData]);
+
+  // ── Gestão de Múltiplos Produtos ───────────────────────────────────────────
+
+  const handleAddProduct = (target: 'create' | 'edit') => {
+    const isCreate = target === 'create';
+    const origem = isCreate ? origemProduto : editOrigemProduto;
+    let newProd: RegimeAlimentarProduto;
+
+    if (origem === 'estoque') {
+      const stockIdx = isCreate ? selectedStockProductIdx : editSelectedStockProductIdx;
+      const baseProd = SIMULATED_STOCK_PRODUCTS[stockIdx];
+      newProd = {
+        nome: baseProd.nome,
+        origem: 'estoque',
+        custoQuilo: baseProd.custoQuilo,
+        estoqueQtd: baseProd.estoqueQtd,
+      };
+    } else {
+      const name = isCreate ? manualProductName : editManualProductName;
+      const costStr = isCreate ? manualProductCost : editManualProductCost;
+      if (!name.trim()) {
+        onToast?.('Informe o nome do produto', 'warning');
+        return;
+      }
+      const cost = parseFloat(costStr.replace(',', '.'));
+      if (isNaN(cost) || cost < 0) {
+        onToast?.('Informe um valor de custo válido', 'warning');
+        return;
+      }
+      newProd = {
+        nome: name.trim(),
+        origem: 'manual',
+        custoQuilo: cost,
+        estoqueQtd: null,
+      };
+    }
+
+    if (isCreate) {
+      const updated = [...produtosList, newProd];
+      setProdutosList(updated);
+      setManualProductName('');
+      setManualProductCost('');
+      if (updated.length > 0) {
+        setCustoQuilo(String(updated[0].custoQuilo));
+      }
+    } else {
+      const updated = [...editProdutosList, newProd];
+      setEditProdutosList(updated);
+      setEditManualProductName('');
+      setEditManualProductCost('');
+      if (updated.length > 0) {
+        setEditCustoQuilo(String(updated[0].custoQuilo));
+      }
+    }
+  };
+
+  const handleRemoveProduct = (index: number, target: 'create' | 'edit') => {
+    if (target === 'create') {
+      const updated = produtosList.filter((_, i) => i !== index);
+      setProdutosList(updated);
+      setCustoQuilo(updated.length > 0 ? String(updated[0].custoQuilo) : '');
+    } else {
+      const updated = editProdutosList.filter((_, i) => i !== index);
+      setEditProdutosList(updated);
+      setEditCustoQuilo(updated.length > 0 ? String(updated[0].custoQuilo) : '');
+    }
+  };
+
+  const handleMoveProduct = (index: number, direction: 'up' | 'down', target: 'create' | 'edit') => {
+    const list = target === 'create' ? [...produtosList] : [...editProdutosList];
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === list.length - 1) return;
+
+    const swapWith = direction === 'up' ? index - 1 : index + 1;
+    const temp = list[index];
+    list[index] = list[swapWith];
+    list[swapWith] = temp;
+
+    if (target === 'create') {
+      setProdutosList(list);
+      if (list.length > 0) {
+        setCustoQuilo(String(list[0].custoQuilo));
+      }
+    } else {
+      setEditProdutosList(list);
+      if (list.length > 0) {
+        setEditCustoQuilo(String(list[0].custoQuilo));
+      }
+    }
+  };
 
   const cancelLancamento = useCallback(() => {
     setNome('');
@@ -410,6 +599,11 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setCustoQuilo('');
     setAnexoUrl('');
     setAnexoNome('');
+    setProdutosList([]);
+    setOrigemProduto('estoque');
+    setSelectedStockProductIdx(0);
+    setManualProductName('');
+    setManualProductCost('');
   }, []);
 
   const salvar = useCallback(async () => {
@@ -443,6 +637,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
         custoQuilo: custoQuilo.trim() || null,
         anexoUrl: anexoUrl || null,
         anexoNome: anexoNome || null,
+        produtos: produtosList.length > 0 ? produtosList : null,
         organizationId,
       });
       onToast?.('Regime alimentar salvo com sucesso', 'success');
@@ -454,7 +649,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [nome, codigoCurto, tipo, nivelIngestaoValor, nivelIngestaoTipo, custoQuilo, anexoUrl, anexoNome, organizationId, regimes, onToast, loadRegimes, cancelLancamento]);
+  }, [nome, codigoCurto, tipo, nivelIngestaoValor, nivelIngestaoTipo, custoQuilo, anexoUrl, anexoNome, produtosList, organizationId, regimes, onToast, loadRegimes, cancelLancamento]);
 
   // ── Edição (detalhamento da aba Registros) ──────────────────────────────────
 
@@ -480,6 +675,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
         custoQuilo: editCustoQuilo.trim() || null,
         anexoUrl: editAnexoUrl || null,
         anexoNome: editAnexoNome || null,
+        produtos: editProdutosList.length > 0 ? editProdutosList : null,
       });
       onToast?.('Regime alimentar atualizado com sucesso', 'success');
       await loadRegimes();
@@ -488,7 +684,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
     } finally {
       setSaving(false);
     }
-  }, [selectedId, editNome, editCodigoCurto, editTipo, editNivelIngestaoValor, editNivelIngestaoTipo, editCustoQuilo, editAnexoUrl, editAnexoNome, onToast, loadRegimes]);
+  }, [selectedId, editNome, editCodigoCurto, editTipo, editNivelIngestaoValor, editNivelIngestaoTipo, editCustoQuilo, editAnexoUrl, editAnexoNome, editProdutosList, onToast, loadRegimes]);
 
   // ── Ativar / Inativar (Situações) ───────────────────────────────────────────
 
@@ -558,6 +754,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
     setMenu((prev) => (prev?.id === id ? null : { id, x: r.right, y: r.bottom }));
   }, []);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const menuTipo = menu ? regimes.find((r) => r.id === menu.id) ?? null : null;
 
   // ── Resizing ───────────────────────────────────────────────────────────────
   const splitRef = useRef<HTMLDivElement>(null);
@@ -623,9 +820,9 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
         </div>
       </div>
 
-      {aba === 'lancar' ? (
+            {aba === 'lancar' ? (
         /* ── Aba Lançamentos: formulário de cadastro ──────────────────────────── */
-        <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
@@ -704,21 +901,152 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">
-                Custo do suplemento (/kg)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={custoQuilo}
-                onChange={(e) => setCustoQuilo(e.target.value)}
-                placeholder="Ex: 3.50"
-                className={inputCls}
-              />
+          {/* Composição de Produtos do Regime */}
+          <div className="bg-gray-50/50 p-4.5 rounded-xl border border-gray-150 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-gray-150 pb-2">
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                Produtos, Suplementos e formulados
+              </h4>
+              <span className="text-[10px] text-gray-400">
+                Adicione um ou mais suplementos ao regime.
+              </span>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              <div className="md:col-span-3">
+                <label className="mb-1 block text-[11px] font-semibold text-gray-600">Origem do Produto</label>
+                <select
+                  value={origemProduto}
+                  onChange={(e) => setOrigemProduto(e.target.value as 'estoque' | 'manual')}
+                  className={selectCls}
+                >
+                  <option value="estoque">Estoque (Simulado)</option>
+                  <option value="manual">Manual (Digitação)</option>
+                </select>
+              </div>
+
+              {origemProduto === 'estoque' ? (
+                <div className="md:col-span-7">
+                  <label className="mb-1 block text-[11px] font-semibold text-gray-600">Selecionar do Estoque</label>
+                  <select
+                    value={selectedStockProductIdx}
+                    onChange={(e) => setSelectedStockProductIdx(Number(e.target.value))}
+                    className={selectCls}
+                  >
+                    {SIMULATED_STOCK_PRODUCTS.map((prod, idx) => (
+                      <option key={idx} value={idx}>
+                        {prod.nome} (Estoque: {prod.estoqueQtd} kg — R$ {prod.custoQuilo.toFixed(2)}/kg)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div className="md:col-span-4">
+                    <label className="mb-1 block text-[11px] font-semibold text-gray-600">Nome do Produto</label>
+                    <input
+                      type="text"
+                      value={manualProductName}
+                      onChange={(e) => setManualProductName(e.target.value)}
+                      placeholder="Ex: Farelo de Soja"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="mb-1 block text-[11px] font-semibold text-gray-600">Custo (/kg)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={manualProductCost}
+                      onChange={(e) => setManualProductCost(e.target.value)}
+                      placeholder="R$ 0,00"
+                      className={inputCls}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => handleAddProduct('create')}
+                  className="w-full h-10 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#E7F6EC] px-3 font-bold text-[#15803d] hover:bg-[#d1f0db] active:scale-[0.98] transition-all"
+                >
+                  <Plus size={15} />
+                  Adicionar
+                </button>
+              </div>
+            </div>
+
+            {produtosList.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-gray-150 bg-white">
+                <table className="w-full border-collapse text-left text-xs text-gray-600">
+                  <thead>
+                    <tr className="border-b border-gray-150 bg-gray-50 text-gray-700 font-semibold">
+                      <th className="p-2 w-16 text-center">Ordem</th>
+                      <th className="p-2">Nome do Produto</th>
+                      <th className="p-2 w-24 text-center">Origem</th>
+                      <th className="p-2 w-32 text-right">Qtd Estoque</th>
+                      <th className="p-2 w-28 text-right">Custo/kg</th>
+                      <th className="p-2 w-12 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {produtosList.map((item, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/30">
+                        <td className="p-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveProduct(idx, 'up', 'create')}
+                              disabled={idx === 0}
+                              className="text-gray-400 hover:text-[#16A34A] disabled:opacity-30 p-0.5 rounded transition-colors"
+                              title="Mover para cima"
+                            >
+                              <ArrowUp size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveProduct(idx, 'down', 'create')}
+                              disabled={idx === produtosList.length - 1}
+                              className="text-gray-400 hover:text-[#16A34A] disabled:opacity-30 p-0.5 rounded transition-colors"
+                              title="Mover para baixo"
+                            >
+                              <ArrowDown size={13} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-2 font-medium text-gray-800">{item.nome}</td>
+                        <td className="p-2 text-center">
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${item.origem === 'estoque' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {item.origem}
+                          </span>
+                        </td>
+                        <td className="p-2 text-right text-gray-500">
+                          {item.estoqueQtd !== null ? `${item.estoqueQtd.toLocaleString('pt-BR')} kg` : '—'}
+                        </td>
+                        <td className="p-2 text-right font-bold text-gray-800">
+                          R$ {item.custoQuilo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProduct(idx, 'create')}
+                            className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                            title="Remover produto"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-[12.5px] font-semibold text-gray-700">Anexo</label>
               <div className="flex items-center gap-2">
@@ -741,7 +1069,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
                     href={anexoUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 shrink-0"
                     title={anexoNome || 'Ver anexo'}
                   >
                     <Eye size={16} />
@@ -755,7 +1083,6 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
               )}
             </div>
           </div>
-
           <FormActions
             onCancel={cancelLancamento}
             onSave={salvar}
@@ -855,9 +1182,10 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
                       tabs={[
                         { id: 'geral', label: 'Dados Gerais' },
                         { id: 'historico', label: 'Formulação / Histórico', badge: historyList.length || undefined },
+                        { id: 'gmd', label: 'GMD' },
                       ]}
                       value={detailTab}
-                      onChange={(id) => setDetailTab(id as 'geral' | 'historico')}
+                      onChange={(id) => setDetailTab(id as 'geral' | 'historico' | 'gmd')}
                     />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -875,125 +1203,256 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
                   </div>
                 </div>
 
-                {detailTab === 'geral' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Nome</label>
-                      <input
-                        type="text"
-                        value={editNome}
-                        onChange={(e) => setEditNome(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
+                {detailTab === 'geral' && (
+                  <div className="flex flex-col gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-gray-600">Nome</label>
+                        <input
+                          type="text"
+                          value={editNome}
+                          onChange={(e) => setEditNome(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
 
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Código curto</label>
-                      <input
-                        type="text"
-                        value={editCodigoCurto}
-                        onChange={(e) => setEditCodigoCurto(e.target.value)}
-                        className={inputCls}
-                        maxLength={10}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Tipo</label>
-                      <select
-                        value={editTipo}
-                        onChange={(e) => setEditTipo(e.target.value)}
-                        className={selectCls}
-                      >
-                        {FIXED_TYPES.map((t) => (
-                          <option key={t.tipo} value={t.tipo}>
-                            {t.tipo}
-                          </option>
-                        ))}
-                      </select>
-                      {editTypeDetail && (
-                        <p className="mt-1 text-[11px] text-[#16a34a] bg-[#e7f6ec] px-2 py-1 rounded">
-                          {editTypeDetail}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-gray-700">Nível de Ingestão</label>
-                      <div className="grid grid-cols-2 gap-3 bg-gray-50/50 p-3.5 rounded-xl border border-gray-150">
-                        <div>
-                          <label className="mb-1 block text-[11px] font-semibold text-gray-500">Unidade de Ingestão</label>
-                          <select
-                            value={editNivelIngestaoTipo}
-                            onChange={(e) => setEditNivelIngestaoTipo(e.target.value)}
-                            className={selectCls}
-                          >
-                            <option value="% do PV">% do PV</option>
-                            <option value="Gramas/cab/dia">Gramas/cab/dia</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-[11px] font-semibold text-gray-500">Valor de Ingestão</label>
-                          <input
-                            type="number"
-                            step="any"
-                            value={editNivelIngestaoValor}
-                            onChange={(e) => setEditNivelIngestaoValor(e.target.value)}
-                            className={inputCls}
-                          />
-                        </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-gray-600">Código curto</label>
+                        <input
+                          type="text"
+                          value={editCodigoCurto}
+                          onChange={(e) => setEditCodigoCurto(e.target.value)}
+                          className={inputCls}
+                          maxLength={10}
+                        />
                       </div>
                     </div>
 
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">
-                        Custo do suplemento (/kg)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={editCustoQuilo}
-                        onChange={(e) => setEditCustoQuilo(e.target.value)}
-                        className={inputCls}
-                        disabled
-                        placeholder="Gerenciado via histórico"
-                        title="O custo é atualizado automaticamente com base na última vigência do histórico."
-                      />
-                      <p className="mt-1 text-[10px] text-gray-400">
-                        * Gerenciado automaticamente através do histórico de vigências.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Anexo padrão</label>
-                      <div className="flex items-center gap-2">
-                        <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 text-xs font-semibold text-gray-600 hover:bg-gray-100 w-full transition-colors opacity-60 pointer-events-none">
-                          <Upload size={16} className="text-gray-400" />
-                          Herdado do histórico
-                        </label>
-                        {editAnexoUrl && (
-                          <a
-                            href={editAnexoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 shrink-0"
-                            title={editAnexoNome || 'Ver anexo'}
-                          >
-                            <Eye size={16} />
-                          </a>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-gray-600">Tipo</label>
+                        <select
+                          value={editTipo}
+                          onChange={(e) => setEditTipo(e.target.value)}
+                          className={selectCls}
+                        >
+                          {FIXED_TYPES.map((t) => (
+                            <option key={t.tipo} value={t.tipo}>
+                              {t.tipo}
+                            </option>
+                          ))}
+                        </select>
+                        {editTypeDetail && (
+                          <p className="mt-1 text-[11px] text-[#16a34a] bg-[#e7f6ec] px-2 py-1 rounded">
+                            {editTypeDetail}
+                          </p>
                         )}
                       </div>
-                      {editAnexoNome && (
-                        <p className="mt-1 text-[11px] text-gray-500 truncate" title={editAnexoNome}>
-                          Anexo atual: {editAnexoNome}
-                        </p>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-gray-700">Nível de Ingestão</label>
+                        <div className="grid grid-cols-2 gap-3 bg-gray-50/50 p-3.5 rounded-xl border border-gray-150">
+                          <div>
+                            <label className="mb-1 block text-[11px] font-semibold text-gray-500">Unidade de Ingestão</label>
+                            <select
+                              value={editNivelIngestaoTipo}
+                              onChange={(e) => setEditNivelIngestaoTipo(e.target.value)}
+                              className={selectCls}
+                            >
+                              <option value="% do PV">% do PV</option>
+                              <option value="Gramas/cab/dia">Gramas/cab/dia</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-[11px] font-semibold text-gray-500">Valor de Ingestão</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={editNivelIngestaoValor}
+                              onChange={(e) => setEditNivelIngestaoValor(e.target.value)}
+                              className={inputCls}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Composição de Produtos para Edição */}
+                    <div className="bg-gray-50/50 p-4.5 rounded-xl border border-gray-150 flex flex-col gap-4">
+                      <div className="flex items-center justify-between border-b border-gray-150 pb-2">
+                        <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                          Produtos, Suplementos e formulados
+                        </h4>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                        <div className="md:col-span-3">
+                          <label className="mb-1 block text-[11px] font-semibold text-gray-600">Origem</label>
+                          <select
+                            value={editOrigemProduto}
+                            onChange={(e) => setEditOrigemProduto(e.target.value as 'estoque' | 'manual')}
+                            className={selectCls}
+                          >
+                            <option value="estoque">Estoque (Simulado)</option>
+                            <option value="manual">Manual (Digitação)</option>
+                          </select>
+                        </div>
+
+                        {editOrigemProduto === 'estoque' ? (
+                          <div className="md:col-span-7">
+                            <label className="mb-1 block text-[11px] font-semibold text-gray-600">Selecionar do Estoque</label>
+                            <select
+                              value={editSelectedStockProductIdx}
+                              onChange={(e) => setEditSelectedStockProductIdx(Number(e.target.value))}
+                              className={selectCls}
+                            >
+                              {SIMULATED_STOCK_PRODUCTS.map((prod, idx) => (
+                                <option key={idx} value={idx}>
+                                  {prod.nome} (Estoque: {prod.estoqueQtd} kg — R$ {prod.custoQuilo.toFixed(2)}/kg)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="md:col-span-4">
+                              <label className="mb-1 block text-[11px] font-semibold text-gray-600">Nome do Produto</label>
+                              <input
+                                type="text"
+                                value={editManualProductName}
+                                onChange={(e) => setEditManualProductName(e.target.value)}
+                                placeholder="Ex: Farelo de Soja"
+                                className={inputCls}
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <label className="mb-1 block text-[11px] font-semibold text-gray-600">Custo (/kg)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editManualProductCost}
+                                onChange={(e) => setEditManualProductCost(e.target.value)}
+                                placeholder="R$ 0,00"
+                                className={inputCls}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="md:col-span-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAddProduct('edit')}
+                            className="w-full h-10 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#E7F6EC] px-3 font-bold text-[#15803d] hover:bg-[#d1f0db] active:scale-[0.98] transition-all"
+                          >
+                            <Plus size={15} />
+                            Adicionar
+                          </button>
+                        </div>
+                      </div>
+
+                      {editProdutosList.length > 0 && (
+                        <div className="overflow-hidden rounded-lg border border-gray-150 bg-white">
+                          <table className="w-full border-collapse text-left text-xs text-gray-600">
+                            <thead>
+                              <tr className="border-b border-gray-150 bg-gray-50 text-gray-700 font-semibold">
+                                <th className="p-2 w-16 text-center">Ordem</th>
+                                <th className="p-2">Nome do Produto</th>
+                                <th className="p-2 w-24 text-center">Origem</th>
+                                <th className="p-2 w-32 text-right">Qtd Estoque</th>
+                                <th className="p-2 w-28 text-right">Custo/kg</th>
+                                <th className="p-2 w-12 text-center"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {editProdutosList.map((item, idx) => (
+                                <tr key={idx} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/30">
+                                  <td className="p-2 text-center">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveProduct(idx, 'up', 'edit')}
+                                        disabled={idx === 0}
+                                        className="text-gray-400 hover:text-[#16A34A] disabled:opacity-30 p-0.5 rounded transition-colors"
+                                        title="Mover para cima"
+                                      >
+                                        <ArrowUp size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveProduct(idx, 'down', 'edit')}
+                                        disabled={idx === editProdutosList.length - 1}
+                                        className="text-gray-400 hover:text-[#16A34A] disabled:opacity-30 p-0.5 rounded transition-colors"
+                                        title="Mover para baixo"
+                                      >
+                                        <ArrowDown size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="p-2 font-medium text-gray-800">{item.nome}</td>
+                                  <td className="p-2 text-center">
+                                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${item.origem === 'estoque' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                                      {item.origem}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 text-right text-gray-500">
+                                    {item.estoqueQtd !== null ? `${item.estoqueQtd.toLocaleString('pt-BR')} kg` : '—'}
+                                  </td>
+                                  <td className="p-2 text-right font-bold text-gray-800">
+                                    R$ {item.custoQuilo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveProduct(idx, 'edit')}
+                                      className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                      title="Remover produto"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-gray-600">Anexo padrão</label>
+                        <div className="flex items-center gap-2">
+                          <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 text-xs font-semibold text-gray-600 hover:bg-gray-100 w-full transition-colors opacity-60 pointer-events-none">
+                            <Upload size={16} className="text-gray-400" />
+                            Herdado do histórico
+                          </label>
+                          {editAnexoUrl && (
+                            <a
+                              href={editAnexoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 shrink-0"
+                              title={editAnexoNome || 'Ver anexo'}
+                            >
+                              <Eye size={16} />
+                            </a>
+                          )}
+                        </div>
+                        {editAnexoNome && (
+                          <p className="mt-1 text-[11px] text-gray-500 truncate" title={editAnexoNome}>
+                            Anexo atual: {editAnexoNome}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ) : (
+                )}
+
+                {detailTab === 'historico' && (
                   <div className="flex flex-col gap-5">
                     {/* Novo Reajuste / Formulação */}
-                    <form onSubmit={handleAddHistory} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                    <form onSubmit={handleAddHistory} className="bg-white p-5 rounded-xl border border-gray-150 shadow-sm flex flex-col gap-4">
                       <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Novo Reajuste / Formulação</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -1080,7 +1539,7 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
                     </form>
 
                     {/* Lista do histórico */}
-                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                    <div className="bg-white p-5 rounded-xl border border-gray-150 shadow-sm flex flex-col gap-4">
                       <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Linha do Tempo de Preços e Formulações</h4>
                       {loadingHistory ? (
                         <div className="flex justify-center py-6 text-gray-400">
@@ -1140,6 +1599,129 @@ const RegimesAlimentaresManagement: React.FC<Props> = ({ onToast, onBack }) => {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {detailTab === 'gmd' && (
+                  <div className="bg-white p-5 rounded-xl border border-gray-150 shadow-sm flex flex-col gap-4 overflow-x-auto animate-in fade-in duration-350">
+                    <div className="flex items-center justify-between border-b border-gray-150 pb-3 flex-wrap gap-2">
+                      <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                        Planejamento de GMD por Categoria e Fase do Ano
+                      </h4>
+                      <span className="text-[10px] text-gray-400 font-medium">
+                        * Clique no valor ou no + para editar. Pressione Enter para salvar.
+                      </span>
+                    </div>
+
+                    {loadingGmd ? (
+                      <div className="flex justify-center py-8 text-gray-400">
+                        <Loader2 size={24} className="animate-spin" />
+                      </div>
+                    ) : categories.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-8">
+                        Nenhuma categoria de animal ativa cadastrada no sistema.
+                      </p>
+                    ) : (
+                      <table className="w-full border-collapse text-left text-xs text-gray-600">
+                        <thead>
+                          <tr className="border-b border-gray-200 text-gray-700 bg-gray-50/50">
+                            <th className="p-3 font-semibold text-gray-600">Categoria</th>
+                            <th className="p-3 font-semibold w-40 text-center text-gray-600">Águas</th>
+                            <th className="p-3 font-semibold w-40 text-center text-gray-600">Transição Águas/Secas</th>
+                            <th className="p-3 font-semibold w-40 text-center text-gray-600">Secas</th>
+                            <th className="p-3 font-semibold w-40 text-center text-gray-600">Transição Secas/Águas</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {categories.map((cat) => (
+                            <tr key={cat.id} className="border-b border-gray-100 hover:bg-gray-50/40">
+                              <td className="p-3 font-semibold text-gray-800">
+                                <div>{cat.nome}</div>
+                                {cat.complemento && (
+                                  <div className="text-[10px] font-normal text-gray-400">{cat.complemento}</div>
+                                )}
+                              </td>
+                              {['aguas', 'transicao_aguas_secas', 'secas', 'transicao_secas_aguas'].map((season) => {
+                                const config = gmdConfigs.find(
+                                  (cfg) => cfg.categoriaId === cat.id && cfg.estacao === season
+                                );
+                                const isEditing =
+                                  editingGmdCell?.categoryId === cat.id &&
+                                  editingGmdCell?.estacao === season;
+
+                                return (
+                                  <td key={season} className="p-2 text-center h-12 relative w-40">
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        step="0.001"
+                                        value={gmdInputValue}
+                                        onChange={(e) => setGmdInputValue(e.target.value)}
+                                        onBlur={() => {
+                                          handleSaveGmdValue(cat.id, season, gmdInputValue);
+                                          setEditingGmdCell(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleSaveGmdValue(cat.id, season, gmdInputValue);
+                                            setEditingGmdCell(null);
+                                          } else if (e.key === 'Escape') {
+                                            setEditingGmdCell(null);
+                                          }
+                                        }}
+                                        className="w-24 px-2 py-1 border border-[#16A34A] rounded text-center focus:outline-none focus:ring-1 focus:ring-[#16A34A] text-xs font-bold text-gray-800"
+                                        autoFocus
+                                        placeholder="0.000"
+                                      />
+                                    ) : (
+                                      <div className="flex items-center justify-center gap-1.5 group">
+                                        {config ? (
+                                          <>
+                                            <span
+                                              onClick={() => {
+                                                setEditingGmdCell({ categoryId: cat.id, estacao: season });
+                                                setGmdInputValue(config.gmd);
+                                              }}
+                                              className="cursor-pointer font-bold text-gray-700 hover:text-[#15803d] hover:bg-[#e7f6ec] px-2 py-0.5 rounded transition-all text-xs"
+                                              title="Clique para editar"
+                                            >
+                                              {parseFloat(config.gmd).toLocaleString('pt-BR', {
+                                                minimumFractionDigits: 3,
+                                                maximumFractionDigits: 3,
+                                              })} kg/dia
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteGmdValue(config.id)}
+                                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity p-0.5 rounded"
+                                              title="Remover GMD"
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingGmdCell({ categoryId: cat.id, estacao: season });
+                                              setGmdInputValue('');
+                                            }}
+                                            className="h-6 w-6 flex items-center justify-center rounded-full border border-dashed border-gray-300 hover:border-[#16A34A] hover:bg-[#e7f6ec] text-gray-400 hover:text-[#16a34a] transition-all"
+                                            title="Adicionar GMD"
+                                          >
+                                            <Plus size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 )}
               </div>

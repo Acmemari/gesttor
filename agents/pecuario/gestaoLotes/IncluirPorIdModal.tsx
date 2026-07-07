@@ -193,7 +193,8 @@ export const IncluirPorIdModal: React.FC<{
   onSubmit: (eventos: EventoDraft[]) => Promise<void>;
 }> = ({ lote, lotes, categorias, animais, animaisLoading, eventosByLote, onClose, onSubmit }) => {
   const [busca, setBusca] = useState('');
-  const [filtroLotes, setFiltroLotes] = useState<Set<string>>(new Set());
+  // Abre já filtrado pelo lote clicado (mostra a composição atual por padrão).
+  const [filtroLotes, setFiltroLotes] = useState<Set<string>>(() => new Set([lote.id]));
   const [filtroCats, setFiltroCats] = useState<Set<string>>(new Set());
   const [data, setData] = useState(todayISO());
   const [saving, setSaving] = useState(false);

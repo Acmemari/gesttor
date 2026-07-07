@@ -1,16 +1,25 @@
 const API_BASE = '/api/regimes-alimentares';
 
+export interface RegimeAlimentarProduto {
+  nome: string;
+  origem: 'estoque' | 'manual';
+  custoQuilo: number;
+  estoqueQtd: number | null;
+}
+
 export interface RegimeAlimentar {
   id: string;
   organizationId: string;
   nome: string;
   codigoCurto: string;
   tipo: string;
+  produtoFormulado: string | null;
   nivelIngestaoValor: string | null;
   nivelIngestaoTipo: string | null;
   custoQuilo: string | null;
   anexoUrl: string | null;
   anexoNome: string | null;
+  produtos: RegimeAlimentarProduto[] | null;
   ativo: boolean;
   ordem: number;
   createdAt: string;
@@ -33,11 +42,13 @@ export async function createRegimeAlimentar(data: {
   nome: string;
   codigoCurto: string;
   tipo: string;
+  produtoFormulado?: string | null;
   nivelIngestaoValor?: string | null;
   nivelIngestaoTipo?: string | null;
   custoQuilo?: string | null;
   anexoUrl?: string | null;
   anexoNome?: string | null;
+  produtos?: RegimeAlimentarProduto[] | null;
 }): Promise<RegimeAlimentar> {
   return fetchJson<RegimeAlimentar>(API_BASE, {
     method: 'POST',
@@ -50,11 +61,13 @@ export async function updateRegimeAlimentar(id: string, data: {
   nome?: string;
   codigoCurto?: string;
   tipo?: string;
+  produtoFormulado?: string | null;
   nivelIngestaoValor?: string | null;
   nivelIngestaoTipo?: string | null;
   custoQuilo?: string | null;
   anexoUrl?: string | null;
   anexoNome?: string | null;
+  produtos?: RegimeAlimentarProduto[] | null;
   ativo?: boolean;
 }): Promise<RegimeAlimentar> {
   return fetchJson<RegimeAlimentar>(API_BASE, {
@@ -112,5 +125,40 @@ export async function deleteRegimeHistoryEntry(id: string, regimeAlimentarId: st
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'delete-history', id, regimeAlimentarId }),
+  });
+}
+
+export interface RegimeAlimentarGmd {
+  id: string;
+  regimeAlimentarId: string;
+  categoriaId: string;
+  estacao: string;
+  gmd: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listRegimeGmds(regimeId: string): Promise<RegimeAlimentarGmd[]> {
+  return fetchJson<RegimeAlimentarGmd[]>(`${API_BASE}?action=gmd&regimeId=${encodeURIComponent(regimeId)}`);
+}
+
+export async function setRegimeGmd(data: {
+  regimeAlimentarId: string;
+  categoriaId: string;
+  estacao: string;
+  gmd: string | number;
+}): Promise<RegimeAlimentarGmd> {
+  return fetchJson<RegimeAlimentarGmd>(API_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-gmd', ...data }),
+  });
+}
+
+export async function deleteRegimeGmd(id: string): Promise<void> {
+  await fetchJson<any>(API_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete-gmd', id }),
   });
 }

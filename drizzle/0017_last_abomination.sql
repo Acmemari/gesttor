@@ -1,0 +1,1 @@
+ALTER TABLE "regimes_alimentares" ADD COLUMN "produtos" jsonb;

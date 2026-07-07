@@ -54,6 +54,7 @@ export async function updateHeader(id: string, data: {
   status?: 'rascunho' | 'salvo';
   observacao?: string | null;
   dataReferencia?: string;
+  distribuicaoModo?: 'pasto' | 'categoria' | null;
 }) {
   const [row] = await db.update(mapaoHeaders)
     .set({ ...data, updatedAt: new Date() })

@@ -93,8 +93,8 @@ const DataResp: React.FC<{
       <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={inputCls} />
     </div>
     <div className="flex-1">
-      <label className={labelCls}>Responsável</label>
-      <input type="text" value={resp} onChange={(e) => setResp(e.target.value)} placeholder="Quem lançou" className={inputCls} />
+      <label className={labelCls}>Observação</label>
+      <input type="text" value={resp} onChange={(e) => setResp(e.target.value)} placeholder="Opcional" className={inputCls} />
     </div>
   </div>
 );
